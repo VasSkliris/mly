@@ -1,0 +1,9 @@
+.*
+*.pyc
+!/.gitignore
+--*
+!/.__init__.py
+dist/
+build/
+mly.egg-info/
+mly/oldVersionsPackages

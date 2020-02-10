@@ -27,7 +27,7 @@ from random import shuffle
 from .__init__ import *
 
 null_path=nullpath()
-
+0
 ################################################################    
 ## This function trains a model with the given compiled model ##
 ################################################################

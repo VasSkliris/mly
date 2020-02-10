@@ -1,1163 +1,1408 @@
-import matplotlib as mpl
-mpl.use('Agg')
-
-from math import ceil
-import os
-from random import shuffle
-import random
-
-import matplotlib.pyplot as plt
+import pandas as pd
 import numpy as np
-from scipy import io
+import pickle
+import os
+import sys
+import time
+import random
+import copy
+from math import ceil
 
-from scipy.signal import spectrogram
+from .simulateddetectornoise import * 
+from .tools import dirlist, index_combinations
+from .datatools import DataPod, DataSet
+
 from gwpy.timeseries import TimeSeries
-from gwpy.timeseries import TimeSeriesDict    
+import matplotlib.pyplot as plt
+from matplotlib.mlab import psd
 
-from .simulateddetectornoise import *
-from .__init__ import *
-
-null_path=nullpath()
+from keras.models import load_model, Sequential, Model
 
 
-################################################################################
-#################### DOCUMENTATION OF FAR_test  ################################
-################################################################################
-#                                                                              #
-# model:           (model|string) If you running the function at the same scri #
-#                  pt you just assign the model object. If you load it from fi #
-#                  le you give the path to the model after the model_source_pa #
-#                  th                                                          #
-#                                                                              #
-# length:          (float) The length in seconds of the generated instantiatio #
-#                  ns of data.                                                 #
-#                                                                              #
-# fs:              (int) The sample frequency of the data. Use powers of 2 for #
-#                  faster calculations.                                        #
-#                                                                              #
-# detectors:       (string) A string with the initial letter of the detector y #
-#                  ou want to include. H for LIGO Hanford, L for LIGO Livingst #
-#                  on, V for Virgo and K for KAGRA. Example: 'HLV' or 'HLVK' o # 
-#                  r 'LV'.                                                     #
-#                                                                              #
-# noise_file:      (optional if noise_type is 'optimal'/ [str,str]) The name o #
-#                  f the real data file you want to use as source. The path is #
-#                  setted in load_noise function on emily.py. THIS HAS TO BE   #
-#                  FIXED LATER!                                                #
-#                  The list includes ['date_folder', 'name_of_file']. Date_fol #
-#                  der is inside ligo data and contains segments of that day w #
-#                  ith the name witch should be the name_of_file.              #
-#                                                                              #
-# batch_size:      (odd int)The number of instantiations we will use for one b #
-#                  atch. To make our noise instanstiation indipendent we need  #
-#                  a specific number given the detectors. For two detectors gi #
-#                  ves n-1 andf or three n(n-1) indipendent instantiations.    #
-#                                                                              #
-# starting_point:  (int) The time from whitch you want to start using the data #
-#                  from the noise_file, in seconds.                            #
-#                                                                              #
-# size:            (int|'all') The amound of instantiations you want to genera #
-#                  te. Powers of are more convinient. If equals to 'all' it wi #
-#                  ll load it all.                                             #
-#                                                                              #
-# t:               (optinal except psd_mode='default/ float)The duration of th # 
-#                  e envelope of every instantiation used to generate the psd. # 
-#                  It is used in psd_mode='default'. Prefered to be integral o #
-#                  f power of 2. Default is 32.                                #
-#                                                                              #
-# spec:            (optional/boolean): The option to also generate spectrogram #
-#                  s. Default is false. If true it will generate a separate da #
-#                  taset with pictures of spectrograms of size related to the  #
-#                  variable res below.                                         #
-#                                                                              #
-# phase:           (optional/boolean): Additionaly to spectrograms you can gen #
-#                  erate phasegrams. Default is false. If true it will generat #
-#                  e an additional picture under the spectrograms with the sam #
-#                  e size. The size will be the same as spectrogram.           #
-#                                                                              #
-# res:             NEED MORE INFO HERE.                                        #
-#                                                                              #
-# name:            (optional/string) A special tag you might want to add to yo #
-#                  ur saved dataset files. Default is ''.                      #
-#                                                                              #
-# model_source_path: (optional) This is the source path of the models.         #
-#                                                                              #
-# destination_path:(optional/string) The path where the dataset will be saved, # 
-#                  the default is null_path+'/datasets/'                       #
-#                                                                              #
-################################################################################
-
-def FAR_test(model           
-             ,length        
-             ,fs                          
-             ,detectors      
-             ,noise_file  
-             ,lags     
-             ,starting_point=0
-             ,size='all'      
-             ,t=32             
-             ,spec=False
-             ,phase=False
-             ,res=128
-             ,model_source_path = null_path+'/trainings/'
-             ,destination_path = null_path+'/trainings/' ):
-    
-    from mly.generators import load_noise, index_combinations
-    from keras.models import load_model
-    import time
-
-    
-    ## INPUT CHECKING ##########
-    #
-    
-    #model
-    
-    #length
-    if (not (isinstance(length,float) or isinstance(length,int)) and length>0):
-        raise ValueError('The length value has to be a possitive float or'
-                         +' integer.')
-        
-    # fs
-    if not isinstance(fs,int) or fs<=0:
-        raise ValueError('Sample frequency has to be a positive integer.')
-    
-    # detectors
-    for d in detectors:
-        if (d!='H' and d!='L' and d!='V' and d!='K'): 
-            raise ValueError('Not acceptable character for detector.'
-            +' You should include: \nH for LIGO Hanford\nL for LIGO'
-            +' Livingston \nV for Virgo \nK for KAGRA\nFor example: \'HLV\','
-            +' \'HLVK\'')
-            
-    # res
-    if not isinstance(res,int):
-        raise ValueError('Resolution variable (res) can only be integral')
-    
-    # noise_file    
-    if noise_file==None:
-        raise TypeError('You need a real noise file as a source.')         
-    if (noise_file!=None and len(noise_file)==2 
-        and isinstance(noise_file[0],str) and isinstance(noise_file[1],str)):
-        for d in detectors:
-            if os.path.isdir(null_path
-                             +'/ligo_data/'+str(fs)+'/'+noise_file[0]+'/'
-                             +d+'/'+noise_file[1]+'.txt'):
-                raise FileNotFoundError('No such file or directory:'+'\''
-                                +null_path+'/ligo_data/'+str(fs)+'/'
-                                +noise_file[0]+'/'+d+'/'+noise_file[1]+'.txt\'')
-                
-    # t
-    if not isinstance(t,int):
-        raise ValueError('t needs to be an integral')
-        
-    # batch size:
-    if not (isinstance(lags, int) and lags%2!=0):
-        raise ValueError('lags has to be an odd integer')
-    
-    # destination_path
-    if not os.path.isdir(destination_path): 
-        raise ValueError('No such path '+destination_path)
-    #                        
-    ########## INPUT CHECKING ##  
-
-
-    
-    if isinstance(model,str):
-        trained_model = load_model(model_source_path+ model +'.h5')
-    else:
-        trained_model = model    #If model is not already in the script you import it my calling the name    
-    
-    
-
-    if 'H' in detectors: noise_segH=load_noise(fs,noise_file[0]
-                                               ,'H',noise_file[1])
-    if 'L' in detectors: noise_segL=load_noise(fs,noise_file[0]
-                                               ,'L',noise_file[1])
-    if 'V' in detectors: noise_segV=load_noise(fs,noise_file[0]
-                                               ,'V',noise_file[1])
-        
-    if size=='all':
-        if lags==1: 
-            size= int((len(noise_segH)/fs-t-starting_point)/length)
-        else: 
-            size= int((len(noise_segH)/fs-t-starting_point)
-                      /length)*(batch_sise-1)
-
-
-    ind=index_combinations(detectors = detectors
-                           ,lags = lags
-                           ,length = length
-                           ,fs = fs
-                           ,size = size
-                           ,start_from_sec=starting_point)
-    
-    predictions=[]
-    nancounter=0
-    
-    t0=time.time()
-    for i in range(0,size):
-        
-        data_instantiation=[]
-
-
-        if 'H'in detectors:
-            # Calling the real noise segments
-            noiseH=noise_segH[ind['H'][i]:ind['H'][i]+t*fs]
-            # Making the noise a TimeSeries
-            H_back=TimeSeries(noiseH,sample_rate=fs)
-            # Calculating the ASD so tha we can use it for whitening later       
-            asdH=H_back.asd(1,0.5)                                    
-            # Whitening data                                                     
-            h=H_back.whiten(1,0.5,asd=asdH)[int(((t-length)/2)*fs):
-                                            int(((t+length)/2)*fs)] 
-
-        if 'L'in detectors:
-
-            # Calling the real noise segments
-            noiseL=noise_segL[ind['L'][i]:ind['L'][i]+t*fs]
-            # Making the noise a TimeSeries
-            L_back=TimeSeries(noiseL,sample_rate=fs)
-            # Calculating the ASD so tha we can use it for whitening later      
-            asdL=L_back.asd(1,0.5)                                    
-            # Whitening data                                                    
-            l=L_back.whiten(1,0.5,asd=asdL)[int(((t-length)/2)*fs):
-                                            int(((t+length)/2)*fs)] 
-
-
-        if 'V'in detectors:
-            
-            # Calling the real noise segments
-            noiseV=noise_segV[ind['V'][i]:ind['V'][i]+t*fs]
-            # Making the noise a TimeSeries
-            V_back=TimeSeries(noiseV,sample_rate=fs)
-            # Calculating the ASD so tha we can use it for whitening later 
-            asdV=V_back.asd(1,0.5)                                    
-            # Whitening data                                                    
-            v=V_back.whiten(1,0.5,asd=asdV)[int(((t-length)/2)*fs):
-                                            int(((t+length)/2)*fs)] 
-
-        dumie=[]
-        if 'H' in detectors: dumie.append(np.array(h))
-        if 'L' in detectors: dumie.append(np.array(l))
-        if 'V' in detectors: dumie.append(np.array(v))
-
-        data=np.array([dumie])
-        label=np.array([0])
-
-        label=label.reshape(1,1)
-        #data=data.reshape(1,3,fs*length)
-        
-        
-        data = data.transpose((0,2,1))
-        
-        #print(data.shape,label.shape)
-
-        
-        pred = trained_model.predict_proba(data, batch_size=1, verbose=0)
-        if not (np.isnan(pred[0][0]) or np.isnan(pred[0][1])):
-            predictions.append(pred)
-        else:
-            nancounter+=1
-        
-        if time.time()-t0>=0.1 or i==size-1:
-            print(end='\r')
-            print(str(i+1)+'/'+str(size),end='')
-
-    pr=(np.squeeze(np.array(predictions)))[:,1]
-    print(str(nancounter)+'nan resaults found')
-    return(pr)
-
-
-def ROC_test(model,sets,sizes, plots=False):
-    
-    from mly.mlTools import test_model
-    
-    data=data_fusion(sets,sizes)
-    labels=data[1]
-    
-
-    pr=test_model(model,test_data=data)
-
-    
-    size=len(pr)
-    
-    ROC=[]
-    x,y=[],[]
-    dist=[]
-
-    thr =np.sort(pr[:,1])[::int(sum(sizes)/100)]
-
-    for threshold in thr:
-        TP,FP,TN,FN=0,0,0,0
-        CP,CN=0,0
-
-        for i in np.arange(0,len(labels)):
-            if labels[i]==1: # CONDITION POSITIVE
-                
-                # pr[i][1] is the signal probability
-                if pr[i][1] >= threshold: TP+=1    
-                elif pr[i][1]< threshold: FN+=1
-                CP+=1 # Counting true possitives
-
-            if labels[i]==0: # CONDITION NEGATIVE
-                if pr[i][1] >= threshold: FP+=1
-                elif pr[i][1]< threshold: TN+=1
-                CN+=1 # Counting true negatives
-                
-        # Turning countings to rates        
-        TPR, FNR = TP/CP, FN/CP  
-        TNR, FPR = TN/CN, FP/CN  
-        x.append(FPR)
-        y.append(TPR)
-        #dist.append(np.sqrt((0-FPR)**2+(1-TPR)**2))
-    
-    if plots==True:
-        plt.figure(figsize=(10,5))
-        plt.xlabel('FPR')
-        plt.ylabel('TPR')
-        plt.semilogx(x,y,'r*')
-        plt.semilogx(np.arange(0,1.1,0.1),np.arange(0,1.1,0.1),'k--')
-
-        f = interp1d(x, y)
-        x_int=np.arange(x[x.index(min(x))],x[x.index(max(x))],0.001)
-
-        plt.semilogx(x_int,f(x_int))
-        plt.xlim([1/sum(sizes),1])
-        plt.ylim([1/sum(sizes),1])
-        plt.show()
-
-    return(x_int,f(x_int))
-
-
-def TAR_test(model
-           ,parameters        
-           ,length           
-           ,fs               
-           ,size             
-           ,detectors='HLV'  
-           ,spec=True
-           ,phase=True
-           ,res=128
-           ,noise_file=None  
-           ,t=32             
-           ,lags=11
-           ,starting_point=0
-           ,name=''          
-           ,destination_path=null_path+'/datasets/'
-           ,demo=False):       
-
-    
-    from mly.generators import load_noise, load_inj, dirlist, SNR, index_combinations
-    from keras.models import Sequential, load_model, Model
-
-
-    ## INPUT CHECKING ##########
-    #
-    
-    # parameters
-    if not (isinstance(parameters[0],str) and isinstance(parameters[1],str) 
-            and len(parameters)==3):
-        
-        raise ValueError('The parameters have to be three and in the form:'
-                         +' [list, list , float/int]')
-             
-    if not (os.path.isdir(null_path+'/injections/'+parameters[0])):
-        
-        raise FileNotFoundError('No such file or directory: \''+null_path
-                                +'/injections/'+parameters[0]) 
-        
-    if (parameters[1]!='optimal' and parameters[1]!='sudo_real'
-        and parameters[1]!='real'): 
-        
-        raise ValueError('Wrong type of noise, the only acceptable are:'
-                         +' \n\'optimal\'\n\'sudo_real\'\n\'real\'')
-        
-    #length
-    if (not (isinstance(length,float) or isinstance(length,int)) and length>0):
-        raise ValueError('The length value has to be a possitive float or'
-                         +' integer.')
-        
-    # fs
-    if not isinstance(fs,int) or fs<=0:
-        raise ValueError('Sample frequency has to be a positive integer.')
-    
-    # detectors
-    for d in detectors:
-        if (d!='H' and d!='L' and d!='V' and d!='K'): 
-            raise ValueError('Not acceptable character for detector.'
-                +' You should include: \nH for LIGO Hanford\nL for LIGO'
-                +' Livingston \nV for Virgo \nK for KAGRA\nFor example:'
-                +' \'HLV\', \'HLVK\'')
-    # res
-    if not isinstance(res,int):
-        raise ValueError('Resolution variable (res) can only be integral')
-    
-    # noise_file    
-    if ((parameters[1]=='sudo_real' or parameters[1]=='real')
-        and noise_file==None):
-        raise TypeError('If you use suno_real or real noise you need a real'
-                +' noise file as a source.')         
-    if (noise_file!=None and len(noise_file)==2 
-        and isinstance(noise_file[0],str) and isinstance(noise_file[1],str)):
-        
-        for d in detectors:
-            if os.path.isdir(null_path+'/ligo_data/'
-                +str(fs)+'/'+noise_file[0]+'/'+d+'/'+noise_file[1]+'.txt'):
-                
-                raise FileNotFoundError('No such file or directory: '
-                        +'\''+null_path+'/ligo_data/'+str(fs)
-                        +'/'+noise_file[0]+'/'+d+'/'+noise_file[1]+'.txt\'')
-                
-    # t
-    if not isinstance(t,int):
-        raise ValueError('t needs to be an integral')
-        
-    # batch size:
-    if not (isinstance(lags, int) and lags%2!=0):
-        raise ValueError('lags has to be an odd integer')
-
-    # name
-    if not isinstance(name,str): 
-        raise ValueError('name optional value has to be a string')
-    
-    # destination_path
-    if not os.path.isdir(destination_path): 
-        raise ValueError('No such path '+destination_path)
-    #                        
-    ########## INPUT CHECKING ## 
-    
-    
-
-    dataset = parameters[0]
-    noise_type = parameters[1]
-    snr_list = parameters[2]
-    
-    inj_type = dataset.split('/')[1].split('_')[0]
-
-    
-    # Making a list of the injection names, so that we can sample randomly from them
-    if 'H' in detectors: injectionH=random.sample(dirlist(null_path+'/injections/'+dataset
-                                                          +'/H'),size)
-    if 'L' in detectors: injectionL=random.sample(dirlist(null_path+'/injections/'+dataset
-                                                          +'/L'),size)
-    if 'V' in detectors: injectionV=random.sample(dirlist(null_path+'/injections/'+dataset
-                                                          +'/V'),size)
-        
-        
-    # Integration limits for the calculation of analytical SNR    
-    fl, fm=20, int(fs/2)   
-
-    # Magic number to mach the analytical computation of SNR and the match 
-    # filter one: There was a mis-match which I coulndnt resolve how to fix this
-    # and its not that important, if we get another nobel I will address that.
-    
-    magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
-                      
-
-    DATA={}
-    
-
-
-    ##########################
-    #                        #
-    # CASE OF OPTIMAL NOISE  #       
-    #                        #
-    ##########################
+class Validator:
      
-    if noise_type=='optimal':
-        param=magic[fs]   
+    
 
-        for SNR_FIN in snr_list:
-            
-            DATA[str(SNR_FIN)]=[]
-        
-            for i in range(0,size):
+    def accuracy(model
+                ,duration
+                ,fs
+                ,size
+                ,detectors
+                ,injectionFolder = None
+                ,labels = None
+                ,backgroundType = None
+                ,injectionSNR = None
+                ,noiseSourceFile = None  
+                ,windowSize = None #(32)            
+                ,timeSlides = None #(1)
+                ,startingPoint= None #(32)
+                ,name = None
+                ,column = 1 # Which label accuracy. Binary case is the second column for signals.
+                ,savePath = None):
                 
-                if 'H' in detectors: inj_ind=i
-                elif 'L' in detectors: inj_ind=i  
-                elif 'V' in detectors: inj_ind=i
+        from keras.models import load_model, Sequential, Model
+        
+        fl, fm=20, int(fs/2)#
+      
+        profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
+        
+        # ---------------------------------------------------------------------------------------- #    
+        # --- model ------------------------------------------------------------------------------ #
+        
+        # check model here
+        if isinstance(model,str) and os.path.isfile(model):    
+            trained_model = load_model(model)
+        else:
+            trained_model = model 
 
-                if 'H' in detectors:
+        # ---------------------------------------------------------------------------------------- #    
+        # --- duration --------------------------------------------------------------------------- #
 
-                    # Creation of the artificial noise.
-                    PSDH,XH,TH=simulateddetectornoise('aligo',t,fs,10,fs/2) 
-                    # Calling the templates generated with PyCBC
-                    injH=load_inj(dataset,injectionH[inj_ind],'H')        
-                    # Saving the length of the injection
-                    inj_len=len(injH)/fs
+        if not (isinstance(duration,(float,int)) and duration>0 ):
+            raise ValueError('The duration value has to be a possitive float'
+                +' or integer representing seconds.')
 
-                    # I put a random offset for all injection so that
-                    # the signal is not always in the same place
-                    if inj_len>length: injH = injH[int(inj_len-length)*fs:]
-                    if inj_len<length: injH = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injH
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))            
-                    if 'H' == detectors[0]:
+        # ---------------------------------------------------------------------------------------- #    
+        # --- fs - sample frequency -------------------------------------------------------------- #
 
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
+        if not (isinstance(fs,int) and fs>0):
+            raise ValueError('Sample frequency has to be a positive integer.')
 
-                    if disp >= 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injH[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
+        # ---------------------------------------------------------------------------------------- #    
+        # --- detectors -------------------------------------------------------------------------- #
 
-                    if disp < 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injH[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2)))) 
-                    # Making the noise a TimeSeries
-                    H_back=TimeSeries(XH,sample_rate=fs) 
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdH=H_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template,                
-                    injH_fft_0=np.fft.fft(injH)
-                    # we get rid of the DC value and everything above fs/2.
-                    injH_fft_0N=np.abs(injH_fft_0[1:int(t*fs/2)+1]) 
+        if isinstance(detectors,(str,list)):
+            for d in detectors:
+                if d not in ['H','L','V','K','I']: 
+                    raise ValueError("detectors have to be a list of strings or a string"+
+                " with at least one the followings as elements: \n"+
+                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                "\n'U' if you don't want to specify detector")
+        else:
+            raise ValueError("detectors have to be a list of strings or a string"+
+                " with at least one the followings as elements: \n"+
+                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                "\n'U' if you don't want to specify detector")
 
-                    SNR0H=np.sqrt(param*2*(1/t)
-                         *np.sum(np.abs(injH_fft_0N*injH_fft_0N.conjugate())
-                        [t*fl-1:t*fm-1]/PSDH[t*fl-1:t*fm-1]))
+        # ---------------------------------------------------------------------------------------- #    
+        # --- size ------------------------------------------------------------------------------- #        
+
+        if not (isinstance(size, int) and size > 0):
+            raise ValuError("size must be a possitive integer.")
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- injectionFolder -------------------------------------------------------------------- #
+
+        if injectionFolder == None:
+            pass
+        elif isinstance(injectionFolder, str):            
+            if (('/' in injectionFolder) and os.path.isdir(injectionFolder)):
+                injectionFolder_set = injectionFolder.split('/')[-1]
+            elif (('/' not in injectionFolder) and any('injections' in p for p in sys.path)):
+                    for p in sys.path:
+                        if ('injections' in p):
+                            injectionFolder_path = (p.split('injections')[0]+'injections'
+                                +'/'+injectionFolder)
+                            if os.path.isdir(injectionFolder_path):
+                                injectionFolder = injectionFolder_path
+                                injectionFolder_set = injectionFolder.split('/')[-1]
+                            else:
+                                raise FileNotFoundError('No such file or directory:'
+                                                        +injectionFolder_path)
+
+            else:
+                raise FileNotFoundError('No such file or directory:'+injectionFolder) 
+        else:
+            raise TypeError("cbcFolder has to be a string indicating a folder "
+                            +"in MLyWorkbench or a full path to a folder")
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- labels ----------------------------------------------------------------------------- #
+
+        if labels == None:
+            labels = {'type' : 'UNDEFINED'}
+        elif not isinstance(labels,dict):
+            raise TypeError(" Labels must be a dictionary.Suggested keys for labels"
+                            +"are the following: \n{ 'type' : ('noise' , 'cbc' , 'signal'"
+                            +" , 'burst' , 'glitch', ...),\n'snr'  : ( any int or float number "
+                            +"bigger than zero),\n'delta': ( Declination for sky localisation,"
+                            +" float [-pi/2,pi/2])\n'ra'   : ( Right ascention for sky "
+                            +"localisation float [0,2pi) )})")
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- backgroundType --------------------------------------------------------------------- #
+
+        if backgroundType == None:
+            backgroundType = 'optimal'
+        elif not (isinstance(backgroundType,str) 
+              and (backgroundType in ['optimal','sudo_real','real'])):
+            raise ValueError("backgroundType is a string that can take values : "
+                            +"'optimal' | 'sudo_real' | 'real'.")
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- injectionSNR ----------------------------------------------------------------------- #
+        if injectionFolder == None :
+            raise ValueError("You need to specify source file for the injections")
+        elif (injectionFolder != None and injectionSNR == None ):
+            raise ValueError("If you want to use an injection for generation of"+
+                             "data, you have to specify the SNR you want.")
+        elif injectionFolder != None and (not isinstance(injectionSNR,(tuple,list)) 
+                             and (not all(isinstance(snr,(int,float)) for snr in injectionSNR)) 
+                             and injectionSNR >= 0):
+            raise ValueError("injectionSNR has to be a positive number")
 
 
-                if 'L' in detectors:
+        # ---------------------------------------------------------------------------------------- #    
+        # --- noiseSourceFile -------------------------------------------------------------------- #
 
-                    # Creation of the artificial noise.
-                    PSDL,XL,TL=simulateddetectornoise('aligo',t,fs,10,fs/2) 
-                    # Calling the templates generated with PyCBC
-                    injL=load_inj(dataset,injectionL[inj_ind],'L')        
-                    # Saving the length of the injection
-                    inj_len=len(injL)/fs
+        if (backgroundType == 'sudo_real' or backgroundType =='real'):
 
-                    # I put a random offset for all injection
-                    # so that the signal is not always in the same place.
-                    if inj_len>length: injL = injL[int(inj_len-length)*fs:]
-                    if inj_len<length: injL = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injL
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))           
-                    if 'L' == detectors[0]:
+            if noiseSourceFile == None:
+                raise TypeError('If you use sudo_real or real noise you need'
+                    +' a real noise file as a source.')
 
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
+            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+                    and len(noiseSourceFile)==2 
+                    and all(isinstance(el,str) for el in noiseSourceFile)):
 
-                    if disp >= 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injL[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
+                if '.txt' in noiseSourceFile[1]:
+                    noiseSourceFile[1] = noiseSourceFile[1][:-4]
 
-                    if disp < 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injL[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2)))) 
-                    # Making the noise a TimeSeries
-                    L_back=TimeSeries(XL,sample_rate=fs) 
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdL=L_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template,                
-                    injL_fft_0=np.fft.fft(injL)
-                    # we get rid of the DC value and everything above fs/2.
-                    injL_fft_0N=np.abs(injL_fft_0[1:int(t*fs/2)+1]) 
+                path_main=''
+                path_check = False
 
-                    SNR0L=np.sqrt(param*2*(1/t)
-                         *np.sum(np.abs(injL_fft_0N*injL_fft_0N.conjugate())
-                        [t*fl-1:t*fm-1]/PSDL[t*fl-1:t*fm-1]))
+                if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
+                                +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
+                    path_main = ''
+                    path_check = True
 
-                if 'V' in detectors:
 
-                    # Creation of the artificial noise.
-                    PSDV,XV,TV=simulateddetectornoise('aligo',t,fs,10,fs/2) 
-                    # Calling the templates generated with PyCBC
-                    injV=load_inj(dataset,injectionV[inj_ind],'V')        
-                    # Saving the length of the injection
-                    inj_len=len(injV)/fs
+                elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
+                    for p in sys.path:
+                        if ('ligo_data' in p):
+                            path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
+                            if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
+                                    +noiseSourceFile[1]+'.txt') for det in detectors):    
+                                path_check = True
+                                break
+                            else:
+                                raise FileNotFoundError("No such file or directory: "+path_main
+                                                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+                if path_check == False:
+                    raise FileNotFoundError(
+                        "No such file or directory: "+noiseSourceFile[0]
+                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+            else:
+                raise TypeError("Noise source file has to be a list of two strings:\n"
+                                +"--> The first is the path to the date folder that include\n "
+                                +"    the data of all the detectors or just the datefile given\n"
+                                +"    that the path is in sys.path.\n\n"
+                                +"--> The second is the file name of the segment to be used.")
+        # ---------------------------------------------------------------------------------------- #    
+        # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-                    # I put a random offset for all injection
-                    # so that the signal is not always in the same place.
-                    if inj_len>length: injV = injV[int(inj_len-length)*fs:]
-                    if inj_len<length: injV = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injV
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))
-                    if 'V' == detectors[0]:
+        if windowSize == None: windowSize = 32
+        if not isinstance(windowSize,int):
+            raise ValueError('windowSize needs to be an integral')
+        if windowSize < duration :
+            raise ValueError('windowSize needs to be bigger than the duration')
 
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
+        # ---------------------------------------------------------------------------------------- #    
+        # --- timeSlides ------------------------------------------------------------------------- #
 
-                    if disp >= 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injV[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
+        if timeSlides == None: timeSlides = 1
+        if not (isinstance(timeSlides, int) and timeSlides >=1) :
+            raise ValueError('timeSlides has to be an integer equal or bigger than 1')
 
-                    if disp < 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injV[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))  
-                    # Making the noise a TimeSeries
-                    V_back=TimeSeries(XV,sample_rate=fs) 
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdV=V_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template,                
-                    injV_fft_0=np.fft.fft(injV)
-                    # we get rid of the DC value and everything above fs/2.
-                    injV_fft_0N=np.abs(injV_fft_0[1:int(t*fs/2)+1]) 
+        # ---------------------------------------------------------------------------------------- #    
+        # --- startingPoint ---------------------------------------------------------------------- #
 
-                    SNR0V=np.sqrt(param*2*(1/t)
-                         *np.sum(np.abs(injV_fft_0N*injV_fft_0N.conjugate())
-                        [t*fl-1:t*fm-1]/PSDV[t*fl-1:t*fm-1]))
+        if startingPoint == None : startingPoint = windowSize 
+        if not (isinstance(startingPoint, int) and startingPoint >=0) :
+            raise ValueError('lags has to be an integer')        
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- name ------------------------------------------------------------------------------- #
+
+        if name == None : name = ''
+        if not isinstance(name,str): 
+            raise ValueError('name optional value has to be a string')
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- savePath -------------------------------------------------------------------- #
+
+        if savePath == None : 
+            pass
+        elif (savePath,str): 
+            if not os.path.isdir(savePath) : 
+                raise FileNotFoundError('No such file or directory:' +savePath)
+        else:
+            raise TypeError("Destination Path has to be a string valid path")
+
+
+            
+            
+            
+        # Making a list of the injection names,
+        # so that we can sample randomly from them
+
+        injectionFileDict={}
+        noise_segDict={}
+        for det in detectors:
+
+            if injectionFolder == None:
+                injectionFileDict[det] = None
+            else:
+                injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
+
+        if backgroundType == 'optimal':
+            magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
+            param = magic[fs]
+
+        elif backgroundType in ['sudo_real','real']:
+            param = 1
+            for det in detectors:
+                noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
+                                                       +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
+            ind=index_combinations(detectors = detectors
+                               ,lags = timeSlides
+                               ,length = duration
+                               ,fs = fs
+                               ,size = size
+                               ,start_from_sec=startingPoint)
+        
+                    
+        snrs=[]
+        acc=[]
+        error=[]
+        score_f=[]    
+        resultDict={}
+        for snr in injectionSNR: 
+            DATA=DataSet()
+
+            for I in range(size):
+
+                detKeys = list(injectionFileDict.keys())
+
+                if injectionFolder != None:
+                    inj_ind = np.random.randint(0,len(injectionFileDict[detKeys[0]]))
+
+                SNR0_dict={}
+                back_dict={}
+                inj_fft_0_dict={}
+                asd_dict={}
+                PSD_dict={}
+                for det in detKeys:
+
+                    if backgroundType == 'optimal':
+
+                        # Creation of the artificial noise.
+                        PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
+                        PSD_dict[det]=PSD
+                        back_dict[det] = X
+                        # Making the noise a TimeSeries
+                        back=TimeSeries(X,sample_rate=fs) 
+                        # Calculating the ASD so tha we can use it for whitening later
+                        asd=back.asd(1,0.5)
+                        asd_dict[det] = asd
+
+
+                    elif backgroundType == 'sudo_real':
+
+                        noise_seg=noise_segDict[det]
+                        # Calling the real noise segments
+                        noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs]  
+                        # Generating the PSD of it
+                        p, f = psd(noise, Fs=fs, NFFT=fs) 
+                        p, f=p[1::],f[1::]
+                        # Feeding the PSD to generate the sudo-real noise.            
+                        PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
+                        PSD_dict[det]=PSD
+                        # Making the noise a TimeSeries
+                        back=TimeSeries(X,sample_rate=fs)
+                        # Calculating the ASD so tha we can use it for whitening later
+                        asd=back.asd(1,0.5)                 
+                        asd_dict[det] = asd
+                        back_dict[det] = back.value
+                    elif backgroundType == 'real':
+
+                        noise_seg=noise_segDict[det]
+                        # Calling the real noise segments
+                        noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
+                        # Calculatint the psd of FFT=1s
+                        p, f = psd(noise, Fs=fs,NFFT=fs)
+                        # Interpolate so that has t*fs values
+                        psd_int=interp1d(f,p)                                     
+                        PSD=psd_int(np.arange(0,fs/2,1/windowSize))
+                        PSD_dict[det]=PSD
+                        # Making the noise a TimeSeries
+                        back=TimeSeries(noise,sample_rate=fs)
+                        back_dict[det] = back
+                        # Calculating the ASD so tha we can use it for whitening later
+                        asd=back.asd(1,0.5)
+                        asd_dict[det] = asd
+
+                    #If this dataset includes injections:            
+                    if injectionFolder != None:
+                        # Calling the templates generated with PyCBC
+                        # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
+                        inj = np.loadtxt(injectionFolder+'/'+det+'/'+injectionFileDict[det][inj_ind])
+                        # Saving the length of the injection
+                        inj_len=len(inj)/fs                
+                        # I put a random offset for all injection so that
+                        # the signal is not always in the same place
+                        if inj_len > duration: inj = inj[int(inj_len-duration)*fs:]
+                        if inj_len < duration: inj = np.hstack((np.zeros(int(fs*(duration-inj_len)/2))
+                                                            , inj
+                                                            , np.zeros(int(fs*(duration-inj_len)/2))))
+
+
+                        if detKeys.index(det) == 0:
+                            disp = np.random.randint(-int(fs*(duration-inj_len)/2) ,int(inj_len*fs/2))                      
+                        if disp >= 0: 
+                            inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)),inj[disp:]
+                                                 ,np.zeros(int(fs*(windowSize-duration)/2)+disp)))   
+                        if disp < 0: 
+                            inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)-disp),inj[:disp]
+                                                 ,np.zeros(int(fs*(windowSize-duration)/2)))) 
+
+
+
+                        # Calculating the one sided fft of the template,                
+                        inj_fft_0=np.fft.fft(inj)
+                        inj_fft_0_dict[det] = inj_fft_0
+                        # we get rid of the DC value and everything above fs/2.
+                        inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) 
+
+                        SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
+                                    *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                    /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
+
+                    else:
+                        SNR0_dict[det] = 0.1 # avoiding future division with zero
+                        inj_fft_0_dict[det] = np.zeros(windowSize*fs)
+
 
                 # Calculation of combined SNR    
-                SNR0=0
-                if 'H' in detectors: SNR0+=SNR0H**2
-                if 'L' in detectors: SNR0+=SNR0L**2     
-                if 'V' in detectors: SNR0+=SNR0V**2
-                SNR0=np.sqrt(SNR0)
+                SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
+
+                # Tuning injection amplitude to the SNR wanted
+                podstrain = []
+                for det in detectors:
+
+                    fft_cal=(snr/SNR0)*inj_fft_0_dict[det]         
+                    inj_cal=np.real(np.fft.ifft(fft_cal*fs))
+                    strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0)
+                    #Whitening final data
+                    podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
+                            -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
+
+                #podLabels={'snr': round(np.sqrt(np.sum(np.asarray(list(SNR_new.values()))**2)))}
+                #labels.update(podLabels)
+
+                DATA.add(DataPod(strain = podstrain
+                                   ,fs = fs
+                                   ,labels =  labels
+                                   ,detectors = detKeys
+                                   ,duration = duration))   
+            random.shuffle(DATA.dataPods)
+            
+            data = DATA.unloadData(shape = (len(DATA),*model.input_shape[1:] ))
+            score= trained_model.predict(data, batch_size=1)[:,column]
+            resultDict[str(snr)]=score.tolist()
+
+            snrs.append(snr)
+            error.append(np.std(resultDict[str(snr)]))
+            acc.append(np.int(100*np.mean(resultDict[str(snr)])))#float(np.around(np.mean(resultDict[str(snr)])*100,1)))
+            score_f.append(resultDict[str(snr)])
 
 
+        snrs=np.array(snrs)
+        acc=np.array(acc)
+        error=np.array(error)
+        score_f=np.array(score_f)
+
+        result={'snrs':snrs, 'acc': acc, 'error' :error, 'scores':score_f}
+        
+        
+        if savePath != None:
+            if savePath[-1] != '/':
+                savePath = savePath+'/'
+            with open(savePath+name+'.pkl', 'wb') as output:
+                pickle.dump(result, output, pickle.HIGHEST_PROTOCOL)
+                
+        return(result)
+    
+    
+    
+    
+    
+    
+    
+    
+    def falseAlarmTest(model
+                       ,duration
+                       ,fs
+                       ,size
+                       ,detectors
+                       ,backgroundType = None
+                       ,noiseSourceFile = None  
+                       ,windowSize = None #(32)            
+                       ,timeSlides = None #(1)
+                       ,startingPoint= None #(32)
+                       ,name = None
+                       ,savePath = None):       
+
+
+       
+        # Integration limits for the calculation of analytical SNR
+        # These values are very important for the calculation
+
+        fl, fm=20, int(fs/2)#
+      
+        profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
+        
+        # ---------------------------------------------------------------------------------------- #   
+        # --- model ------------------------------------------------------------------------------ #
+        
+        # check model here
+        if isinstance(model,str):
+            if os.path.isfile(model):    
+                trained_model = load_model(model)
+            else:
+                raise FileNotFoundError("Model file "+model+" was not found.")
+        else:
+            trained_model = model 
+
+            
+        # Labels used in saving file
+        #lab={10:'X', 100:'C', 1000:'M', 10000:'XM',100000:'CM'}  
+
+        lab={}
+        if size not in lab:
+            lab[size]=str(size)
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- duration --------------------------------------------------------------------------- #
+
+        if not (isinstance(duration,(float,int)) and duration>0 ):
+            raise ValueError('The duration value has to be a possitive float'
+                +' or integer representing seconds.')
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- fs - sample frequency -------------------------------------------------------------- #
+
+        if not (isinstance(fs,int) and fs>0):
+            raise ValueError('Sample frequency has to be a positive integer.')
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- detectors -------------------------------------------------------------------------- #
+
+        if isinstance(detectors,(str,list)):
+            for d in detectors:
+                if d not in ['H','L','V','K','I']: 
+                    raise ValueError("detectors have to be a list of strings or a string"+
+                " with at least one the followings as elements: \n"+
+                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                "\n'U' if you don't want to specify detector")
+        else:
+            raise ValueError("detectors have to be a list of strings or a string"+
+                " with at least one the followings as elements: \n"+
+                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                "\n'U' if you don't want to specify detector")
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- size ------------------------------------------------------------------------------- #        
+
+        if not (isinstance(size, int) and size > 0):
+            raise ValuError("size must be a possitive integer.")
+
+
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- backgroundType --------------------------------------------------------------------- #
+
+        if backgroundType == None:
+            backgroundType = 'optimal'
+        elif not (isinstance(backgroundType,str) 
+              and (backgroundType in ['optimal','sudo_real','real'])):
+            raise ValueError("backgroundType is a string that can take values : "
+                            +"'optimal' | 'sudo_real' | 'real'.")
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- noiseSourceFile -------------------------------------------------------------------- #
+
+        if (backgroundType == 'sudo_real' or backgroundType =='real'):
+
+            if noiseSourceFile == None:
+                raise TypeError('If you use sudo_real or real noise you need'
+                    +' a real noise file as a source.')
+
+            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+                    and len(noiseSourceFile)==2 
+                    and all(isinstance(el,str) for el in noiseSourceFile)):
+
+                if '.txt' in noiseSourceFile[1]:
+                    noiseSourceFile[1] = noiseSourceFile[1][:-4]
+
+                path_main=''
+                path_check = False
+
+                if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
+                                +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
+                    path_main = ''
+                    path_check = True
+
+
+                elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
+                    for p in sys.path:
+                        if ('ligo_data' in p):
+                            path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
+                            if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
+                                    +noiseSourceFile[1]+'.txt') for det in detectors):    
+                                path_check = True
+                                break
+                            else:
+                                raise FileNotFoundError("No such file or directory: "+path_main
+                                                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+                if path_check == False:
+                    raise FileNotFoundError(
+                        "No such file or directory: "+noiseSourceFile[0]
+                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+            else:
+                raise TypeError("Noise source file has to be a list of two strings:\n"
+                                +"--> The first is the path to the date folder that include\n "
+                                +"    the data of all the detectors or just the datefile given\n"
+                                +"    that the path is in sys.path.\n\n"
+                                +"--> The second is the file name of the segment to be used.")
+        # ---------------------------------------------------------------------------------------- #   
+        # --- windowSize --(for PSD)-------------------------------------------------------------- #        
+
+        if windowSize == None: windowSize = 32
+        if not isinstance(windowSize,int):
+            raise ValueError('windowSize needs to be an integral')
+        if windowSize < duration :
+            raise ValueError('windowSize needs to be bigger than the duration')
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- timeSlides ------------------------------------------------------------------------- #
+
+        if timeSlides == None: timeSlides = 1
+        if not (isinstance(timeSlides, int) and timeSlides >=1) :
+            raise ValueError('timeSlides has to be an integer equal or bigger than 1')
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- startingPoint ---------------------------------------------------------------------- #
+
+        if startingPoint == None : startingPoint = windowSize 
+        if not (isinstance(startingPoint, int) and startingPoint >=0) :
+            raise ValueError('lags has to be an integer')        
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- name ------------------------------------------------------------------------------- #
+
+        if name == None : name = 'untitledFalseAlarmTest'
+        if not isinstance(name,str): 
+            raise ValueError('name optional value has to be a string')
+
+
+        # ---------------------------------------------------------------------------------------- #   
+        # --- savePath --------------------------------------------------------------------------- #
+
+        if savePath == None : 
+            savePath = os.getcwd()
+        elif (savePath,str): 
+            if not os.path.isdir(savePath) : 
+                raise FileNotFoundError('No such file or directory:' +savePath)
+        else:
+            raise TypeError("Destination Path has to be a string valid path")
+        if savePath[-1] != '/':
+                savePath = savePath+'/'
+                
+        # ---------------------------------------------------------------------------------------- #   
+
+
+        noise_segDict={}
+
+        if backgroundType == 'optimal':
+            magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
+            param = magic[fs]
+
+        elif backgroundType in ['sudo_real','real']:
+            param = 1
+            for det in detectors:
+                noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
+                                                       +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
+            ind=index_combinations(detectors = detectors
+                               ,lags = timeSlides
+                               ,length = duration
+                               ,fs = fs
+                               ,size = size
+                               ,start_from_sec=startingPoint)
+
+            gps0 = int(noiseSourceFile[1].split('_')[1])
+        
+        print(list(ind['H']))
+            
+        result_list=[]
+        for I in range(size):
+        
+            back_dict={}
+            asd_dict={}
+            gps_dict = {}
+            for det in list(detectors):
+
+                if backgroundType == 'optimal':
+
+                    # Creation of the artificial noise.
+                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
+                    back_dict[det] = X
+                    # Making the noise a TimeSeries
+                    back=TimeSeries(X,sample_rate=fs) 
+                    # Calculating the ASD so tha we can use it for whitening later
+                    asd=back.asd(1,0.5)
+                    asd_dict[det] = asd
+                    gps_dict[det] = 0.0
+
+
+                elif backgroundType == 'sudo_real':
+
+                    noise_seg=noise_segDict[det]
+                    # Calling the real noise segments
+                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs]  
+                    # Generating the PSD of it
+                    p, f = psd(noise, Fs=fs, NFFT=fs) 
+                    p, f=p[1::],f[1::]
+                    # Feeding the PSD to generate the sudo-real noise.            
+                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
+                    # Making the noise a TimeSeries
+                    back=TimeSeries(X,sample_rate=fs)
+                    # Calculating the ASD so tha we can use it for whitening later
+                    asd=back.asd(1,0.5)                 
+                    asd_dict[det] = asd
+                    gps_dict[det] = gps0+ind[det][I]/fs
+                    back_dict[det] = back.value
+                elif backgroundType == 'real':
+
+                    noise_seg=noise_segDict[det]
+                    # Calling the real noise segments
+                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
+                    # Calculatint the psd of FFT=1s
+                    p, f = psd(noise, Fs=fs,NFFT=fs)
+                    # Interpolate so that has t*fs values
+                    psd_int=interp1d(f,p)                                     
+                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
+                    # Making the noise a TimeSeries
+                    back=TimeSeries(noise,sample_rate=fs)
+                    back_dict[det] = back
+                    # Calculating the ASD so tha we can use it for whitening later
+                    asd=back.asd(1,0.5)
+                    asd_dict[det] = asd
+                    gps_dict[det] = gps0+ind[det][I]/fs
+
+                
             # Tuning injection amplitude to the SNR wanted
+            podstrain = []
+            for det in detectors:
 
-                if 'H' in detectors:
+                strain=TimeSeries(back_dict[det] ,sample_rate=fs,t0=0)
+                #Whitening final data
+                podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
+                        -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
+            print(len(podstrain[0]),len(podstrain[1]),len(podstrain[2]))
 
-                    fftH_cal=(SNR_FIN/SNR0)*injH_fft_0         
-                    injH_cal=np.real(np.fft.ifft(fftH_cal*fs))
-                    HF=TimeSeries(XH+injH_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    h=HF.whiten(1,0.5,asd=asdH)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                if 'L' in detectors:
-
-                    fftL_cal=(SNR_FIN/SNR0)*injL_fft_0         
-                    injL_cal=np.real(np.fft.ifft(fftL_cal*fs))
-                    LF=TimeSeries(XL+injL_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    l=LF.whiten(1,0.5,asd=asdL)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                if 'V' in detectors:
-
-                    fftV_cal=(SNR_FIN/SNR0)*injV_fft_0         
-                    injV_cal=np.real(np.fft.ifft(fftV_cal*fs))
-                    VF=TimeSeries(XV+injV_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    v=VF.whiten(1,0.5,asd=asdV)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                dumie=[]
-                if 'H' in detectors: dumie.append(np.array(h))
-                if 'L' in detectors: dumie.append(np.array(l))
-                if 'V' in detectors: dumie.append(np.array(v))
+            podstrain= np.transpose(np.array([podstrain]),(0,2,1))
+            score = trained_model.predict(podstrain, batch_size=1)[0][1]
+            result_list.append([score]+list(gps_dict[det] for det in detectors))
             
-                DATA[str(SNR_FIN)].append(dumie)
-            DATA[str(SNR_FIN)]=np.array(DATA[str(SNR_FIN)]).transpose((0,2,1))
-
+            print("Test number "+str(I)+" finished with score: "+str(score))
             
-            
-        ############################
-        #                          #
-        # CASE OF SUDO-REAL NOISE  #       
-        #                          #
-        ############################
-            
-    if noise_type=='sudo_real':
+        result_pd = pd.DataFrame(np.array(result_list),columns = ['SCORE']+list('GPS'+det for det in detectors))
+        result_pd = result_pd.sort_values(by=['SCORE'],ascending = False)
         
-        param=1
-        
-        if 'H' in detectors: noise_segH=load_noise(fs,noise_file[0],'H',noise_file[1])
-        if 'L' in detectors: noise_segL=load_noise(fs,noise_file[0],'L',noise_file[1])
-        if 'V' in detectors: noise_segV=load_noise(fs,noise_file[0],'V',noise_file[1])
-        
-        
-        for SNR_FIN in snr_list:
-            
-            DATA[str(SNR_FIN)]=[]
-            
-            ind=index_combinations(detectors = detectors
-                       ,lags = 1
-                       ,length = length
-                       ,fs = fs
-                       ,size = size
-                       ,start_from_sec=starting_point)
-        
-            for i in range(0,size):
-                
-                if 'H' in detectors: inj_ind=i
-                elif 'L' in detectors: inj_ind=i  
-                elif 'V' in detectors: inj_ind=i
+        with open(savePath+name+'.pkl', 'wb') as output:
+            pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
 
-                if 'H' in detectors:
-                    # Calling the real noise segments
-                    noiseH=noise_segH[ind['H'][i]:ind['H'][i]+t*fs]  
-                    # Generating the PSD of it
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseH, Fs=fs, NFFT=fs, visible=False) 
-                    p, f=p[1::],f[1::]
-                    plt.close(dum_fig) 
-                    # Feeding the PSD to generate the sudo-real noise.            
-                    PSDH,XH,TH=simulateddetectornoise([f,p],t,fs,10,fs/2)  
-                    # Calling the templates generated with PyCBC
-                    injH=load_inj(dataset,injectionH[inj_ind],'H')
-                    # Saving the length of the injection
-                    inj_len=len(injH)/fs                                  
+        return result_pd
 
-                    # I put a random offset for all injection, so that
-                    # the signal is not always in the same place
-                    if inj_len>length: injH = injH[int(inj_len-length)*fs:]
-                    if inj_len<length: injH = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injH
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))            
-                    if 'H' == detectors[0]:
 
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injH[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injH[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))  
-                    # Making the noise a TimeSeries
-                    H_back=TimeSeries(XH,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdH=H_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injH_fft_0=np.fft.fft(injH)                       
-                    injH_fft_0N=np.abs(injH_fft_0[1:int(t*fs/2)+1]) 
-
-                    SNR0H=np.sqrt(param*2*(1/t)*np.sum(np.abs(injH_fft_0N
-                             *injH_fft_0N.conjugate())[t*fl-1
-                                :t*fm-1]/PSDH[t*fl-1:t*fm-1]))
-
-                if 'L' in detectors:
-
-
-                    # Calling the real noise segments
-                    noiseL=noise_segL[ind['L'][i]:ind['L'][i]+t*fs]  
-                    # Generating the PSD of it
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseL, Fs=fs, NFFT=fs, visible=False) 
-                    p, f=p[1::],f[1::]
-                    plt.close(dum_fig) 
-                    # Feeding the PSD to generate the sudo-real noise.            
-                    PSDL,XL,TL=simulateddetectornoise([f,p],t,fs,10,fs/2)  
-                    # Calling the templates generated with PyCBC
-                    injL=load_inj(dataset,injectionL[inj_ind],'L')
-                    # Saving the length of the injection
-                    inj_len=len(injL)/fs   
-
-                    # I put a random offset for all injection, so that
-                    # the signal is not always in the same place
-                    if inj_len>length: injL = injL[int(inj_len-length)*fs:]
-                    if inj_len<length: injL = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injL
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))           
-                    if 'L' == detectors[0]:
-
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injL[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injL[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))  
-                    # Making the noise a TimeSeries
-                    L_back=TimeSeries(XL,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdL=L_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injL_fft_0=np.fft.fft(injL)                       
-                    injL_fft_0N=np.abs(injL_fft_0[1:int(t*fs/2)+1]) 
-
-                    SNR0L=np.sqrt(param*2*(1/t)*np.sum(np.abs(injL_fft_0N
-                             *injL_fft_0N.conjugate())[t*fl-1:t*fm-1]
-                                 /PSDL[t*fl-1:t*fm-1]))
-
-
-                if 'V' in detectors:
-
-                    # Calling the real noise segments
-                    noiseV=noise_segV[ind['V'][i]:ind['V'][i]+t*fs]  
-                    # Generating the PSD of it
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseV, Fs=fs, NFFT=fs, visible=False) 
-                    p, f=p[1::],f[1::]
-                    plt.close(dum_fig) 
-                    # Feeding the PSD to generate the sudo-real noise.            
-                    PSDV,XV,TV=simulateddetectornoise([f,p],t,fs,10,fs/2)  
-                    # Calling the templates generated with PyCBC
-                    injV=load_inj(dataset,injectionV[inj_ind],'V')
-                    # Saving the length of the injection
-                    inj_len=len(injV)/fs   
-
-                    # I put a random offset for all injection, so that
-                    # the signal is not always in the same place
-                    if inj_len>length: injV = injV[int(inj_len-length)*fs:]
-                    if inj_len<length: injV = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injV
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))
-                    if 'V' == detectors[0]:
-
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injV[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injV[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))     
-                    # Making the noise a TimeSeries
-                    V_back=TimeSeries(XV,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdV=V_back.asd(1,0.5)                                    
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injV_fft_0=np.fft.fft(injV)                       
-                    injV_fft_0N=np.abs(injV_fft_0[1:int(t*fs/2)+1]) 
-
-                    SNR0V=np.sqrt(param*2*(1/t)*np.sum(np.abs(injV_fft_0N
-                             *injV_fft_0N.conjugate())[t*fl-1:t*fm-1]
-                                 /PSDV[t*fl-1:t*fm-1]))
-
-
-                # Calculation of combined SNR   
-                SNR0=0
-                if 'H' in detectors: SNR0+=SNR0H**2
-                if 'L' in detectors: SNR0+=SNR0L**2     
-                if 'V' in detectors: SNR0+=SNR0V**2
-                SNR0=np.sqrt(SNR0)
-
-                if 'H' in detectors:
-                    # Tuning injection amplitude to the SNR wanted
-                    fftH_cal=(SNR_FIN/SNR0)*injH_fft_0         
-                    injH_cal=np.real(np.fft.ifft(fftH_cal*fs))
-                    HF=TimeSeries(XH+injH_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    h=HF.whiten(1,0.5,asd=asdH)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                if 'L' in detectors:
-                    # Tuning injection amplitude to the SNR wanted
-                    fftL_cal=(SNR_FIN/SNR0)*injL_fft_0         
-                    injL_cal=np.real(np.fft.ifft(fftL_cal*fs))
-                    LF=TimeSeries(XL+injL_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    l=LF.whiten(1,0.5,asd=asdL)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                if 'V' in detectors:
-                    # Tuning injection amplitude to the SNR wanted
-                    fftV_cal=(SNR_FIN/SNR0)*injV_fft_0        
-                    injV_cal=np.real(np.fft.ifft(fftV_cal*fs))
-                    VF=TimeSeries(XV+injV_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    v=VF.whiten(1,0.5,asd=asdV)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)] 
-
-                dumie=[]
-                if 'H' in detectors: dumie.append(np.array(h))
-                if 'L' in detectors: dumie.append(np.array(l))
-                if 'V' in detectors: dumie.append(np.array(v))
-
-
-                DATA[str(SNR_FIN)].append(dumie)
-            
-            DATA[str(SNR_FIN)]=np.array(DATA[str(SNR_FIN)]).transpose((0,2,1))
-        #######################
-        #                     #
-        # CASE OF REAL NOISE  #       
-        #                     #
-        #######################
-
-    if noise_type=='real':
-        
-        param=1
-        
-        if 'H' in detectors: noise_segH=load_noise(fs,noise_file[0],'H',noise_file[1])
-        if 'L' in detectors: noise_segL=load_noise(fs,noise_file[0],'L',noise_file[1])
-        if 'V' in detectors: noise_segV=load_noise(fs,noise_file[0],'V',noise_file[1])
-        
-        
-        for SNR_FIN in snr_list:
-            
-            DATA[str(SNR_FIN)]=[]
-            
-            ind=index_combinations(detectors = detectors
-                       ,lags = 1
-                       ,length = length
-                       ,fs = fs
-                       ,size = size
-                       ,start_from_sec=starting_point)
-        
-            for i in range(0,size):
-                
-                
-                if 'H' in detectors: inj_ind=i
-                elif 'L' in detectors: inj_ind=i  
-                elif 'V' in detectors: inj_ind=i
-                
-                if 'H' in detectors:
-
-                    # Calling the real noise segments
-                    noiseH=noise_segH[ind['H'][i]:ind['H'][i]+t*fs]  
-                    # Calculatint the psd of FFT=1s
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseH, Fs=fs,NFFT=fs)
-                    plt.close(dum_fig) 
-                    # Interpolate so that has t*fs values
-                    psd_int=interp1d(f,p)                                     
-                    PSDH=psd_int(np.arange(0,fs/2,1/t))
-                    # Calling the templates generated with PyCBC
-                    injH=load_inj(dataset,injectionH[inj_ind],'H')
-                    # Saving the length of the injection
-                    inj_len=len(injH)/fs                                  
-
-                    # I put a random offset for all injection so that 
-                    # the signal is not always in the same place.
-                    if inj_len>length: injH = injH[int(inj_len-length)*fs:]
-                    if inj_len<length: injH = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injH
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))            
-                    if 'H' == detectors[0]:
-
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injH[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injH = injH=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injH[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))    
-                    # Making the noise a TimeSeries
-                    H_back=TimeSeries(noiseH,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdH=H_back.asd(1,0.5)                                    
-
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injH_fft_0=np.fft.fft(injH)                       
-                    injH_fft_0N=np.abs(injH_fft_0[1:int(t*fs/2)+1])  
-
-                    print(inj_len*fs,len(injH),injectionH[inj_ind], disp/fs)
-                    print(len((injH_fft_0N*injH_fft_0N.conjugate())[t*fl-1:t*fm-1])
-                          , t
-                          ,len(injH_fft_0N)
-                          ,len(injH_fft_0N.conjugate())
-                          , len(injH_fft_0N[t*fl-1:t*fm-1])
-                          , len(PSDH[t*fl-1:t*fm-1])
-                         )
-
-                    SNR0H=np.sqrt(param*2*(1/t)*np.sum(np.abs(injH_fft_0N
-                            *injH_fft_0N.conjugate())[t*fl-1:t*fm-1]
-                                    /PSDH[t*fl-1:t*fm-1]))
-
-                if 'L' in detectors:
-
-                    # Calling the real noise segments
-                    noiseL=noise_segL[ind['L'][i]:ind['L'][i]+t*fs]  
-                    # Calculatint the psd of FFT=1s
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseL, Fs=fs,NFFT=fs)
-                    plt.close(dum_fig) 
-                    # Interpolate so that has t*fs values
-                    psd_int=interp1d(f,p)                                     
-                    PSDL=psd_int(np.arange(0,fs/2,1/t))
-                    # Calling the templates generated with PyCBC
-                    injL=load_inj(dataset,injectionL[inj_ind],'L')
-                    # Saving the length of the injection
-                    inj_len=len(injL)/fs  
-
-                    # I put a random offset for all injection so that
-                    # the signal is not always in the same place.
-                    if inj_len>length: injL = injL[int(inj_len-length)*fs:]
-                    if inj_len<length: injL = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injL
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))           
-                    if 'L' == detectors[0]:
-
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injL[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injL = injL=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injL[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))  
-                    # Making the noise a TimeSeries
-                    L_back=TimeSeries(noiseL,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdL=L_back.asd(1,0.5)                                    
-
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injL_fft_0=np.fft.fft(injL)                       
-                    injL_fft_0N=np.abs(injL_fft_0[1:int(t*fs/2)+1])
-
-                    SNR0L=np.sqrt(param*2*(1/t)*np.sum(np.abs(injL_fft_0N
-                            *injL_fft_0N.conjugate())[t*fl-1:t*fm-1]
-                                    /PSDL[t*fl-1:t*fm-1]))
-
-                if 'V' in detectors:
-
-                    # Calling the real noise segments
-                    noiseV=noise_segV[ind['V'][i]:ind['V'][i]+t*fs]  
-                    # Calculatint the psd of FFT=1s
-                    dum_fig=plt.figure()
-                    p, f = plt.psd(noiseV, Fs=fs,NFFT=fs)
-                    plt.close(dum_fig) 
-                    # Interpolate so that has t*fs values
-                    psd_int=interp1d(f,p)                                     
-                    PSDV=psd_int(np.arange(0,fs/2,1/t))
-                    # Calling the templates generated with PyCBC
-                    injV=load_inj(dataset,injectionV[inj_ind],'V')
-                    # Saving the length of the injection
-                    inj_len=len(injV)/fs  
-
-                    # I put a random offset for all injection so that
-                    # the signal is not always in the same place.
-                    if 'H' not in detectors:
-                        if length==inj_len:                                   
-                            disp = np.random.randint(0,int(length*fs/2))      
-                        elif length > inj_len:                      
-                            disp = np.random.randint(-int(fs*(length-inj_len)/2)   
-                                                     ,int(fs*(length-inj_len)/2)) 
-                    # I put a random offset for all injection so that 
-                    # the signal is not always in the same place.
-                    if inj_len>length: injV = injV[int(inj_len-length)*fs:]
-                    if inj_len<length: injV = np.hstack((np.zeros(int(fs*(length
-                                    -inj_len)/2))
-                                    , injV
-                                    ,np.zeros(int(fs*(length-inj_len)/2))))
-                    if 'V' == detectors[0]:
-
-                        disp = np.random.randint(-int(fs*(length-inj_len)/2)
-                                                 ,int(inj_len*fs/2))
-
-                    if disp >= 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2))
-                                    , injV[disp:]
-                                    ,np.zeros(int(fs*(t-length)/2)+disp)))
-
-                    if disp < 0: injV = injV=np.hstack((np.zeros(int(fs*(t
-                                    -length)/2)-disp)
-                                    , injV[:disp]
-                                    ,np.zeros(int(fs*(t-length)/2))))    
-                    # Making the noise a TimeSeries
-                    V_back=TimeSeries(noiseV,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asdV=V_back.asd(1,0.5)                                    
-
-                    # Calculating the one sided fft of the template and
-                    # we get rid of the DC value and everything above fs/2.
-                    injV_fft_0=np.fft.fft(injV)                       
-                    injV_fft_0N=np.abs(injV_fft_0[1:int(t*fs/2)+1])
-
-                    SNR0V=np.sqrt(param*2*(1/t)*np.sum(np.abs(injV_fft_0N
-                            *injV_fft_0N.conjugate())[t*fl-1:t*fm-1]
-                                    /PSDV[t*fl-1:t*fm-1]))
-
-
-
-                # Calculation of combined SNR
-                SNR0=0
-                if 'H' in detectors: SNR0+=SNR0H**2
-                if 'L' in detectors: SNR0+=SNR0L**2     
-                if 'V' in detectors: SNR0+=SNR0V**2
-                SNR0=np.sqrt(SNR0)
-
-                if 'H' in detectors:
-
-                    # Tuning injection amplitude to the SNR wanted
-                    fftH_cal=(SNR_FIN/SNR0)*injH_fft_0         
-                    injH_cal=np.real(np.fft.ifft(fftH_cal*fs))
-                    HF=TimeSeries(noiseH+injH_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    h=HF.whiten(1,0.5,asd=asdH)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)]
-
-                if 'L' in detectors:
-
-                    # Tuning injection amplitude to the SNR wanted
-                    fftL_cal=(SNR_FIN/SNR0)*injL_fft_0         
-                    injL_cal=np.real(np.fft.ifft(fftL_cal*fs))
-                    LF=TimeSeries(noiseL+injL_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    l=LF.whiten(1,0.5,asd=asdL)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)]
-
-                if 'V' in detectors:
-
-                    # Tuning injection amplitude to the SNR wanted
-                    fftV_cal=(SNR_FIN/SNR0)*injV_fft_0         
-                    injV_cal=np.real(np.fft.ifft(fftV_cal*fs))
-                    VF=TimeSeries(noiseV+injV_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    v=VF.whiten(1,0.5,asd=asdV)[int(((t-length)/2)*fs):
-                                                int(((t+length)/2)*fs)]
-
-
-                dumie=[]
-                if 'H' in detectors: dumie.append(np.array(h))
-                if 'L' in detectors: dumie.append(np.array(l))
-                if 'V' in detectors: dumie.append(np.array(v))
-
-
-                DATA[str(SNR_FIN)].append(dumie)
-            DATA[str(SNR_FIN)]=np.array(DATA[str(SNR_FIN)]).transpose((0,2,1))
-     
-    snrs=[]
-    acc=[]
-    error=[]
     
-    if isinstance(model,str):
-        trained_model = load_model('/home/vasileios.skliris/EMILY/trainings/'+model +'.h5')
+    
+    
+    
+
+def auto_FAR(model
+             ,duration 
+             ,fs
+             ,detectors
+             ,size
+             ,backgroundType = None
+             ,firstDay = None
+             ,windowSize = None #(32)            
+             ,timeSlides = None #(1)
+             ,startingPoint = None
+             ,name = None
+             ,savePath = None):
+
+    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- model ------------------------------------------------------------------------------ #
+        
+    if isinstance(model,str) and os.path.isfile(model):
+        if model[:5]!='/home':
+            cwd = os.getcwd()
+            model = cwd+'/'+model
+        trained_model = load_model(model)
     else:
-        trained_model = model    #If model is not already in the script you import it my calling the name 
+        raise FileNotFoundError("Model file "+model+" was not found.")
         
-    for SNR_FIN in snr_list:
-        
-        data=DATA[str(SNR_FIN)]
-        scores=trained_model.predict_proba(data, batch_size=1, verbose=0)[:,1]
 
+    # ---------------------------------------------------------------------------------------- #
+    # --- duration --------------------------------------------------------------------------- #
+
+    if not (isinstance(duration,(float,int)) and duration>0 ):
+        raise ValueError('The duration value has to be a possitive float'
+            +' or integer representing seconds.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- fs - sample frequency -------------------------------------------------------------- #
+
+    if not (isinstance(fs,int) and fs>0):
+        raise ValueError('Sample frequency has to be a positive integer.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- detectors -------------------------------------------------------------------------- #
+
+    if isinstance(detectors,(str,list)):
+        for d in detectors:
+            if d not in ['H','L','V','K','I']:
+                raise ValueError("detectors have to be a list of strings or a string"+
+                                " with at least one the followings as elements: \n"+
+                                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                                "\n'U' if you don't want to specify detector")
+    else:
+        raise ValueError("detectors have to be a list of strings or a string"+
+                        " with at least one the followings as elements: \n"+
+                        "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                        "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                        "\n'U' if you don't want to specify detector")
+    if isinstance(detectors,str):
+        detectors = list(detectors)
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- size ------------------------------------------------------------------------------- #        
+
+    if not (isinstance(size, int) and size > 0):
+        raise ValuError("size must be a possitive integer.")
+    if size > 10000 and size%10000!=0:
+        raise ValueError("For sizes above 10000 use only multiples of 10000")
+    if size > 10000:
+        multiples = size//10000
+        size=10000
+    else:
+        multiples = 1
+    subset_list = list('No'+str(i) for i in range(multiples))
+    num_of_sets = multiples
         
-        snrs.append(SNR_FIN)
-        error.append(np.std(scores))
-        acc.append(np.average(scores))
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- backgroundType --------------------------------------------------------------------- #
+
+    if backgroundType == None:
+        backgroundType = 'optimal'
+    elif not (isinstance(backgroundType,str) 
+          and (backgroundType in ['optimal','sudo_real','real'])):
+        raise ValueError("backgroundType is a string that can take values : "
+                        +"'optimal' | 'sudo_real' | 'real'.")
+
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- firstDay --------------------------------------------------------------------------- #
     
+    if backgroundType in ['sudo_real','real'] and firstDay == None:
+        raise ValueError("You have to set the first day of the real data")
+    elif backgroundType in ['sudo_real','real'] and isinstance(firstDay,str):
+        if '/' in firstDay and os.path.isdir(firstDay):
+            sys.path.append(firstDay.split(str(fs))[0]+'/'+str(fs)+'/')
+            date_list_path=firstDay.split(str(fs))[0]+str(fs)
+            firstDay = firstDay.split('/')[-1]
+        elif '/' not in firstDay and os.path.isdir(firstDay):
+            pass
+        else:
+            raise FileNotFoundError("No such file or directory:"+firstDay)
+    else:
+        raise TypeError("Path must be a string")
+            
     
+    # ---------------------------------------------------------------------------------------- #    
+    # --- windowSize --(for PSD)-------------------------------------------------------------- #        
+
+    if windowSize == None: windowSize = 32
+    if not isinstance(windowSize,int):
+        raise ValueError('windowSize needs to be an integral')
+    if windowSize < duration :
+        raise ValueError('windowSize needs to be bigger than the duration')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- timeSlides ------------------------------------------------------------------------- #
+
+    if timeSlides == None: timeSlides = 1
+    if not (isinstance(timeSlides, int) and timeSlides >=1) :
+        raise ValueError('timeSlides has to be an integer equal or bigger than 1')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- startingPoint ---------------------------------------------------------------------- #
+
+    if startingPoint == None : startingPoint = windowSize 
+    if not (isinstance(startingPoint, int) and startingPoint >=0) :
+        raise ValueError('timeSlides has to be an integer')        
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- name ------------------------------------------------------------------------------- #
+
+    if name == None : name = 'untitledFalseAlarmTest'
+    if not isinstance(name,str): 
+        raise ValueError('name optional value has to be a string')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- savePath -------------------------------------------------------------------- #
+
+    if savePath == None : 
+        savePath = os.getcwd()
+    elif (savePath,str): 
+        if not os.path.isdir(savePath) : 
+            raise FileNotFoundError('No such file or directory:' +savePath)
+    else:
+        raise TypeError("Destination Path has to be a string valid path")
+    if savePath[:5]!='/home':
+        savePath = os.getcwd()+'/'+savePath        
+    if savePath[-1] != '/' : savePath=savePath+'/'
     
-    snrs=np.array(snrs)
-    acc=np.array(acc)
-    error=np.array(error)
+    # ---------------------------------------------------------------------------------------- #    
     
-    plot={'snrs':snrs, 'acc': acc, 'error' :error}
+    # Generating a list with all the available dates in the ligo_data folder
+    date_list=dirlist( date_list_path)
+
+    # The first day is the date we want to start using data.
+    # Calculating the index of the initial date
+    date=date_list[date_list.index(firstDay)]
+    # All dates have an index in the list of dates following chronological order
+    counter=date_list.index(firstDay)             
+
+    
+    # Calculation of the duration 
+    # Here we infere the duration needed given the timeSlides used in the method
+
+    # In this we just use the data as they are.
+    if timeSlides==1:
+        duration_need = size*num_of_sets*duration
+        tail_crop=0
+    # Timeslides of even numbers have a different algorithm that the odd number ones.
+    if timeSlides%2 == 0:
+        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
+        tail_crop=timeSlides*duration
+    if timeSlides%2 != 0 and timeSlides !=1 :
+        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
+        tail_crop=timeSlides*duration
         
-    return(DATA,plot)
+
+
+    # Creation of lists that indicate characteristics of the segments based on the duration needed. 
+    # These are used for the next step.
+    
+    # The following while loop checks and stacks durations of the data in date files. In this way
+    # we note which of them are we gonna need for the generation.
+    duration_total = 0
+    duration_, gps_time, seg_list=[],[],[]
+
+    while duration_need > duration_total:
+        counter+=1
+        segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
+        print(date)
+        for seg in segments:
+            for j in range(len(seg)):
+                if seg[j]=='_': 
+                    gps, dur = seg[j+1:-5].split('_')
+                    break
+
+            duration_.append(int(dur))
+            gps_time.append(int(gps))
+            seg_list.append([date,seg])
+
+            duration_total+=(int(dur)-3*windowSize-tail_crop)
+            print('    '+seg)
+
+            if duration_total > duration_need: break
+
+        if counter==len(date_list): counter=0 
+        if len(date_list) == 1: counter=0
+        date=date_list[counter]
+
+
+
+    # To initialise the generators, we will first create the code and the 
+    # names they will have. This will create the commands that generate
+    # all the segments needed.
+
+    size_list=[]            # Sizes for each generation of noise 
+    starting_point_list=[]  # Starting points for each generation of noise(s)
+    seg_list_2=[]           # Segment names for each generation of noise
+    number_of_set=[]        # No of set that this generation of noise will go
+    name_list=[]            # List with the name of the set to be generated
+    number_of_set_counter=0 # Counter that keeps record of how many 
+    # instantiations have left to be generated 
+                            # to complete a set
+        
+
+    set_num=0
+
+    for i in range(len(np.array(seg_list)[:,1])):
+
+
+        # local size indicates the size of the file left for generation 
+        # of datasets, when it is depleted the algorithm moves to the next               
+        # segment. Here we infere the local size given the timeSlides used in 
+        # the method.
+
+        if timeSlides==1:    # zero lag case
+            local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
+        if timeSlides%2 == 0:
+            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                            /duration/timeSlides)*timeSlides*(timeSlides-2)
+        if timeSlides%2 != 0 and timeSlides !=1 :
+            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                            /duration/timeSlides)*timeSlides*(timeSlides-1)
+
+        # starting point always begins with the window of the psd to avoid
+        # deformed data of the begining    
+        local_starting_point=windowSize
+
+        # There are three cases when a segment is used.
+        # 1. That it has to fill a previous set first and then move 
+        # to the next
+        # 2. That it is the first set so there is no previous set to fill
+        # 3. It is too small to fill so its only part of a set.
+        # Some of them go through all the stages
+
+        if (len(size_list) > 0 and number_of_set_counter > 0 
+            and local_size >= size-number_of_set_counter):
+                        
+            # Saving the size of the generation
+            size_list.append(size-number_of_set_counter) 
+            # Saving the name of the date file and seg used
+            seg_list_2.append(seg_list[i])          
+            # Saving the startint_point of the generation
+            starting_point_list.append(local_starting_point)
+            # Update the the values for the next set
+            local_size-=(size-number_of_set_counter)                     
+            if timeSlides==1:
+                local_starting_point+=((size-number_of_set_counter)
+                                       *duration)
+            if timeSlides%2 == 0:
+                local_starting_point+=(ceil((size
+                -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
+            if timeSlides%2 != 0 and timeSlides !=1 :
+                local_starting_point+=(ceil((size
+                -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+
+            number_of_set_counter += (size-number_of_set_counter)
+
+            # If this generation completes the size of a whole set
+            # (with size=size) it changes the labels
+            print(set_num)
+            if number_of_set_counter == size:
+                number_of_set.append(subset_list[set_num])
+                if size_list[-1]==size: 
+                    print(set_num)
+                    name_list.append(name+'_'+str(subset_list[set_num]))
+                else:
+                    name_list.append('part_of_'
+                        +name+'_'+str(subset_list[set_num]))
+                set_num+=1
+                number_of_set_counter=0
+                if set_num >= num_of_sets: break
+
+            elif number_of_set_counter < size:
+                number_of_set.append(subset_list[set_num])
+                name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+
+        if (len(size_list) == 0 or number_of_set_counter==0):
+            
+            while local_size >= size:
+
+
+                # Generate data with size 10000 with final name of 
+                # 'name_counter'
+                size_list.append(size)
+                seg_list_2.append(seg_list[i])
+                starting_point_list.append(local_starting_point)
+
+                #Update the the values for the next set
+                local_size -= size
+                if timeSlides==1: local_starting_point+=size*duration
+                if timeSlides%2 == 0: 
+                    local_starting_point+=(ceil(size/timeSlides
+                                                /(timeSlides-2))*timeSlides*duration)
+                if timeSlides%2 != 0 and timeSlides !=1 :
+                    local_starting_point+=(ceil(size/timeSlides
+                                                /(timeSlides-1))*timeSlides*duration)
+                number_of_set_counter+=size
+
+                # If this generation completes the size of a whole set
+                # (with size=size) it changes the labels
+                if number_of_set_counter == size:
+                    number_of_set.append(subset_list[set_num])
+                    if size_list[-1]==size: 
+                        name_list.append(name+'_'+str(subset_list[set_num]))
+                    else:
+                        name_list.append('part_of_'
+                                         +name+'_'+str(subset_list[set_num]))
+                    set_num+=1
+                    if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
+                    number_of_set_counter=0
+
+        if (local_size < size and local_size >0 and set_num < num_of_sets):
+            print(local_size, num_of_sets, set_num)
+            
+            # Generate data with size 'local_size' with local name to be
+            # fused with later one
+            size_list.append(local_size)
+            seg_list_2.append(seg_list[i])
+            starting_point_list.append(local_starting_point)
+
+            # Update the the values for the next set
+            number_of_set_counter+=local_size  
+
+            # Saving a value for what is left for the next seg to generate
+            # If this generation completes the size of a whole set
+            # (with size=size) it changes the labels
+            if number_of_set_counter == size:
+                number_of_set.append(subset_list[set_num])
+                if size_list[-1]==size: 
+                    name_list.append(name+'_'+str(subset_list[set_num]))
+                else:
+                    name_list.append('part_of_'
+                                     +name+'_'+str(subset_list[set_num]))
+                set_num+=1
+                if set_num >= num_of_sets: break
+                number_of_set_counter=0
+
+            elif number_of_set_counter < size:
+                number_of_set.append(subset_list[set_num])
+                name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+
+
+    d={'segment' : seg_list_2, 'size' : size_list 
+       , 'start_point' : starting_point_list, 'set' : number_of_set
+       , 'name' : name_list}
+
+    print('These are the details of the data to be used for the false alarm rate test: \n')
+    print(d['segment'][-1], d['size'][-1], d['start_point'][-1] ,d['name'][-1])
+    print(len((d['segment'])), len((d['size'])),len((d['start_point'])) ,len((d['name'])))
+    for i in range(len(d['segment'])):
+        print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
+        
+        
+    answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
+    answer = None
+    while answer not in answers:
+        print('Should we proceed to the generation of the following'
+              +' data y/n ? \n \n')
+        answer=input()
+        if answer not in answers: print("Not valid answer ...")
+    
+    if answer in ['no','n', 'No','NO','N','exit']:
+        print('Exiting procedure ...')
+        return
+    elif answer in ['yes','y','YES','Yes','Y']:
+        print('Type the name of the temporary directory:')
+        dir_name = '0 0'
+        while not dir_name.isidentifier():
+            dir_name=input()
+            if not dir_name.isidentifier(): print("Not valid Folder name ...")
+        
+    path = savePath
+    print("The current path of the directory is: \n"+path+dir_name+"\n" )  
+    answer = None
+    while answer not in answers:
+        print('Do you accept the path y/n ?')
+        answer=input()
+        if answer not in answers: print("Not valid answer ...")
+
+    if answer in ['no','n', 'No','NO','N','exit']:
+        print('Exiting procedure ...')
+        return
+            
+    elif answer in ['yes','y','YES','Yes','Y']:
+        if os.path.isdir(path+dir_name):
+            answer = None
+            while answer not in answers:
+                print('Already existing '+dir_name+' directory, do you want to'
+                      +' overwrite it? y/n')
+                answer=input()
+                if answer not in answers: print("Not valid answer ...")
+            if answer in ['yes','y','YES','Yes','Y']:
+                os.system('rm -r '+path+dir_name)
+            elif answer in ['no','n', 'No','NO','N']:
+                print('Test is cancelled\n')
+                print('Exiting procedure ...')
+                return
+            
+    print('Initiating procedure ...')
+    os.system('mkdir '+path+dir_name)
+    print('Creation of temporary directory complete: '+path+dir_name)
+    
+    for i in range(len(d['segment'])):
+
+        with open(path+dir_name+'/test_'+d['name'][i]+'_'
+            +str(d['size'][i])+'.py','w') as f:
+            f.write('#! /usr/bin/env python3\n')
+            f.write('import sys \n')
+            #This path is used only for me to test it
+            pwd=os.getcwd()
+            if 'vasileios.skliris' in pwd:
+                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+                f.write("sys.path.append('"+date_list_path+"')\n")
+
+            f.write('from mly.datatools.validators import *\n\n')
+
+            if isinstance(d['set'][i],(float,int)):
+                token_snr = str(d['set'][i])
+            else:
+                token_snr = '0'
+            f.write("import time\n\n")
+            f.write("t0=time.time()\n")
+
+            command=( "TEST = Validator.falseAlarmTest(\n"
+                     +24*" "+"model = '"+str(model)+"'\n"
+                     +24*" "+",duration = "+str(duration)+"\n"
+                     +24*" "+",fs = "+str(fs)+"\n"
+                     +24*" "+",size = "+str(d['size'][i])+"\n"
+                     +24*" "+",detectors = "+str(detectors)+"\n"
+                     +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                     +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
+                     +24*" "+",windowSize ="+str(windowSize)+"\n"
+                     +24*" "+",timeSlides ="+str(timeSlides)+"\n"
+                     +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
+                     +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                     +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
+            
+            f.write(command+'\n\n')
+            f.write("print(time.time()-t0)\n")
+            f.write("sys.stdout.flush()")
+    with open(path+dir_name+'/auto_far.sh','w') as f2:
+
+        f2.write('#!/usr/bin/bash \n\n')
+        f2.write("commands=()\n\n")
+        
+        for i in range(len(d['segment'])):
+
+            f2.write("commands+=('"+'nohup python '+path+dir_name+'/test_'+d['name'][i]
+                +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_test_'
+                +d['name'][i]+'_'+str(d['size'][i])+'.out &'+"')\n")
+            
+        f2.write("# Number of processes\n")
+        f2.write("N="+str(len(d['segment']))+"\n\n")
+        f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/4))\n")
+        f2.write("jobArray=()\n")
+        f2.write("countOurActiveJobs(){\n")
+        f2.write("    activeid=$(pgrep -u $USER)\n")
+        f2.write("    jobsN=0\n")
+        f2.write("    for i in ${jobArray[*]}; do  \n")
+        f2.write("        for j in ${activeid[*]}; do  \n")     
+        f2.write("            if [ $i = $j ]; then\n")
+        f2.write("                jobsN=$(($jobsN+1))\n")
+        f2.write("            fi\n")
+        f2.write("        done\n")
+        f2.write("    done\n")
+        f2.write("}\n\n")
+        f2.write("eval ProcessList=({1..$N})\n")
+        f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
+        f2.write("do\n")
+        f2.write("    countOurActiveJobs\n")
+        f2.write("    echo \"Number of jobs running: $jobsN\"\n")
+        f2.write("    while [ $jobsN -ge $ProcessLimit ]\n")
+        f2.write("    do\n")
+        f2.write("        echo \"Waiting for space\"\n")
+        f2.write("        sleep 10\n")
+        f2.write("        countOurActiveJobs\n")
+        f2.write("    done\n")
+        f2.write("    eval ${commands[$k]}\n")
+        f2.write("    jobArray+=$(echo \"$! \")\n")
+        f2.write("done\n\n")
+        
+        f2.write("countOurActiveJobs\n")
+        f2.write("while [ $jobsN != 0 ]\n")
+        f2.write("do\n")
+        f2.write("    echo \"Genrating... \"\n")
+        f2.write("    sleep 60\n")
+        f2.write("    countOurActiveJobs\n")
+        f2.write("done\n")
+        f2.write("nohup python "+path+dir_name+"/finalise_test.py > "
+                 +path+dir_name+"/finalise_test.out")
+
+    with open(path+dir_name+'/'+name+'_info.txt','w') as f3:
+        f3.write('INFO ABOUT TEST DATA \n\n')
+        f3.write('fs: '+str(fs)+'\n')
+        f3.write('duration: '+str(duration)+'\n')
+        f3.write('window: '+str(windowSize)+'\n')
+        f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
+
+        for i in range(len(d['segment'])):
+            f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
+                     +' '+str(d['size'][i])+' '
+                     +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
+            
+    with open(path+dir_name+'/finalise_test.py','w') as f4:
+        f4.write("#! /usr/bin/env python3\n")
+        pwd=os.getcwd()
+        if 'vasileios.skliris' in pwd:
+            f4.write("import sys \n")
+            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("from mly.datatools.validators import *\n")
+        f4.write("finalise_far('"+path+dir_name+"')\n")
+
+    print('All set. Initiate dataset generation y/n?')
+    answer4=input()
+
+    if answer4 in ['yes','y','YES','Yes','Y']:
+        os.system('nohup sh '+path+dir_name+'/auto_far.sh > '+path+dir_name+'/auto_far.out &')
+        return
+    else:
+        print('Data generation canceled')
+        os.system('cd')
+        os.system('rm -r '+path+dir_name)
+        return
+
+
+    
+def finalise_far(path):
+    
+    if path[-1]!='/': path=path+'/' # making sure path is right
+    files=dirlist(path)             # making a list of files in that path 
+    merging_flag=False              # The flag that makes the fusion to happen
+
+    print('Running diagnostics for file: '+path+'  ... \n') 
+    pyScripts=[]
+    farTests=[]
+    for file in files:
+        if (file[-3:]=='.py') and ('test_' in file):
+            pyScripts.append(file)
+        if file[-4:]=='.pkl': 
+            farTests.append(file)
+    # Checking if all files that should have been generated 
+    # from auto_test are here
+    if len(farTests)==len(pyScripts):
+        print('Files succesfully generated, all files are here')
+        print(len(farTests),' out of ',len(pyScripts))
+        merging_flag=True  # Declaring that merging can happen now
+    
+    # If some files haven't been generated it will show a failing message
+    # with the processes that failed
+    else:
+        failed_pyScripts=[]
+        for i in range(len(pyScripts)):
+            pyScripts_id=pyScripts[i][5:-3]
+            counter=0
+            for farTest in farTests:
+                if pyScripts_id in farTest:
+                    counter=1
+            if counter==0:
+                print(pyScripts[i],' failed to proceed')
+                failed_pyScripts.append(pyScripts[i])
+                
+                
+    if merging_flag==False:
+        
+        if os.path.isfile(path+'/'+'auto_far_redo.sh'):
+            print("\nThe following scripts failed to run trough:\n")
+            for failed_pyScript in failed_pyScripts:
+                print(failed_pyScript+"\n")
+        else:
+            with open(path+'/'+'auto_far_redo.sh','w') as f2:
+
+                f2.write('#!/usr/bin/bash +x\n\n')
+                f2.write("commands=()\n\n")
+
+                for script in failed_pyScripts:
+
+                    f2.write("commands+=('"+'nohup python '+path+script
+                             +' > '+path+'out_'+script[:-3]+'.out &'+"')\n")
+
+                f2.write("# Number of processes\n")
+                f2.write("N="+str(len(failed_pyScripts))+"\n\n")
+                f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/4))\n")
+                f2.write("jobArray=()\n")
+                f2.write("countOurActiveJobs(){\n")
+                f2.write("    activeid=$(pgrep -u $USER)\n")
+                f2.write("    jobsN=0\n")
+                f2.write("    for i in ${jobArray[*]}; do  \n")
+                f2.write("        for j in ${activeid[*]}; do  \n")     
+                f2.write("            if [ $i = $j ]; then\n")
+                f2.write("                jobsN=$(($jobsN+1))\n")
+                f2.write("            fi\n")
+                f2.write("        done\n")
+                f2.write("    done\n")
+                f2.write("}\n\n")
+                f2.write("eval ProcessList=({1..$N})\n")
+                f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
+                f2.write("do\n")
+                f2.write("    countOurActiveJobs\n")
+                f2.write("    echo \"Number of jobs running: $jobsN\"\n")
+                f2.write("    while [ jobsN -ge ProcessLimit ]\n")
+                f2.write("    do\n")
+                f2.write("        echo \"Waiting for space\"\n")
+                f2.write("        sleep 10\n")
+                f2.write("        countOurActiveJobs\n")
+                f2.write("    done\n")
+                f2.write("    eval ${commands[$k]}\n")
+                f2.write("    jobArray+=$(echo \"$! \")\n")
+                f2.write("done\n\n")
+
+                f2.write("countOurActiveJobs\n")
+                f2.write("while [ $jobsN != 0 ]\n")
+                f2.write("do\n")
+                f2.write("    echo \"Genrating... \"\n")
+                f2.write("    sleep 60\n")
+                f2.write("    countOurActiveJobs\n")
+                f2.write("done\n")
+                f2.write("nohup python "+path+"finalise_test.py > "+path+"finalise_test.out")
+
+            os.system('nohup sh '+path+'auto_far_redo.sh > '+path+'auto_far_redo.out &')
+            
+
+    if merging_flag==True:
+        
+        setNames=[]
+        setIDs=[]
+        setSizes=[]
+        finalNames=[]
+        IDs,new_dat=[],[]
+        for k in range(len(farTests)):
+            if k==0:
+                with open(path+farTests[k],'rb') as obj:
+                    finaltest = pickle.load(obj)
+                print(k,0)
+
+            else:
+                with open(path+farTests[k],'rb') as obj:
+                    part_of_test = pickle.load(obj)
+                finaltest = finaltest.append(part_of_test)
+                print(k)
+
+        finaltest = finaltest.sort_values(by=['SCORE'],ascending = False)
+        with open(path+'FAR_TEST.pkl', 'wb') as output:
+            pickle.dump(finaltest, output, pickle.HIGHEST_PROTOCOL)
+                
+
+        # Deleting unnescesary file in the folder
+        for file in dirlist(path):
+            if (('.out' in file) or ('.py' in file)
+                or ('part_of' in file) or ('.sh' in file) or ('10000' in file)):
+                os.system('rm '+path+file)
+
