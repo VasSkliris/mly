@@ -1,10 +1,12 @@
 from .core import DataPodBase
 from .core import DataSetBase
-from .tools import dirlist, index_combinations, nullpath
+from .tools import dirlist, index_combinations, correlate
 from .simulateddetectornoise import *  
 from gwpy.timeseries import TimeSeries
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
+from scipy.stats import pearsonr
+from scipy.special import comb
 
 import numpy as np
 import pickle
@@ -18,7 +20,8 @@ from math import ceil
 ################################################################################
 #  TODO:You have to make nan checks to the injection files and noise files 
 #  before running the generator function.
-#
+# 
+#  auto_gen does not work on optimal noise
 ################################################################################
 
 class DataPod(DataPodBase):
@@ -57,7 +60,7 @@ class DataPod(DataPodBase):
     detectors:(list)[optional]
               If the strain belongs to a specific detector it is suggested to 
               state which detector is it. If it not specified the number of 
-              detectors is assumed to be me the smallest strain dimention and a
+              detectors is assumed to be the smallest strain dimention and a
               list of 'U' is set with length equal to the detector number that 
               was assumed. The first dimention of every strain must be the 
               number of detectors involved. If it's not a check takes place to
@@ -141,7 +144,7 @@ class DataPod(DataPodBase):
             
     def plot(self,type_='strain'):
         
-        colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b'}
+        colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b','U':'black'}
         names=[]
         plt.figure(figsize=(15,7))#,facecolor='lightslategray')
         if type_ == 'strain':
@@ -155,7 +158,7 @@ class DataPod(DataPodBase):
             t=np.arange(0,self.duration,1/self.fs)
 
             minim=0
-            for i in range(len(self.strain)):
+            for i in range(len(self.detectors)):
                 plt.plot(t,self.strain[i]+minim,color= colors[self.detectors[i]],label = names[i] )
                 minim =max(self.strain[i]+minim+abs(min(self.strain[i])))
             plt.legend()
@@ -168,7 +171,7 @@ class DataPod(DataPodBase):
 
             plt.xlabel('Frequency')
             plt.ylabel('Power Spectral Density')
-            colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b'}
+            colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b','U': 'black'}
             f=np.arange(0,int(self.fs/2)+1)
 
             #minim=0
@@ -180,8 +183,21 @@ class DataPod(DataPodBase):
         elif type_ =='psd' and not ('psd' in list(self.metadata.keys())):
             raise KeyError("psd key is not pressent in the pod")
             
-        else:
-            raise ValueError("type_ can only accept two values 'strain' or 'psd'")
+            
+        elif type_ =='correlation' and ('correlation' in list(self.metadata.keys())):
+
+            plt.xlabel('Time Shift')
+            plt.ylabel('Pearson Correlation')
+            tlength=len(self.metadata['correlation'][0])/self.fs
+            tarray=np.arange(-tlength/2,tlength/2,1/self.fs)
+            count_=0
+            for i in np.arange(len(self.detectors)):
+                for j in np.arange(i+1,len(self.detectors)):
+                    plt.plot(tarray,self.metadata['correlation'][count_]
+                             ,label=str(self.detectors[i])+str(self.detectors[j]))
+                    plt.legend()
+                    count_+=1
+
             
             
 class DataSet(DataSetBase):
@@ -356,7 +372,7 @@ class DataSet(DataSetBase):
         random.shuffle(datasets)
         finalSet = DataSet(datasets)
         
-        if (save,str):
+        if isinstance(save,str):
             finalSet.save(name= save)        
         
         return(finalSet)
@@ -490,14 +506,28 @@ class DataSet(DataSetBase):
         self._dataPods = finalPods
         
 
-    def unloadData(self,shape = None):
+    def unloadData(self,extras=None, shape = None):
+
         goods =[]
-        for pod in self.dataPods:
-            goods.append(pod.strain.tolist())
-        goods=np.asarray(goods)
+        if extras==None:
+            for pod in self.dataPods:
+                goods.append(pod.strain.tolist())
+            goods=np.asarray(goods)                
+
+        elif isinstance(extras,str):
+            for pod in self.dataPods:
+                goods.append(pod.metadata[extras].tolist())
+            goods=np.asarray(goods)
+        else:
+            raise ValueError('Metadata have no option for '+str(extras))
+            
         if shape == None:
             shape = goods.shape
         if isinstance(shape,tuple):
+            if shape[0]==None: 
+                shapeList=list(shape)
+                shapeList[0]=len(self)
+                shape=tuple(shapeList)
             if all(dim in goods.shape for dim in shape):
                 shapeList = list(shape)
                 goodsShapeList = list(goods.shape)
@@ -563,7 +593,13 @@ class DataSet(DataSetBase):
                    ,startingPoint= None #(32)
                    ,name = None
                    ,savePath = None
-                   ,shift = False):
+                   ,single = False  # Making single detector injections as glitch
+                   ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration
+                
+                   ,disposition=None
+                   ,maxDuration=None
+                   ,differentSignals=False   # In case we want to put different injection to every detector.
+                   ,extras=None):
 
         # Integration limits for the calculation of analytical SNR
         # These values are very important for the calculation
@@ -603,12 +639,14 @@ class DataSet(DataSetBase):
                 "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
                 "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
                 "\n'U' if you don't want to specify detector")
+            if isinstance(detectors,str): detectors=list(detectors)
         else:
             raise ValueError("detectors have to be a list of strings or a string"+
                 " with at least one the followings as elements: \n"+
                 "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
                 "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
                 "\n'U' if you don't want to specify detector")
+        
 
         # ---------------------------------------------------------------------------------------- #   
         # --- size ------------------------------------------------------------------------------- #        
@@ -726,7 +764,7 @@ class DataSet(DataSetBase):
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-        if windowSize == None: windowSize = 32
+        if windowSize == None: windowSize = duration*8
         if not isinstance(windowSize,int):
             raise ValueError('windowSize needs to be an integral')
         if windowSize < duration :
@@ -763,10 +801,28 @@ class DataSet(DataSetBase):
                 raise FileNotFoundError('No such file or directory:' +savePath)
         else:
             raise TypeError("Destination Path has to be a string valid path")
-
+            
         # ---------------------------------------------------------------------------------------- #   
+        # --- extras ----------------------------------------------------------------------------- #
+        
+        theExtras=['psd','correlation']
+        if extras == None:
+            extras = None
+        elif isinstance(extras,str):
+            extras = [extras]
+        elif isinstance(extras,list) and all(ex in theExtras for ex in extras):
+            pass
+        else:
+            raise ValueError('extras must be a list of valid strings included in '+str(theExtras))
 
-
+        # max Duration
+        
+        if maxDuration == None:
+            if duration == None:
+                pass
+            else:
+                maxDuration=duration
+                
         # Making a list of the injection names,
         # so that we can sample randomly from them
 
@@ -780,7 +836,7 @@ class DataSet(DataSetBase):
                 injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
 
         if backgroundType == 'optimal':
-            magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
+            magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
             param = magic[fs]
 
         elif backgroundType in ['sudo_real','real']:
@@ -814,7 +870,13 @@ class DataSet(DataSetBase):
             asd_dict={}
             PSD_dict={}
             gps_list = []
+            
+            if single == True: luckyDet = np.random.choice(detKeys)
             for det in detKeys:
+                
+                # In case we want to put different injection to every detectors.
+                if differentSignals==True:
+                    inj_ind = np.random.randint(0,len(injectionFileDict[detKeys[0]]))
 
                 if backgroundType == 'optimal':
 
@@ -873,20 +935,48 @@ class DataSet(DataSetBase):
                     # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
                     inj = np.loadtxt(injectionFolder+'/'+det+'/'+injectionFileDict[det][inj_ind])
                     # Saving the length of the injection
-                    inj_len=len(inj)/fs                
+                    inj_len = len(inj)/fs
                     # I put a random offset for all injection so that
                     # the signal is not always in the same place
-                    if inj_len > duration: inj = inj[int(inj_len-duration)*fs:]
-                    if inj_len < duration: inj = np.hstack((np.zeros(int(fs*(duration-inj_len)/2))
+                    if inj_len > duration: 
+                        inj = inj[int(inj_len-duration)*fs:]
+                        print('Injection was cropped to fit duration. First'
+                              +str(inj_len-duration)+' seconds have been removed.')
+                        inj_len = len(inj)/fs
+                    if inj_len <= duration: inj = np.hstack((np.zeros(int(fs*(duration-inj_len)/2))
                                                         , inj
                                                         , np.zeros(int(fs*(duration-inj_len)/2))))
-
+                    # DISPOSITIONS
                     
-                    if shift == False and detKeys.index(det) == 0:
-                        disp = np.random.randint(-int(fs*(duration-inj_len)/2) ,int(inj_len*fs/2))
-                    elif shift == True:
-                        disp = np.random.randint(-int(fs*(duration-inj_len)/2) ,int(inj_len*fs/2))
-
+                    # Default case when coherent
+                    if disposition == None:
+                        if det == detKeys[0]:
+                            disp = np.random.random_integers(low = min(-int(fs*(duration-0.1-inj_len)/2),0) 
+                                                         ,high = max(int(fs*((duration-0.1-inj_len)/2 
+                                                                         + injectionCrop*(duration-0.1))),1))
+                            
+                    # Case when signals will be randomly positioned for each detector seperatly. 
+                    # Does not affect if signals will be different or not.
+                    elif disposition == 'random':
+                        disp = np.random.random_integers(low = min(-int(fs*(duration-0.1-inj_len)/2),0) 
+                                                         ,high = max(int(fs*((duration-0.1-inj_len)/2 
+                                                                         + injectionCrop*(duration-0.1))),1))
+                    # Case when signals will be positioned within a duration stated by the disposition.
+                    # The center of this duration will be moved randomly given the maxDuration
+                    # of the injections.
+                    elif isinstance(disposition,(int,float)):
+                        if det == detKeys[0]:
+                            center_position = np.random.random_integers(
+                                low = min(-int(fs*(duration-0.1-maxDuration-disposition)/2),0)
+                               ,high = max(int(fs*(duration-0.1-maxDuration-disposition)/2)+1,1))
+                                # the +1 is because there is an error if the high becomes 0
+                                
+                            positions=np.arange(-disposition/2,disposition/2+0.0001
+                                                ,disposition/(len(detKeys)-1))
+                            np.random.shuffle(positions)
+                        disp = center_position+int(positions[detKeys.index(det)]*fs)
+                    
+                    
                     if disp >= 0: 
                         inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)),inj[disp:]
                                              ,np.zeros(int(fs*(windowSize-duration)/2)+disp)))   
@@ -895,19 +985,25 @@ class DataSet(DataSetBase):
                                              ,np.zeros(int(fs*(windowSize-duration)/2)))) 
 
 
-
+                    
                     # Calculating the one sided fft of the template,                
                     inj_fft_0=np.fft.fft(inj)
                     inj_fft_0_dict[det] = inj_fft_0
                     # we get rid of the DC value and everything above fs/2.
                     inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) 
-
+                    
                     SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
                                 *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
+                                        
+                    if single == True:
+                        if det != luckyDet:
+                            SNR0_dict[det] = 0.01 # Making single detector injections as glitch
+                            inj_fft_0_dict[det] = np.zeros(windowSize*fs)
+
 
                 else:
-                    SNR0_dict[det] = 0.1 # avoiding future division with zero
+                    SNR0_dict[det] = 0.01 # avoiding future division with zero
                     inj_fft_0_dict[det] = np.zeros(windowSize*fs)
 
 
@@ -916,32 +1012,56 @@ class DataSet(DataSetBase):
 
             # Tuning injection amplitude to the SNR wanted
             podstrain = []
-            podPSD = {}
-            SNR_new={}
+            podPSD = []
+            podCorrelations=[]
+            SNR_new=[]
+            
             for det in detectors:
-
                 fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
                 inj_cal=np.real(np.fft.ifft(fft_cal*fs))
+                                    
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0)
                 #Whitening final data
                 podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
                         -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
-
-                # Calculating the new SNR which will be slightly different that the desired one.    
-                inj_fft_N=np.abs(fft_cal[1:int(windowSize*fs/2)+1]) 
                 
-                SNR_new[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_N
-                            *inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                            /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
-                
+                if 'snr' in extras:
+                    # Calculating the new SNR which will be slightly different that the desired one.    
+                    inj_fft_N=np.abs(fft_cal[1:int(windowSize*fs/2)+1]) 
+
+
+                    SNR_new.append(np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_N
+                                *inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+
+
+                if 'psd' in extras:
+                    podPSD.append(asd_dict[det]**2)
+            
+            if 'correlation' in extras:
+
+                for i in np.arange(len(detectors)):
+                    for j in np.arange(i+1,len(detectors)):
+                        window= int((6371/300000)*fs)+1
+                        podCorrelations.append(correlate(podstrain[i],podstrain[j],window))
+
+
+                    
+
+            
+            podMetadata={}
+            
+            if 'snr' in extras:
+                podMetadata['snr']=np.array(SNR_nes)
+            if 'psd' in extras:
+                podMetadata['psd'] = np.array(podPSD)
+            if 'correlation' in extras:
+                if len(np.array(podCorrelations).shape)==1: podCorrelations=[podCorrelations]
+                podMetadata['correlation'] = np.array(podCorrelations)
+            
 
                 
-                podPSD[det] = asd_dict[det]**2
 
-            #podLabels={'snr': round(np.sqrt(np.sum(np.asarray(list(SNR_new.values()))**2)))}
-            #labels.update(podLabels)
-
-            podMetadata={'snr' : SNR_new, 'psd' : podPSD}
 
             DATA.add(DataPod(strain = podstrain
                                ,fs = fs
@@ -990,8 +1110,14 @@ def auto_gen(duration
              ,timeSlides = None #(1)
              ,startingPoint = None
              ,name = None
-             ,savePath = None
-             ,shift = False):
+             ,savePath = None                  
+             ,single = False  # Making single detector injections as glitch
+             ,injectionCrop = 0   # Allowing part precentage of the injection to be croped
+                                  # so that the signal can move from the center. Used only 
+                                  # when injection duration = duaration
+             ,disposition=None
+             ,maxDuration=None
+             ,differentSignals=False): 
 
 
 
@@ -1124,6 +1250,8 @@ def auto_gen(duration
             pass
         else:
             raise FileNotFoundError("No such file or directory:"+firstDay)
+    elif backgroundType == 'optimal':
+        pass
     else:
         raise TypeError("Path must be a string")
             
@@ -1131,7 +1259,7 @@ def auto_gen(duration
     # ---------------------------------------------------------------------------------------- #    
     # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-    if windowSize == None: windowSize = 32
+    if windowSize == None: windowSize = duration*8
     if not isinstance(windowSize,int):
         raise ValueError('windowSize needs to be an integral')
     if windowSize < duration :
@@ -1171,176 +1299,217 @@ def auto_gen(duration
     if savePath[-1] == '/' : savePath=savePath[:-1]
     
     # ---------------------------------------------------------------------------------------- #    
-    
-    # Generating a list with all the available dates in the ligo_data folder
-    date_list=dirlist( date_list_path)
-
-    # The first day is the date we want to start using data.
-    # Calculating the index of the initial date
-    date=date_list[date_list.index(firstDay)]
-    # All dates have an index in the list of dates following chronological order
-    counter=date_list.index(firstDay)             
+               
     # The number of sets to be generated.
     num_of_sets = len(injectionSNR)
-    print(num_of_sets)
-    
-    # Calculation of the duration 
-    # Here we infere the duration needed given the timeSlides used in the method
 
-    # In this we just use the data as they are.
-    if timeSlides==1:
-        duration_need = size*num_of_sets*duration
-        tail_crop=0
-    # Timeslides of even numbers have a different algorithm that the odd number ones.
-    if timeSlides%2 == 0:
-        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
-        tail_crop=timeSlides*duration
-    if timeSlides%2 != 0 and timeSlides !=1 :
-        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
-        tail_crop=timeSlides*duration
+    # If noise is optimal it is much more simple
+    if backgroundType == 'optimal':
 
+        d={'size' : num_of_sets*[size]
+           , 'start_point' : num_of_sets*[startingPoint]
+           , 'set' : snr_list
+           , 'name' : list(name+'_'+str(snr_list[i]) for i in range(num_of_sets))}
 
-    # Creation of lists that indicate characteristics of the segments based on the duration needed. 
-    # These are used for the next step.
-    
-    # The following while loop checks and stacks durations of the data in date files. In this way
-    # we note which of them are we gonna need for the generation.
-    duration_total = 0
-    duration_, gps_time, seg_list=[],[],[]
-
-    while duration_need > duration_total:
-        counter+=1
-        segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
-        print(date)
-        for seg in segments:
-            for j in range(len(seg)):
-                if seg[j]=='_': 
-                    gps, dur = seg[j+1:-5].split('_')
-                    break
-
-            duration_.append(int(dur))
-            gps_time.append(int(gps))
-            seg_list.append([date,seg])
-
-            duration_total+=(int(dur)-3*windowSize-tail_crop)
-            print('    '+seg)
-
-            if duration_total > duration_need: break
-
-        if counter==len(date_list): counter==0        
-        date=date_list[counter]
+        print('These are the details of the datasets to be generated: \n')
+        for i in range(len(d['size'])):
+            print(d['size'][i], d['start_point'][i] ,d['name'][i])
+                           
+    # If noise is using real noise segments it is complicated   
+    else:
         
+        # Generating a list with all the available dates in the ligo_data folder
+        date_list=dirlist( date_list_path)
 
-    # To initialise the generators, we will first create the code and the 
-    # names they will have. This will create the commands that generate
-    # all the segments needed.
-
-    size_list=[]            # Sizes for each generation of noise 
-    starting_point_list=[]  # Starting points for each generation of noise(s)
-    seg_list_2=[]           # Segment names for each generation of noise
-    number_of_set=[]        # No of set that this generation of noise will go
-    name_list=[]            # List with the name of the set to be generated
-    number_of_set_counter=0 # Counter that keeps record of how many 
-    # instantiations have left to be generated 
-                            # to complete a set
+        # The first day is the date we want to start using data.
+        # Calculating the index of the initial date
+        date=date_list[date_list.index(firstDay)]
+        # All dates have an index in the list of dates following chronological order
+        counter=date_list.index(firstDay)  
         
-
-    set_num=0
-
-    for i in range(len(np.array(seg_list)[:,1])):
-
-
-        # local size indicates the size of the file left for generation 
-        # of datasets, when it is depleted the algorithm moves to the next               
-        # segment. Here we infere the local size given the timeSlides used in 
-        # the method.
-
-        if timeSlides==1:    # zero lag case
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
+        # Calculation of the duration 
+        # Here we infere the duration needed given the timeSlides used in the method
+        
+        # In this we just use the data as they are.
+        if timeSlides==1:
+            duration_need = size*num_of_sets*duration
+            tail_crop=0
+        # Timeslides of even numbers have a different algorithm that the odd number ones.
         if timeSlides%2 == 0:
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                            /duration/timeSlides)*timeSlides*(timeSlides-2)
+            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
+            tail_crop=timeSlides*duration
         if timeSlides%2 != 0 and timeSlides !=1 :
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                            /duration/timeSlides)*timeSlides*(timeSlides-1)
+            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
+            tail_crop=timeSlides*duration
 
-        # starting point always begins with the window of the psd to avoid
-        # deformed data of the begining    
-        local_starting_point=windowSize
 
-        # There are three cases when a segment is used.
-        # 1. That it has to fill a previous set first and then move 
-        # to the next
-        # 2. That it is the first set so there is no previous set to fill
-        # 3. It is too small to fill so its only part of a set.
-        # Some of them go through all the stages
+        # Creation of lists that indicate characteristics of the segments based on the duration needed. 
+        # These are used for the next step.
 
-        if (len(size_list) > 0 and number_of_set_counter > 0 
-            and local_size >= size-number_of_set_counter):
-                        
-            # Saving the size of the generation
-            size_list.append(size-number_of_set_counter) 
-            # Saving the name of the date file and seg used
-            seg_list_2.append(seg_list[i])          
-            # Saving the startint_point of the generation
-            starting_point_list.append(local_starting_point)
-            # Update the the values for the next set
-            local_size-=(size-number_of_set_counter)                     
-            if timeSlides==1:
-                local_starting_point+=((size-number_of_set_counter)
-                                       *duration)
+        # The following while loop checks and stacks durations of the data in date files. In this way
+        # we note which of them are we gonna need for the generation.
+        duration_total = 0
+        duration_, gps_time, seg_list=[],[],[]
+
+        while duration_need > duration_total:
+            counter+=1
+            segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
+            print(date)
+            for seg in segments:
+                for j in range(len(seg)):
+                    if seg[j]=='_': 
+                        gps, dur = seg[j+1:-5].split('_')
+                        break
+
+                duration_.append(int(dur))
+                gps_time.append(int(gps))
+                seg_list.append([date,seg])
+
+                duration_total+=(int(dur)-3*windowSize-tail_crop)
+                print('    '+seg)
+
+                if duration_total > duration_need: break
+
+            if counter==len(date_list): counter==0        
+            date=date_list[counter]
+
+
+        # To initialise the generators, we will first create the code and the 
+        # names they will have. This will create the commands that generate
+        # all the segments needed.
+
+        size_list=[]            # Sizes for each generation of noise 
+        starting_point_list=[]  # Starting points for each generation of noise(s)
+        seg_list_2=[]           # Segment names for each generation of noise
+        number_of_set=[]        # No of set that this generation of noise will go
+        name_list=[]            # List with the name of the set to be generated
+        number_of_set_counter=0 # Counter that keeps record of how many 
+        # instantiations have left to be generated 
+                                # to complete a set
+
+
+        set_num=0
+
+        for i in range(len(np.array(seg_list)[:,1])):
+
+
+            # local size indicates the size of the file left for generation 
+            # of datasets, when it is depleted the algorithm moves to the next               
+            # segment. Here we infere the local size given the timeSlides used in 
+            # the method.
+
+            if timeSlides==1:    # zero lag case
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
             if timeSlides%2 == 0:
-                local_starting_point+=(ceil((size
-                -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                                /duration/timeSlides)*timeSlides*(timeSlides-2)
             if timeSlides%2 != 0 and timeSlides !=1 :
-                local_starting_point+=(ceil((size
-                -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                                /duration/timeSlides)*timeSlides*(timeSlides-1)
 
-            number_of_set_counter += (size-number_of_set_counter)
+            # starting point always begins with the window of the psd to avoid
+            # deformed data of the begining    
+            local_starting_point=windowSize
 
-            # If this generation completes the size of a whole set
-            # (with size=size) it changes the labels
-            if number_of_set_counter == size:
-                number_of_set.append(snr_list[set_num])
-                if size_list[-1]==size: 
-                    name_list.append(name+'_'+str(snr_list[set_num]))
-                else:
-                    name_list.append('part_of_'
-                        +name+'_'+str(snr_list[set_num]))
-                set_num+=1
-                number_of_set_counter=0
-                if set_num >= num_of_sets: break
+            # There are three cases when a segment is used.
+            # 1. That it has to fill a previous set first and then move 
+            # to the next
+            # 2. That it is the first set so there is no previous set to fill
+            # 3. It is too small to fill so its only part of a set.
+            # Some of them go through all the stages
 
-            elif number_of_set_counter < size:
-                number_of_set.append(snr_list[set_num])
-                name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
+            if (len(size_list) > 0 and number_of_set_counter > 0 
+                and local_size >= size-number_of_set_counter):
 
-        if (len(size_list) == 0 or number_of_set_counter==0):
-            
-            while local_size >= size:
-
-
-                # Generate data with size 10000 with final name of 
-                # 'name_counter'
-                size_list.append(size)
-                seg_list_2.append(seg_list[i])
+                # Saving the size of the generation
+                size_list.append(size-number_of_set_counter) 
+                # Saving the name of the date file and seg used
+                seg_list_2.append(seg_list[i])          
+                # Saving the startint_point of the generation
                 starting_point_list.append(local_starting_point)
-
-                #Update the the values for the next set
-                local_size -= size
-                if timeSlides==1: local_starting_point+=size*duration
-                if timeSlides%2 == 0: 
-                    local_starting_point+=(ceil(size/timeSlides
-                                                /(timeSlides-2))*timeSlides*duration)
+                # Update the the values for the next set
+                local_size-=(size-number_of_set_counter)                     
+                if timeSlides==1:
+                    local_starting_point+=((size-number_of_set_counter)
+                                           *duration)
+                if timeSlides%2 == 0:
+                    local_starting_point+=(ceil((size
+                    -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
                 if timeSlides%2 != 0 and timeSlides !=1 :
-                    local_starting_point+=(ceil(size/timeSlides
-                                                /(timeSlides-1))*timeSlides*duration)
-                number_of_set_counter+=size
+                    local_starting_point+=(ceil((size
+                    -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+
+                number_of_set_counter += (size-number_of_set_counter)
 
                 # If this generation completes the size of a whole set
                 # (with size=size) it changes the labels
                 if number_of_set_counter == size:
-                    #print(set_num)
+                    number_of_set.append(snr_list[set_num])
+                    if size_list[-1]==size: 
+                        name_list.append(name+'_'+str(snr_list[set_num]))
+                    else:
+                        name_list.append('part_of_'
+                            +name+'_'+str(snr_list[set_num]))
+                    set_num+=1
+                    number_of_set_counter=0
+                    if set_num >= num_of_sets: break
+
+                elif number_of_set_counter < size:
+                    number_of_set.append(snr_list[set_num])
+                    name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
+
+            if (len(size_list) == 0 or number_of_set_counter==0):
+
+                while local_size >= size:
+
+
+                    # Generate data with size 10000 with final name of 
+                    # 'name_counter'
+                    size_list.append(size)
+                    seg_list_2.append(seg_list[i])
+                    starting_point_list.append(local_starting_point)
+
+                    #Update the the values for the next set
+                    local_size -= size
+                    if timeSlides==1: local_starting_point+=size*duration
+                    if timeSlides%2 == 0: 
+                        local_starting_point+=(ceil(size/timeSlides
+                                                    /(timeSlides-2))*timeSlides*duration)
+                    if timeSlides%2 != 0 and timeSlides !=1 :
+                        local_starting_point+=(ceil(size/timeSlides
+                                                    /(timeSlides-1))*timeSlides*duration)
+                    number_of_set_counter+=size
+
+                    # If this generation completes the size of a whole set
+                    # (with size=size) it changes the labels
+                    if number_of_set_counter == size:
+                        #print(set_num)
+                        number_of_set.append(snr_list[set_num])
+                        if size_list[-1]==size: 
+                            name_list.append(name+'_'+str(snr_list[set_num]))
+                        else:
+                            name_list.append('part_of_'
+                                             +name+'_'+str(snr_list[set_num]))
+                        set_num+=1
+                        if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
+                        number_of_set_counter=0
+
+            if (local_size < size and local_size >0 and set_num < num_of_sets):
+                print(local_size, num_of_sets, set_num)
+
+                # Generate data with size 'local_size' with local name to be
+                # fused with later one
+                size_list.append(local_size)
+                seg_list_2.append(seg_list[i])
+                starting_point_list.append(local_starting_point)
+
+                # Update the the values for the next set
+                number_of_set_counter+=local_size  
+
+                # Saving a value for what is left for the next seg to generate
+                # If this generation completes the size of a whole set
+                # (with size=size) it changes the labels
+                if number_of_set_counter == size:
                     number_of_set.append(snr_list[set_num])
                     if size_list[-1]==size: 
                         name_list.append(name+'_'+str(snr_list[set_num]))
@@ -1348,49 +1517,21 @@ def auto_gen(duration
                         name_list.append('part_of_'
                                          +name+'_'+str(snr_list[set_num]))
                     set_num+=1
-                    if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
+                    if set_num >= num_of_sets: break
                     number_of_set_counter=0
 
-        if (local_size < size and local_size >0 and set_num < num_of_sets):
-            print(local_size, num_of_sets, set_num)
-            
-            # Generate data with size 'local_size' with local name to be
-            # fused with later one
-            size_list.append(local_size)
-            seg_list_2.append(seg_list[i])
-            starting_point_list.append(local_starting_point)
-
-            # Update the the values for the next set
-            number_of_set_counter+=local_size  
-
-            # Saving a value for what is left for the next seg to generate
-            # If this generation completes the size of a whole set
-            # (with size=size) it changes the labels
-            if number_of_set_counter == size:
-                number_of_set.append(snr_list[set_num])
-                if size_list[-1]==size: 
-                    name_list.append(name+'_'+str(snr_list[set_num]))
-                else:
-                    name_list.append('part_of_'
-                                     +name+'_'+str(snr_list[set_num]))
-                set_num+=1
-                if set_num >= num_of_sets: break
-                number_of_set_counter=0
-
-            elif number_of_set_counter < size:
-                number_of_set.append(snr_list[set_num])
-                name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
+                elif number_of_set_counter < size:
+                    number_of_set.append(snr_list[set_num])
+                    name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
 
 
-    d={'segment' : seg_list_2, 'size' : size_list 
-       , 'start_point' : starting_point_list, 'set' : number_of_set
-       , 'name' : name_list}
+        d={'segment' : seg_list_2, 'size' : size_list 
+           , 'start_point' : starting_point_list, 'set' : number_of_set
+           , 'name' : name_list}
 
-    print('These are the details of the datasets to be generated: \n')
-    print(d['segment'][-1], d['size'][-1], d['start_point'][-1] ,d['name'][-1])
-    print(len((d['segment'])), len((d['size'])),len((d['start_point'])) ,len((d['name'])))
-    for i in range(len(d['segment'])):
-        print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
+        print('These are the details of the datasets to be generated: \n')
+        for i in range(len(d['segment'])):
+            print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
         
         
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
@@ -1444,7 +1585,7 @@ def auto_gen(duration
     os.system('cd '+path+dir_name)
                 
 
-    for i in range(len(d['segment'])):
+    for i in range(len(d['size'])):
 
         with open(path+dir_name+'/'+'gen_'+d['name'][i]+'_'
             +str(d['size'][i])+'.py','w') as f:
@@ -1454,9 +1595,8 @@ def auto_gen(duration
             pwd=os.getcwd()
             if 'vasileios.skliris' in pwd:
                 f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
-                f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
 
-            f.write('from mly.datatools.datatools import DataPod, DataSet\n\n')
+            f.write('from mly.datatools import DataPod, DataSet\n\n')
 
             if isinstance(d['set'][i],(float,int)):
                 token_snr = str(d['set'][i])
@@ -1464,22 +1604,43 @@ def auto_gen(duration
                 token_snr = '0'
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
-            comand=( "SET = DataSet.generator(\n"
-                     +24*" "+"duration = "+str(duration)+"\n"
-                     +24*" "+",fs = "+str(fs)+"\n"
-                     +24*" "+",size = "+str(d['size'][i])+"\n"
-                     +24*" "+",detectors = "+str(detectors)+"\n"
-                     +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
-                     +24*" "+",labels = "+str(labels)+"\n"
-                     +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                     +24*" "+",injectionSNR = "+token_snr+"\n"
-                     +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
-                     +24*" "+",windowSize ="+str(windowSize)+"\n"
-                     +24*" "+",timeSlides ="+str(timeSlides)+"\n"
-                     +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
-                     +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-                     +24*" "+",savePath ='"+path+dir_name+"'\n"
-                     +24*" "+",shift = '"+str(shift)"')\n")
+            
+            if backgroundType == 'optimal':
+                comand=( "SET = DataSet.generator(\n"
+                         +24*" "+"duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(d['size'][i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                         +24*" "+",labels = "+str(labels)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",injectionSNR = "+token_snr+"\n"
+                         +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                         +24*" "+",savePath ='"+path+dir_name+"'\n"
+                         +24*" "+",single = "+str(single)+"\n"
+                         +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
+                         +24*" "+",differentSignals = "+str(differentSignals)+")\n")
+            else:
+                f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
+                comand=( "SET = DataSet.generator(\n"
+                         +24*" "+"duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(d['size'][i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                         +24*" "+",labels = "+str(labels)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",injectionSNR = "+token_snr+"\n"
+                         +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",timeSlides ="+str(timeSlides)+"\n"
+                         +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
+                         +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                         +24*" "+",savePath ='"+path+dir_name+"'\n"
+                         +24*" "+",single = "+str(single)+"\n"
+                         +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
+                         +24*" "+",differentSignals = "+str(differentSignals)+")\n")
+
             
             f.write(comand+'\n\n')
             f.write("print(time.time()-t0)\n")
@@ -1489,14 +1650,14 @@ def auto_gen(duration
         f2.write('#!/usr/bin/bash \n\n')
         f2.write("commands=()\n\n")
         
-        for i in range(len(d['segment'])):
+        for i in range(len(d['size'])):
 
             f2.write("commands+=('"+'nohup python '+path+dir_name+'/gen_'+d['name'][i]
-                +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_'
+                +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_gen_'
                 +d['name'][i]+'_'+str(d['size'][i])+'.out &'+"')\n")
             
         f2.write("# Number of processes\n")
-        f2.write("N="+str(len(d['segment']))+"\n\n")
+        f2.write("N="+str(len(d['size']))+"\n\n")
         f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/2))\n")
         f2.write("jobArray=()\n")
         f2.write("countOurActiveJobs(){\n")
@@ -1539,12 +1700,13 @@ def auto_gen(duration
         f3.write('fs: '+str(fs)+'\n')
         f3.write('duration: '+str(duration)+'\n')
         f3.write('window: '+str(windowSize)+'\n')
-        f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
+        if backgroundType != 'optimal':
+            f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
 
-        for i in range(len(d['segment'])):
-            f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
-                     +' '+str(d['size'][i])+' '
-                     +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
+            for i in range(len(d['size'])):
+                f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
+                         +' '+str(d['size'][i])+' '
+                         +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
             
     with open(path+dir_name+'/final_gen.py','w') as f4:
         f4.write("#! /usr/bin/env python3\n")
@@ -1552,7 +1714,7 @@ def auto_gen(duration
         if 'vasileios.skliris' in pwd:
             f4.write("import sys \n")
             f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
-        f4.write("from mly.datatools.datatools import *\n")
+        f4.write("from mly.datatools import *\n")
         f4.write("finalise_gen('"+path+dir_name+"')\n")
 
     print('All set. Initiate dataset generation y/n?')

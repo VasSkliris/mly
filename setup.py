@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mly",
-    version="0.0.20",
+    version="0.1.1",
     author="Vasileios Skliris",
     author_email='vas.skliris@gmail.com',
-    description='Dataset generation and tools for ML in gravitational waves',
+    description='This tool helps you create training and testing data for ML to use for gravitational wave detection.',
     long_description=long_description,
     long_description_content_type="text/markdown",
     url='http://pypi.python.org/pypi/mly/',

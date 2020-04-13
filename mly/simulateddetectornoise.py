@@ -152,11 +152,13 @@ def simulateddetectornoise(DET,T,fs,fmin,fmax):#,seed):
 
     #% ---- Print warning if requested frequencies go below fstop.
     if fmin<fstop[0]:
-        print('WTruncating data at '+str(fstop[0])+' Hz.')
+        pass
+        #print('WTruncating data at '+str(fstop[0])+' Hz.')
 
     #% ---- Print warning if requested frequencies go below fstop.
     if fmax>fstop[1]:
-        print('Truncating data at '+str(fstop[1])+' Hz.')
+        pass
+        #print('Truncating data at '+str(fstop[1])+' Hz.')
 
     #% ---- Convert to two-sided power spectrum.
     #PSD = PSD/2 Its not working on python so its merged later

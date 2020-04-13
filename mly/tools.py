@@ -116,3 +116,12 @@ def toCategorical(labels,translation = True):
         return(labelsCategorical,translationDict)
     else:
         return(labelsCategorical)
+    
+def correlate(x,y,window):
+    result=[]
+    for i in np.arange(-window,window):
+        xroll=np.roll(x,i)
+        cor = np.sum((xroll-np.mean(x))*(y-np.mean(y)))/(
+            np.sqrt(np.sum((xroll-np.mean(x))**2))*np.sqrt(np.sum((y-np.mean(y))**2)))
+        result.append(cor)
+    return np.array(result)

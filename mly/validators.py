@@ -38,7 +38,9 @@ class Validator:
                 ,startingPoint= None #(32)
                 ,name = None
                 ,column = 1 # Which label accuracy. Binary case is the second column for signals.
-                ,savePath = None):
+                ,savePath = None 
+                ,single = False  # Making single detector injections as glitch
+                ,injectionCrop = 0): # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration
                 
         from keras.models import load_model, Sequential, Model
         
@@ -50,8 +52,11 @@ class Validator:
         # --- model ------------------------------------------------------------------------------ #
         
         # check model here
-        if isinstance(model,str) and os.path.isfile(model):    
-            trained_model = load_model(model)
+        if isinstance(model,str):
+            if os.path.isfile(model):    
+                trained_model = load_model(model)
+            else:
+                raise FileNotFoundError("No model file in "+model)
         else:
             trained_model = model 
 
@@ -203,7 +208,7 @@ class Validator:
         # ---------------------------------------------------------------------------------------- #    
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-        if windowSize == None: windowSize = 32
+        if windowSize == None: windowSize = duration*8
         if not isinstance(windowSize,int):
             raise ValueError('windowSize needs to be an integral')
         if windowSize < duration :
@@ -258,7 +263,7 @@ class Validator:
                 injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
 
         if backgroundType == 'optimal':
-            magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
+            magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
             param = magic[fs]
 
         elif backgroundType in ['sudo_real','real']:
@@ -294,6 +299,8 @@ class Validator:
                 inj_fft_0_dict={}
                 asd_dict={}
                 PSD_dict={}
+                
+                if single == True: luckyDet = np.random.choice(detKeys)
                 for det in detKeys:
 
                     if backgroundType == 'optimal':
@@ -379,6 +386,11 @@ class Validator:
                         SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
                                     *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
                                     /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
+                        
+                        if single == True:
+                            if det != luckyDet:
+                                SNR0_dict[det] = 0.01 # Making single detector injections as glitch
+                                inj_fft_0_dict[det] = np.zeros(windowSize*fs)
 
                     else:
                         SNR0_dict[det] = 0.1 # avoiding future division with zero
@@ -401,21 +413,21 @@ class Validator:
 
                 #podLabels={'snr': round(np.sqrt(np.sum(np.asarray(list(SNR_new.values()))**2)))}
                 #labels.update(podLabels)
-
                 DATA.add(DataPod(strain = podstrain
                                    ,fs = fs
                                    ,labels =  labels
                                    ,detectors = detKeys
-                                   ,duration = duration))   
+                                   ,duration = duration)) 
+                
             random.shuffle(DATA.dataPods)
             
-            data = DATA.unloadData(shape = (len(DATA),*model.input_shape[1:] ))
+            data = DATA.unloadData(shape = (len(DATA),*trained_model.input_shape[1:] ))
             score= trained_model.predict(data, batch_size=1)[:,column]
             resultDict[str(snr)]=score.tolist()
 
             snrs.append(snr)
             error.append(np.std(resultDict[str(snr)]))
-            acc.append(np.int(100*np.mean(resultDict[str(snr)])))#float(np.around(np.mean(resultDict[str(snr)])*100,1)))
+            acc.append(np.mean(resultDict[str(snr)]))#float(np.around(np.mean(resultDict[str(snr)])*100,1)))
             score_f.append(resultDict[str(snr)])
 
 
@@ -629,7 +641,7 @@ class Validator:
         noise_segDict={}
 
         if backgroundType == 'optimal':
-            magic={2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
+            magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
             param = magic[fs]
 
         elif backgroundType in ['sudo_real','real']:
@@ -646,7 +658,6 @@ class Validator:
 
             gps0 = int(noiseSourceFile[1].split('_')[1])
         
-        print(list(ind['H']))
             
         result_list=[]
         for I in range(size):
@@ -713,7 +724,6 @@ class Validator:
                 #Whitening final data
                 podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
                         -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
-            print(len(podstrain[0]),len(podstrain[1]),len(podstrain[2]))
 
             podstrain= np.transpose(np.array([podstrain]),(0,2,1))
             score = trained_model.predict(podstrain, batch_size=1)[0][1]
@@ -835,6 +845,8 @@ def auto_FAR(model
             pass
         else:
             raise FileNotFoundError("No such file or directory:"+firstDay)
+    elif backgroundType == 'optimal':
+        pass
     else:
         raise TypeError("Path must be a string")
             
@@ -885,174 +897,217 @@ def auto_FAR(model
     
     # ---------------------------------------------------------------------------------------- #    
     
-    # Generating a list with all the available dates in the ligo_data folder
-    date_list=dirlist( date_list_path)
+    #num_of_sets = len(injectionSNR)
 
-    # The first day is the date we want to start using data.
-    # Calculating the index of the initial date
-    date=date_list[date_list.index(firstDay)]
-    # All dates have an index in the list of dates following chronological order
-    counter=date_list.index(firstDay)             
+    # If noise is optimal it is much more simple
+    if backgroundType == 'optimal':
 
-    
-    # Calculation of the duration 
-    # Here we infere the duration needed given the timeSlides used in the method
+        d={'size' : num_of_sets*[size]
+           , 'start_point' : num_of_sets*[startingPoint]
+           , 'set' : subset_list
+           , 'name' : list(name+'_'+subset_list[i] for i in range(num_of_sets))}
 
-    # In this we just use the data as they are.
-    if timeSlides==1:
-        duration_need = size*num_of_sets*duration
-        tail_crop=0
-    # Timeslides of even numbers have a different algorithm that the odd number ones.
-    if timeSlides%2 == 0:
-        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
-        tail_crop=timeSlides*duration
-    if timeSlides%2 != 0 and timeSlides !=1 :
-        duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
-        tail_crop=timeSlides*duration
-        
+        print('These are the details of the datasets to be generated: \n')
+        for i in range(len(d['size'])):
+            print(d['size'][i], d['start_point'][i] ,d['name'][i])
+                           
+    # If noise is using real noise segments it is complicated   
+    else:
 
+        # Generating a list with all the available dates in the ligo_data folder
+        date_list=dirlist( date_list_path)
 
-    # Creation of lists that indicate characteristics of the segments based on the duration needed. 
-    # These are used for the next step.
-    
-    # The following while loop checks and stacks durations of the data in date files. In this way
-    # we note which of them are we gonna need for the generation.
-    duration_total = 0
-    duration_, gps_time, seg_list=[],[],[]
-
-    while duration_need > duration_total:
-        counter+=1
-        segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
-        print(date)
-        for seg in segments:
-            for j in range(len(seg)):
-                if seg[j]=='_': 
-                    gps, dur = seg[j+1:-5].split('_')
-                    break
-
-            duration_.append(int(dur))
-            gps_time.append(int(gps))
-            seg_list.append([date,seg])
-
-            duration_total+=(int(dur)-3*windowSize-tail_crop)
-            print('    '+seg)
-
-            if duration_total > duration_need: break
-
-        if counter==len(date_list): counter=0 
-        if len(date_list) == 1: counter=0
-        date=date_list[counter]
+        # The first day is the date we want to start using data.
+        # Calculating the index of the initial date
+        date=date_list[date_list.index(firstDay)]
+        # All dates have an index in the list of dates following chronological order
+        counter=date_list.index(firstDay)             
 
 
+        # Calculation of the duration 
+        # Here we infere the duration needed given the timeSlides used in the method
 
-    # To initialise the generators, we will first create the code and the 
-    # names they will have. This will create the commands that generate
-    # all the segments needed.
-
-    size_list=[]            # Sizes for each generation of noise 
-    starting_point_list=[]  # Starting points for each generation of noise(s)
-    seg_list_2=[]           # Segment names for each generation of noise
-    number_of_set=[]        # No of set that this generation of noise will go
-    name_list=[]            # List with the name of the set to be generated
-    number_of_set_counter=0 # Counter that keeps record of how many 
-    # instantiations have left to be generated 
-                            # to complete a set
-        
-
-    set_num=0
-
-    for i in range(len(np.array(seg_list)[:,1])):
-
-
-        # local size indicates the size of the file left for generation 
-        # of datasets, when it is depleted the algorithm moves to the next               
-        # segment. Here we infere the local size given the timeSlides used in 
-        # the method.
-
-        if timeSlides==1:    # zero lag case
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
+        # In this we just use the data as they are.
+        if timeSlides==1:
+            duration_need = size*num_of_sets*duration
+            tail_crop=0
+        # Timeslides of even numbers have a different algorithm that the odd number ones.
         if timeSlides%2 == 0:
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                            /duration/timeSlides)*timeSlides*(timeSlides-2)
+            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
+            tail_crop=timeSlides*duration
         if timeSlides%2 != 0 and timeSlides !=1 :
-            local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                            /duration/timeSlides)*timeSlides*(timeSlides-1)
+            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
+            tail_crop=timeSlides*duration
 
-        # starting point always begins with the window of the psd to avoid
-        # deformed data of the begining    
-        local_starting_point=windowSize
 
-        # There are three cases when a segment is used.
-        # 1. That it has to fill a previous set first and then move 
-        # to the next
-        # 2. That it is the first set so there is no previous set to fill
-        # 3. It is too small to fill so its only part of a set.
-        # Some of them go through all the stages
 
-        if (len(size_list) > 0 and number_of_set_counter > 0 
-            and local_size >= size-number_of_set_counter):
-                        
-            # Saving the size of the generation
-            size_list.append(size-number_of_set_counter) 
-            # Saving the name of the date file and seg used
-            seg_list_2.append(seg_list[i])          
-            # Saving the startint_point of the generation
-            starting_point_list.append(local_starting_point)
-            # Update the the values for the next set
-            local_size-=(size-number_of_set_counter)                     
-            if timeSlides==1:
-                local_starting_point+=((size-number_of_set_counter)
-                                       *duration)
+        # Creation of lists that indicate characteristics of the segments based on the duration needed. 
+        # These are used for the next step.
+
+        # The following while loop checks and stacks durations of the data in date files. In this way
+        # we note which of them are we gonna need for the generation.
+        duration_total = 0
+        duration_, gps_time, seg_list=[],[],[]
+
+        while duration_need > duration_total:
+            counter+=1
+            segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
+            print(date)
+            for seg in segments:
+                for j in range(len(seg)):
+                    if seg[j]=='_': 
+                        gps, dur = seg[j+1:-5].split('_')
+                        break
+
+                duration_.append(int(dur))
+                gps_time.append(int(gps))
+                seg_list.append([date,seg])
+
+                duration_total+=(int(dur)-3*windowSize-tail_crop)
+                print('    '+seg)
+
+                if duration_total > duration_need: break
+
+            if counter==len(date_list): counter=0 
+            if len(date_list) == 1: counter=0
+            date=date_list[counter]
+
+
+
+        # To initialise the generators, we will first create the code and the 
+        # names they will have. This will create the commands that generate
+        # all the segments needed.
+
+        size_list=[]            # Sizes for each generation of noise 
+        starting_point_list=[]  # Starting points for each generation of noise(s)
+        seg_list_2=[]           # Segment names for each generation of noise
+        number_of_set=[]        # No of set that this generation of noise will go
+        name_list=[]            # List with the name of the set to be generated
+        number_of_set_counter=0 # Counter that keeps record of how many 
+        # instantiations have left to be generated 
+                                # to complete a set
+
+
+        set_num=0
+
+        for i in range(len(np.array(seg_list)[:,1])):
+
+
+            # local size indicates the size of the file left for generation 
+            # of datasets, when it is depleted the algorithm moves to the next               
+            # segment. Here we infere the local size given the timeSlides used in 
+            # the method.
+
+            if timeSlides==1:    # zero lag case
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
             if timeSlides%2 == 0:
-                local_starting_point+=(ceil((size
-                -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                                /duration/timeSlides)*timeSlides*(timeSlides-2)
             if timeSlides%2 != 0 and timeSlides !=1 :
-                local_starting_point+=(ceil((size
-                -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                                /duration/timeSlides)*timeSlides*(timeSlides-1)
 
-            number_of_set_counter += (size-number_of_set_counter)
+            # starting point always begins with the window of the psd to avoid
+            # deformed data of the begining    
+            local_starting_point=windowSize
 
-            # If this generation completes the size of a whole set
-            # (with size=size) it changes the labels
-            print(set_num)
-            if number_of_set_counter == size:
-                number_of_set.append(subset_list[set_num])
-                if size_list[-1]==size: 
-                    print(set_num)
-                    name_list.append(name+'_'+str(subset_list[set_num]))
-                else:
-                    name_list.append('part_of_'
-                        +name+'_'+str(subset_list[set_num]))
-                set_num+=1
-                number_of_set_counter=0
-                if set_num >= num_of_sets: break
+            # There are three cases when a segment is used.
+            # 1. That it has to fill a previous set first and then move 
+            # to the next
+            # 2. That it is the first set so there is no previous set to fill
+            # 3. It is too small to fill so its only part of a set.
+            # Some of them go through all the stages
 
-            elif number_of_set_counter < size:
-                number_of_set.append(subset_list[set_num])
-                name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+            if (len(size_list) > 0 and number_of_set_counter > 0 
+                and local_size >= size-number_of_set_counter):
 
-        if (len(size_list) == 0 or number_of_set_counter==0):
-            
-            while local_size >= size:
+                # Saving the size of the generation
+                size_list.append(size-number_of_set_counter) 
+                # Saving the name of the date file and seg used
+                seg_list_2.append(seg_list[i])          
+                # Saving the startint_point of the generation
+                starting_point_list.append(local_starting_point)
+                # Update the the values for the next set
+                local_size-=(size-number_of_set_counter)                     
+                if timeSlides==1:
+                    local_starting_point+=((size-number_of_set_counter)
+                                           *duration)
+                if timeSlides%2 == 0:
+                    local_starting_point+=(ceil((size
+                    -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
+                if timeSlides%2 != 0 and timeSlides !=1 :
+                    local_starting_point+=(ceil((size
+                    -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+
+                number_of_set_counter += (size-number_of_set_counter)
+
+                # If this generation completes the size of a whole set
+                # (with size=size) it changes the labels
+                print(set_num)
+                if number_of_set_counter == size:
+                    number_of_set.append(subset_list[set_num])
+                    if size_list[-1]==size: 
+                        print(set_num)
+                        name_list.append(name+'_'+str(subset_list[set_num]))
+                    else:
+                        name_list.append('part_of_'
+                            +name+'_'+str(subset_list[set_num]))
+                    set_num+=1
+                    number_of_set_counter=0
+                    if set_num >= num_of_sets: break
+
+                elif number_of_set_counter < size:
+                    number_of_set.append(subset_list[set_num])
+                    name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+
+            if (len(size_list) == 0 or number_of_set_counter==0):
+
+                while local_size >= size:
 
 
-                # Generate data with size 10000 with final name of 
-                # 'name_counter'
-                size_list.append(size)
+                    # Generate data with size 10000 with final name of 
+                    # 'name_counter'
+                    size_list.append(size)
+                    seg_list_2.append(seg_list[i])
+                    starting_point_list.append(local_starting_point)
+
+                    #Update the the values for the next set
+                    local_size -= size
+                    if timeSlides==1: local_starting_point+=size*duration
+                    if timeSlides%2 == 0: 
+                        local_starting_point+=(ceil(size/timeSlides
+                                                    /(timeSlides-2))*timeSlides*duration)
+                    if timeSlides%2 != 0 and timeSlides !=1 :
+                        local_starting_point+=(ceil(size/timeSlides
+                                                    /(timeSlides-1))*timeSlides*duration)
+                    number_of_set_counter+=size
+
+                    # If this generation completes the size of a whole set
+                    # (with size=size) it changes the labels
+                    if number_of_set_counter == size:
+                        number_of_set.append(subset_list[set_num])
+                        if size_list[-1]==size: 
+                            name_list.append(name+'_'+str(subset_list[set_num]))
+                        else:
+                            name_list.append('part_of_'
+                                             +name+'_'+str(subset_list[set_num]))
+                        set_num+=1
+                        if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
+                        number_of_set_counter=0
+
+            if (local_size < size and local_size >0 and set_num < num_of_sets):
+                print(local_size, num_of_sets, set_num)
+
+                # Generate data with size 'local_size' with local name to be
+                # fused with later one
+                size_list.append(local_size)
                 seg_list_2.append(seg_list[i])
                 starting_point_list.append(local_starting_point)
 
-                #Update the the values for the next set
-                local_size -= size
-                if timeSlides==1: local_starting_point+=size*duration
-                if timeSlides%2 == 0: 
-                    local_starting_point+=(ceil(size/timeSlides
-                                                /(timeSlides-2))*timeSlides*duration)
-                if timeSlides%2 != 0 and timeSlides !=1 :
-                    local_starting_point+=(ceil(size/timeSlides
-                                                /(timeSlides-1))*timeSlides*duration)
-                number_of_set_counter+=size
+                # Update the the values for the next set
+                number_of_set_counter+=local_size  
 
+                # Saving a value for what is left for the next seg to generate
                 # If this generation completes the size of a whole set
                 # (with size=size) it changes the labels
                 if number_of_set_counter == size:
@@ -1063,50 +1118,22 @@ def auto_FAR(model
                         name_list.append('part_of_'
                                          +name+'_'+str(subset_list[set_num]))
                     set_num+=1
-                    if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
+                    if set_num >= num_of_sets: break
                     number_of_set_counter=0
 
-        if (local_size < size and local_size >0 and set_num < num_of_sets):
-            print(local_size, num_of_sets, set_num)
-            
-            # Generate data with size 'local_size' with local name to be
-            # fused with later one
-            size_list.append(local_size)
-            seg_list_2.append(seg_list[i])
-            starting_point_list.append(local_starting_point)
-
-            # Update the the values for the next set
-            number_of_set_counter+=local_size  
-
-            # Saving a value for what is left for the next seg to generate
-            # If this generation completes the size of a whole set
-            # (with size=size) it changes the labels
-            if number_of_set_counter == size:
-                number_of_set.append(subset_list[set_num])
-                if size_list[-1]==size: 
-                    name_list.append(name+'_'+str(subset_list[set_num]))
-                else:
-                    name_list.append('part_of_'
-                                     +name+'_'+str(subset_list[set_num]))
-                set_num+=1
-                if set_num >= num_of_sets: break
-                number_of_set_counter=0
-
-            elif number_of_set_counter < size:
-                number_of_set.append(subset_list[set_num])
-                name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+                elif number_of_set_counter < size:
+                    number_of_set.append(subset_list[set_num])
+                    name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
 
 
-    d={'segment' : seg_list_2, 'size' : size_list 
-       , 'start_point' : starting_point_list, 'set' : number_of_set
-       , 'name' : name_list}
+        d={'segment' : seg_list_2, 'size' : size_list 
+           , 'start_point' : starting_point_list, 'set' : number_of_set
+           , 'name' : name_list}
 
-    print('These are the details of the data to be used for the false alarm rate test: \n')
-    print(d['segment'][-1], d['size'][-1], d['start_point'][-1] ,d['name'][-1])
-    print(len((d['segment'])), len((d['size'])),len((d['start_point'])) ,len((d['name'])))
-    for i in range(len(d['segment'])):
-        print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
-        
+        print('These are the details of the data to be used for the false alarm rate test: \n')
+        for i in range(len(d['segment'])):
+            print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
+
         
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
     answer = None
@@ -1157,7 +1184,7 @@ def auto_FAR(model
     os.system('mkdir '+path+dir_name)
     print('Creation of temporary directory complete: '+path+dir_name)
     
-    for i in range(len(d['segment'])):
+    for i in range(len(d['size'])):
 
         with open(path+dir_name+'/test_'+d['name'][i]+'_'
             +str(d['size'][i])+'.py','w') as f:
@@ -1167,9 +1194,8 @@ def auto_FAR(model
             pwd=os.getcwd()
             if 'vasileios.skliris' in pwd:
                 f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
-                f.write("sys.path.append('"+date_list_path+"')\n")
 
-            f.write('from mly.datatools.validators import *\n\n')
+            f.write('from mly.validators import *\n\n')
 
             if isinstance(d['set'][i],(float,int)):
                 token_snr = str(d['set'][i])
@@ -1177,21 +1203,36 @@ def auto_FAR(model
                 token_snr = '0'
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
+            if backgroundType=='optimal':
+                
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"model = '"+str(model)+"'\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(d['size'][i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
+                         +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                         +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
 
-            command=( "TEST = Validator.falseAlarmTest(\n"
-                     +24*" "+"model = '"+str(model)+"'\n"
-                     +24*" "+",duration = "+str(duration)+"\n"
-                     +24*" "+",fs = "+str(fs)+"\n"
-                     +24*" "+",size = "+str(d['size'][i])+"\n"
-                     +24*" "+",detectors = "+str(detectors)+"\n"
-                     +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                     +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
-                     +24*" "+",windowSize ="+str(windowSize)+"\n"
-                     +24*" "+",timeSlides ="+str(timeSlides)+"\n"
-                     +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
-                     +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-                     +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
-            
+                
+            else:
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"model = '"+str(model)+"'\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(d['size'][i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",timeSlides ="+str(timeSlides)+"\n"
+                         +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
+                         +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                         +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
+
             f.write(command+'\n\n')
             f.write("print(time.time()-t0)\n")
             f.write("sys.stdout.flush()")
@@ -1200,14 +1241,14 @@ def auto_FAR(model
         f2.write('#!/usr/bin/bash \n\n')
         f2.write("commands=()\n\n")
         
-        for i in range(len(d['segment'])):
+        for i in range(len(d['size'])):
 
             f2.write("commands+=('"+'nohup python '+path+dir_name+'/test_'+d['name'][i]
                 +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_test_'
                 +d['name'][i]+'_'+str(d['size'][i])+'.out &'+"')\n")
             
         f2.write("# Number of processes\n")
-        f2.write("N="+str(len(d['segment']))+"\n\n")
+        f2.write("N="+str(len(d['size']))+"\n\n")
         f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/4))\n")
         f2.write("jobArray=()\n")
         f2.write("countOurActiveJobs(){\n")
@@ -1252,19 +1293,21 @@ def auto_FAR(model
         f3.write('duration: '+str(duration)+'\n')
         f3.write('window: '+str(windowSize)+'\n')
         f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
-
-        for i in range(len(d['segment'])):
-            f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
-                     +' '+str(d['size'][i])+' '
-                     +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
-            
+        
+        if backgroundType != 'optimal':
+            f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
+            for i in range(len(d['size'])):
+                f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
+                         +' '+str(d['size'][i])+' '
+                         +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
+                
     with open(path+dir_name+'/finalise_test.py','w') as f4:
         f4.write("#! /usr/bin/env python3\n")
         pwd=os.getcwd()
         if 'vasileios.skliris' in pwd:
             f4.write("import sys \n")
             f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
-        f4.write("from mly.datatools.validators import *\n")
+        f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+path+dir_name+"')\n")
 
     print('All set. Initiate dataset generation y/n?')

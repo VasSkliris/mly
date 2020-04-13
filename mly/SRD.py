@@ -368,10 +368,12 @@ def SRD(IFO, f):
     #% ---- Display warning message if asking for spectrum at frequencies below
     #%      or above the recommended cut-offs.
     if min(f)<fstop[0]:
-        print('Warning: Requested frequency range extends below minimum frequency of '+str(fstop[0])+' Hz for SRD fit for '+IFO+' detector.')
+        pass
+        #print('Warning: Requested frequency range extends below minimum frequency of '+str(fstop[0])+' Hz for SRD fit for '+IFO+' detector.')
 
     if max(f)>fstop[1]:
-        print('Warning: Requested frequency range extends above maximum frequency of '+str(fstop[1])+' Hz for SRD fit for '+IFO+' detector.')
+        pass
+        #print('Warning: Requested frequency range extends above maximum frequency of '+str(fstop[1])+' Hz for SRD fit for '+IFO+' detector.')
 
 
 

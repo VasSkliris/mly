@@ -71,11 +71,26 @@ def BLWNB(f,df,dt,fs):
     return(x)
 
 
-def envelope(t,q=0.5,t0='default',sig=3):
+def envelope(applicationTime # Time that the envelope will be applied
+             ,fs             # Sample Frequency
+             ,q=0.5          # Weight of the two gaussians creating the envelope
+             ,t0='default'   # Max value time of envelope
+             ,sig=3          # Combined sigma of two gaussians
+             ,duration=None):# Duration of the combined gaussians
     
-    T=t[-1]-t[0]
+
+    # Duration of the signal is smaller that the duration of the envelope
+    if isinstance(duration,(float,int)) and duration < applicationTime :
+        T = duration
+        pad = np.zeros(int((applicationTime-duration)*fs/2))
+    else:    # Envelope time = duration (default)
+        T = applicationTime
+    
+            
+    
+    t=np.arange(0,T,1/fs)
+    
     length=len(t)
-    fs=int(length/T)
     
     if q>=1-1/fs: q=1-1/fs
     if q<=1/fs: q=1/fs
@@ -103,8 +118,13 @@ def envelope(t,q=0.5,t0='default',sig=3):
 
     elif (len(envel)<length):
         envel=np.append(0,envel)
-
-
+        
+        
+    # Envelope time = duration (default)
+    
+    if isinstance(duration,(float,int)) and duration < applicationTime :
+        envel = np.hstack((pad,envel,pad))
+        
     return(envel)
 
 
@@ -162,8 +182,15 @@ def ringdown(f0          # Frequency
 
     return(t,h)
 
-def WNB(param,T,fs,q='gauss',seed=np.random.randint(0,1e3)):#param=[h_rss, fc, df]
-
+def WNB(param,T,fs,q='gauss',seed=np.random.randint(0,1e3),envDuration=None):#param=[h_rss, fc, df]
+    
+    if T*fs-int(T*fs)!=0:
+        raise ValueError("Duration must be a multiple of the sample frequency.")
+    if T<1:
+        secretT=T
+        T=1
+    else:
+        secretT=None
     # ---- Turn off default interpolation.
     #      (Might actually be useful here, but don't want to alter
     #      frequency content of noise by low-pass filtering).
@@ -173,6 +200,7 @@ def WNB(param,T,fs,q='gauss',seed=np.random.randint(0,1e3)):#param=[h_rss, fc, d
     df=param[2]
     
     t=np.arange(0,T,1/fs)
+
 
     # ---- Gaussian-modulated noise burst, white over specified band.
 
@@ -185,18 +213,30 @@ def WNB(param,T,fs,q='gauss',seed=np.random.randint(0,1e3)):#param=[h_rss, fc, d
     #    randn('state',parameters(5));
     #end
 
+    
+#     if len(t)<fs:
+#         dif = fs-len(t)
+#         z0=np.random.randint(dif)+1
+#         z1=dif-z0
+#         t=np.hstack((np.zeros(z0),t,np.zeros(z1)))
+#         T=1
     #% ---- Gaussian-like envelope
     if q=='gauss':
-        env = envelope(t,0.5,t0='defult')
+        env = envelope(T,fs,0.5,t0='default',duration=envDuration)
     elif q=='noenv':
         env = np.ones(len(t))
     elif (isinstance(q,float) or isinstance(q,int)) == True:
-        env = envelope(t,q,t0='defult')
+        env = envelope(T,fs,q,t0='default',duration=envDuration)
+    
+
 
     #% ---- Band-limited noise (independent for each polarization)
     x = BLWNB(max(fc-df,0),2*df,T,fs)
     h = h_rss*env*x
     
+    if secretT!=None:
+        t=t[:int(secretT*fs)]
+        h=h[int(fs*(T-secretT)/2):int(fs*(T+secretT)/2)]
     return(t,h)
 
 
@@ -210,6 +250,7 @@ def chirplet(T,fs
               ,tc='default'
               ,wnb_envelope=True
               ,ENV='single'
+              ,envDuration=None
               ,demo=False):
 
 
@@ -238,14 +279,14 @@ def chirplet(T,fs
         a1=0.2+np.random.rand()*0.8
         a2=0.2+np.random.rand()*0.8
 
-        e1=a1*envelope(t,q=q1,t0='default',sig=sig1)
-        e2=a2*envelope(t,q=q2,t0='default',sig=sig2)
+        e1=a1*envelope(T,fs,q=q1,t0='default',sig=sig1,duration=envDuration)
+        e2=a2*envelope(T,fs,q=q2,t0='default',sig=sig2,duration=envDuration)
 
         env=(wnb+1.5)*(e1+e2)
 
     elif ENV=='single':
         q1=0.1+np.random.rand()*0.8
-        env=(wnb+1.5)*envelope(t,q=q1,t0='default',sig=2.5+np.random.rand()*2)
+        env=(wnb+1.5)*envelope(T,fs,q=q1,t0='default',sig=2.5+np.random.rand()*2,duration=envDuration)
 
     # FREQUENCY FUNCTION
 

@@ -98,7 +98,7 @@ class DataPodBase:
     
     def __init__(self
                  , strain             # The core data (any consistent shape)
-                 , fs                 # Sample frequency
+                 , fs = None          # Sample frequency
                  , gps = None         # GPS time of the data
                  , labels = None      # Labels of any type
                  , detectors = None   # Detectors coresponding to data
@@ -129,15 +129,15 @@ class DataPodBase:
             and not all(len(x)==len(strain[0]) for x in strain)):
             raise IndexError("Some detector strain have different size that "+
                              "the others")
-        # # For one dimentional data, we need to specify the shape differently.   
-        if len(strain.shape) == 1:
-            strain= strain.reshape(1,-1)
             
         # # Strain has to be free from infs and nans
         # ---> If there is an inf or nan in the strain an erros is raised.
         if not np.isfinite(strain).all():
             raise ValueError("There is nan or inf value in the strain")
-        if all(isinstance(x,(float,int)) for x in strain.flatten()):
+        if all(np.isreal(x) for x in strain.flatten()):
+            # # For one dimentional data, we need to specify the shape differently.   
+            if len(strain.shape) == 1:
+                strain= strain.reshape(1,-1)
             self._strain = strain
         else:
             raise TypeError("strain values can only be int or float")
@@ -148,6 +148,7 @@ class DataPodBase:
         
         # # fs has to be a valid number.
         # ---> If fs is not a positive int and error is raised.
+        if fs==None: fs = 1
         if isinstance(fs, int) and fs > 0:
             self._fs = fs 
         else:
@@ -186,7 +187,7 @@ class DataPodBase:
             detectors = d*['U']
         # # If detectors is used, it has to be a list.
         # ---> If it is not an error is raised.
-        if not isinstance(detectors,(list)): raise TypeError(
+        if not isinstance(detectors,(list,str)): raise TypeError(
             "detectors have to be a list of strings"+
             " with at least one the followings as elements: \n"+
             "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
