@@ -274,9 +274,7 @@ class DataPodBase:
         if metadata == None:
             self._metadata = None
         elif isinstance(metadata,dict):
-            if len(metadata.keys())!=0:
-                self._metadata = metadata
-            else: raise ValueError("metadata cannot be an empty dictionary")
+            self._metadata = metadata
         # ---> If not an error is raised.
         else:
             raise TypeError("metadata has to be a dictionary")

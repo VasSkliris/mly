@@ -9,7 +9,7 @@ import copy
 from math import ceil
 
 from .simulateddetectornoise import * 
-from .tools import dirlist, index_combinations
+from .tools import dirlist, index_combinations , fromCategorical, correlate
 from .datatools import DataPod, DataSet
 
 from gwpy.timeseries import TimeSeries
@@ -17,733 +17,637 @@ import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
 
 from keras.models import load_model, Sequential, Model
-
+from pycondor import Job, Dagman
 
 class Validator:
-     
     
+    def accuracy(models
+                       ,duration
+                       ,fs
+                       ,size
+                       ,detectors 
+                       ,injectionFolder = None
+                       ,labels = {'type':'signal'}
+                       ,backgroundType = None
+                       ,injectionSNR = None
+                       ,noiseSourceFile = None  
+                       ,windowSize = None #(32)            
+                       ,timeSlides = None #(1)
+                       ,startingPoint= None #(32)
+                       ,name = None
+                       ,savePath = None
+                       ,single = False  # Making single detector injections as glitch
+                       ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
+                       ,disposition=None
+                       ,maxDuration=None
+                       ,differentSignals=False   # In case we want to put different injection to every detector.
+                       ,extras=None
+                       ,mapping=None):
 
-    def accuracy(model
-                ,duration
-                ,fs
-                ,size
-                ,detectors
-                ,injectionFolder = None
-                ,labels = None
-                ,backgroundType = None
-                ,injectionSNR = None
-                ,noiseSourceFile = None  
-                ,windowSize = None #(32)            
-                ,timeSlides = None #(1)
-                ,startingPoint= None #(32)
-                ,name = None
-                ,column = 1 # Which label accuracy. Binary case is the second column for signals.
-                ,savePath = None 
-                ,single = False  # Making single detector injections as glitch
-                ,injectionCrop = 0): # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration
-                
-        from keras.models import load_model, Sequential, Model
-        
-        fl, fm=20, int(fs/2)#
-      
-        profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
-        
         # ---------------------------------------------------------------------------------------- #    
         # --- model ------------------------------------------------------------------------------ #
-        
-        # check model here
-        if isinstance(model,str):
-            if os.path.isfile(model):    
-                trained_model = load_model(model)
+        # 
+        # This first input has a complicated format in the rare case of trying
+        # to test two models in parallel but with different subset of the data as input.
+        #
+        # Case of one model as it was before
+        if not isinstance(models,list):
+            models=[[models],[None]]
+        # Case where all models have all data to use
+        if isinstance(models,list) and not all(isinstance(m,list) for m in models):
+            models=[models,len(models)*[None]]
+        # Case where index is not given for all models.
+        if len(models[0])!=len(models[1]):
+            raise ValueError('You have to define input index for all maodels')
+        # Case somebody doesn't put the right amount of indexes for the data inputs. 
+
+        if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
+            raise TypeError('models have to be a list of two sublists. '
+                            +'First list has the models and the second has the'
+                            +' indexes of the data each one uses following the order strain, extra1, extra2...'
+                            +'[model1,model2,model3],[[0,1],[0,2],[2]]')
+
+        # models[0] becomes the trained models list
+        trained_models=[]
+        for model in models[0]:  
+            if isinstance(model,str):
+                if os.path.isfile(model):    
+                    trained_models.append(load_model(model))
+                else:
+                    raise FileNotFoundError("No model file in "+model)
             else:
-                raise FileNotFoundError("No model file in "+model)
+                trained_models.append(model) 
+
+        # models[1] becomes the the input inexes of the data 
+        if extras==None:
+            number_of_extras=0
         else:
-            trained_model = model 
+            number_of_extras=len(extras)
+
+        data_inputs_index=[]
+        for index in models[1]:
+            if index==None :
+                data_inputs_index.append([k for k in range(number_of_extras+1)])
+            elif all(j<= number_of_extras for j in index):
+                data_inputs_index.append(index)
+            else:
+                raise TypeError(str(index)+' is not a valid index')
+
 
         # ---------------------------------------------------------------------------------------- #    
-        # --- duration --------------------------------------------------------------------------- #
+        # --- mappings --------------------------------------------------------------------------- #
 
-        if not (isinstance(duration,(float,int)) and duration>0 ):
-            raise ValueError('The duration value has to be a possitive float'
-                +' or integer representing seconds.')
+        # Mappings are a way to make sure the model has the same translation for the
+        # labels as we have. All models trained in mly will have a mapping defined
+        # during the data formating in the model training.
 
-        # ---------------------------------------------------------------------------------------- #    
-        # --- fs - sample frequency -------------------------------------------------------------- #
-
-        if not (isinstance(fs,int) and fs>0):
-            raise ValueError('Sample frequency has to be a positive integer.')
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- detectors -------------------------------------------------------------------------- #
-
-        if isinstance(detectors,(str,list)):
-            for d in detectors:
-                if d not in ['H','L','V','K','I']: 
-                    raise ValueError("detectors have to be a list of strings or a string"+
-                " with at least one the followings as elements: \n"+
-                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-                "\n'U' if you don't want to specify detector")
-        else:
-            raise ValueError("detectors have to be a list of strings or a string"+
-                " with at least one the followings as elements: \n"+
-                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-                "\n'U' if you don't want to specify detector")
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- size ------------------------------------------------------------------------------- #        
-
-        if not (isinstance(size, int) and size > 0):
-            raise ValuError("size must be a possitive integer.")
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- injectionFolder -------------------------------------------------------------------- #
-
-        if injectionFolder == None:
+        if len(trained_models)==1 and isinstance(mapping,dict):
+            mapping=[mapping]
+        elif len(trained_models)!=1 and isinstance(mapping,dict):
+            mapping=len(trained_models)*[mapping]
+        if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
             pass
-        elif isinstance(injectionFolder, str):            
-            if (('/' in injectionFolder) and os.path.isdir(injectionFolder)):
-                injectionFolder_set = injectionFolder.split('/')[-1]
-            elif (('/' not in injectionFolder) and any('injections' in p for p in sys.path)):
-                    for p in sys.path:
-                        if ('injections' in p):
-                            injectionFolder_path = (p.split('injections')[0]+'injections'
-                                +'/'+injectionFolder)
-                            if os.path.isdir(injectionFolder_path):
-                                injectionFolder = injectionFolder_path
-                                injectionFolder_set = injectionFolder.split('/')[-1]
-                            else:
-                                raise FileNotFoundError('No such file or directory:'
-                                                        +injectionFolder_path)
-
-            else:
-                raise FileNotFoundError('No such file or directory:'+injectionFolder) 
         else:
-            raise TypeError("cbcFolder has to be a string indicating a folder "
-                            +"in MLyWorkbench or a full path to a folder")
+            raise TypeError('Mappings have to be a list of dictionaries for each model.')
 
-        # ---------------------------------------------------------------------------------------- #    
-        # --- labels ----------------------------------------------------------------------------- #
+        columns=[]
+        for m in range(len(trained_models)):
+            columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
 
-        if labels == None:
-            labels = {'type' : 'UNDEFINED'}
-        elif not isinstance(labels,dict):
-            raise TypeError(" Labels must be a dictionary.Suggested keys for labels"
-                            +"are the following: \n{ 'type' : ('noise' , 'cbc' , 'signal'"
-                            +" , 'burst' , 'glitch', ...),\n'snr'  : ( any int or float number "
-                            +"bigger than zero),\n'delta': ( Declination for sky localisation,"
-                            +" float [-pi/2,pi/2])\n'ra'   : ( Right ascention for sky "
-                            +"localisation float [0,2pi) )})")
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- backgroundType --------------------------------------------------------------------- #
-
-        if backgroundType == None:
-            backgroundType = 'optimal'
-        elif not (isinstance(backgroundType,str) 
-              and (backgroundType in ['optimal','sudo_real','real'])):
-            raise ValueError("backgroundType is a string that can take values : "
-                            +"'optimal' | 'sudo_real' | 'real'.")
 
         # ---------------------------------------------------------------------------------------- #    
         # --- injectionSNR ----------------------------------------------------------------------- #
-        if injectionFolder == None :
-            raise ValueError("You need to specify source file for the injections")
-        elif (injectionFolder != None and injectionSNR == None ):
-            raise ValueError("If you want to use an injection for generation of"+
-                             "data, you have to specify the SNR you want.")
-        elif injectionFolder != None and (not isinstance(injectionSNR,(tuple,list)) 
-                             and (not all(isinstance(snr,(int,float)) for snr in injectionSNR)) 
-                             and injectionSNR >= 0):
-            raise ValueError("injectionSNR has to be a positive number")
 
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- noiseSourceFile -------------------------------------------------------------------- #
-
-        if (backgroundType == 'sudo_real' or backgroundType =='real'):
-
-            if noiseSourceFile == None:
-                raise TypeError('If you use sudo_real or real noise you need'
-                    +' a real noise file as a source.')
-
-            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
-                    and len(noiseSourceFile)==2 
-                    and all(isinstance(el,str) for el in noiseSourceFile)):
-
-                if '.txt' in noiseSourceFile[1]:
-                    noiseSourceFile[1] = noiseSourceFile[1][:-4]
-
-                path_main=''
-                path_check = False
-
-                if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
-                                +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
-                    path_main = ''
-                    path_check = True
-
-
-                elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
-                    for p in sys.path:
-                        if ('ligo_data' in p):
-                            path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
-                            if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
-                                    +noiseSourceFile[1]+'.txt') for det in detectors):    
-                                path_check = True
-                                break
-                            else:
-                                raise FileNotFoundError("No such file or directory: "+path_main
-                                                        +"/<detector>/"+noiseSourceFile[1]+".txt")
-                if path_check == False:
-                    raise FileNotFoundError(
-                        "No such file or directory: "+noiseSourceFile[0]
-                        +"/<detector>/"+noiseSourceFile[1]+".txt")
-            else:
-                raise TypeError("Noise source file has to be a list of two strings:\n"
-                                +"--> The first is the path to the date folder that include\n "
-                                +"    the data of all the detectors or just the datefile given\n"
-                                +"    that the path is in sys.path.\n\n"
-                                +"--> The second is the file name of the segment to be used.")
-        # ---------------------------------------------------------------------------------------- #    
-        # --- windowSize --(for PSD)-------------------------------------------------------------- #        
-
-        if windowSize == None: windowSize = duration*8
-        if not isinstance(windowSize,int):
-            raise ValueError('windowSize needs to be an integral')
-        if windowSize < duration :
-            raise ValueError('windowSize needs to be bigger than the duration')
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- timeSlides ------------------------------------------------------------------------- #
-
-        if timeSlides == None: timeSlides = 1
-        if not (isinstance(timeSlides, int) and timeSlides >=1) :
-            raise ValueError('timeSlides has to be an integer equal or bigger than 1')
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- startingPoint ---------------------------------------------------------------------- #
-
-        if startingPoint == None : startingPoint = windowSize 
-        if not (isinstance(startingPoint, int) and startingPoint >=0) :
-            raise ValueError('lags has to be an integer')        
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- name ------------------------------------------------------------------------------- #
-
-        if name == None : name = ''
-        if not isinstance(name,str): 
-            raise ValueError('name optional value has to be a string')
-
-        # ---------------------------------------------------------------------------------------- #    
-        # --- savePath -------------------------------------------------------------------- #
-
-        if savePath == None : 
-            pass
-        elif (savePath,str): 
-            if not os.path.isdir(savePath) : 
-                raise FileNotFoundError('No such file or directory:' +savePath)
+        if isinstance(injectionSNR,list): 
+            snrInList=True
+            snrs=injectionSNR
         else:
-            raise TypeError("Destination Path has to be a string valid path")
+            snrInList=False
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- disposition ------------------------------------------------------------------------ #
+
+        if isinstance(disposition,list): 
+            dispositionInList=True
+            dispositions=disposition
+        else:
+            dispositionInList=False
+
+        # ---------------------------------------------------------------------------------------- #    
+        result={}            
+        looper=[]
+        if snrInList==True and dispositionInList==True:
+            raise ValueError('You cannot loop through two values. Do seperate tests')
+        elif snrInList==True and dispositionInList==False:
+            for snr in snrs:
+                looper.append(snr)
+            result['snrs']=[]
+            loopname='snrs'
+        elif snrInList==False and dispositionInList==True:
+            for j in dispositions:
+                looper.append(j)
+            result['dispostions']=[]
+            loopname='dispositions'
+        else:
+            looper.append(injectionSNR)
+            result['snrs']=[]
+            loopname='snrs'
 
 
-            
-            
-            
-        # Making a list of the injection names,
-        # so that we can sample randomly from them
+        for val in looper:
+            if dispositionInList==True:
 
-        injectionFileDict={}
-        noise_segDict={}
-        for det in detectors:
+                disposition=val
+            else: 
+                injectionSNR=val
 
-            if injectionFolder == None:
-                injectionFileDict[det] = None
-            else:
-                injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
-
-        if backgroundType == 'optimal':
-            magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
-            param = magic[fs]
-
-        elif backgroundType in ['sudo_real','real']:
-            param = 1
-            for det in detectors:
-                noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
-                                                       +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-            ind=index_combinations(detectors = detectors
-                               ,lags = timeSlides
-                               ,length = duration
-                               ,fs = fs
-                               ,size = size
-                               ,start_from_sec=startingPoint)
-        
-                    
-        snrs=[]
-        acc=[]
-        error=[]
-        score_f=[]    
-        resultDict={}
-        for snr in injectionSNR: 
-            DATA=DataSet()
-
-            for I in range(size):
-
-                detKeys = list(injectionFileDict.keys())
-
-                if injectionFolder != None:
-                    inj_ind = np.random.randint(0,len(injectionFileDict[detKeys[0]]))
-
-                SNR0_dict={}
-                back_dict={}
-                inj_fft_0_dict={}
-                asd_dict={}
-                PSD_dict={}
-                
-                if single == True: luckyDet = np.random.choice(detKeys)
-                for det in detKeys:
-
-                    if backgroundType == 'optimal':
-
-                        # Creation of the artificial noise.
-                        PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
-                        PSD_dict[det]=PSD
-                        back_dict[det] = X
-                        # Making the noise a TimeSeries
-                        back=TimeSeries(X,sample_rate=fs) 
-                        # Calculating the ASD so tha we can use it for whitening later
-                        asd=back.asd(1,0.5)
-                        asd_dict[det] = asd
-
-
-                    elif backgroundType == 'sudo_real':
-
-                        noise_seg=noise_segDict[det]
-                        # Calling the real noise segments
-                        noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs]  
-                        # Generating the PSD of it
-                        p, f = psd(noise, Fs=fs, NFFT=fs) 
-                        p, f=p[1::],f[1::]
-                        # Feeding the PSD to generate the sudo-real noise.            
-                        PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
-                        PSD_dict[det]=PSD
-                        # Making the noise a TimeSeries
-                        back=TimeSeries(X,sample_rate=fs)
-                        # Calculating the ASD so tha we can use it for whitening later
-                        asd=back.asd(1,0.5)                 
-                        asd_dict[det] = asd
-                        back_dict[det] = back.value
-                    elif backgroundType == 'real':
-
-                        noise_seg=noise_segDict[det]
-                        # Calling the real noise segments
-                        noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
-                        # Calculatint the psd of FFT=1s
-                        p, f = psd(noise, Fs=fs,NFFT=fs)
-                        # Interpolate so that has t*fs values
-                        psd_int=interp1d(f,p)                                     
-                        PSD=psd_int(np.arange(0,fs/2,1/windowSize))
-                        PSD_dict[det]=PSD
-                        # Making the noise a TimeSeries
-                        back=TimeSeries(noise,sample_rate=fs)
-                        back_dict[det] = back
-                        # Calculating the ASD so tha we can use it for whitening later
-                        asd=back.asd(1,0.5)
-                        asd_dict[det] = asd
-
-                    #If this dataset includes injections:            
-                    if injectionFolder != None:
-                        # Calling the templates generated with PyCBC
-                        # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
-                        inj = np.loadtxt(injectionFolder+'/'+det+'/'+injectionFileDict[det][inj_ind])
-                        # Saving the length of the injection
-                        inj_len=len(inj)/fs                
-                        # I put a random offset for all injection so that
-                        # the signal is not always in the same place
-                        if inj_len > duration: inj = inj[int(inj_len-duration)*fs:]
-                        if inj_len < duration: inj = np.hstack((np.zeros(int(fs*(duration-inj_len)/2))
-                                                            , inj
-                                                            , np.zeros(int(fs*(duration-inj_len)/2))))
-
-
-                        if detKeys.index(det) == 0:
-                            disp = np.random.randint(-int(fs*(duration-inj_len)/2) ,int(inj_len*fs/2))                      
-                        if disp >= 0: 
-                            inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)),inj[disp:]
-                                                 ,np.zeros(int(fs*(windowSize-duration)/2)+disp)))   
-                        if disp < 0: 
-                            inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)-disp),inj[:disp]
-                                                 ,np.zeros(int(fs*(windowSize-duration)/2)))) 
-
-
-
-                        # Calculating the one sided fft of the template,                
-                        inj_fft_0=np.fft.fft(inj)
-                        inj_fft_0_dict[det] = inj_fft_0
-                        # we get rid of the DC value and everything above fs/2.
-                        inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) 
-
-                        SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
-                                    *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                    /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
-                        
-                        if single == True:
-                            if det != luckyDet:
-                                SNR0_dict[det] = 0.01 # Making single detector injections as glitch
-                                inj_fft_0_dict[det] = np.zeros(windowSize*fs)
-
-                    else:
-                        SNR0_dict[det] = 0.1 # avoiding future division with zero
-                        inj_fft_0_dict[det] = np.zeros(windowSize*fs)
-
-
-                # Calculation of combined SNR    
-                SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
-
-                # Tuning injection amplitude to the SNR wanted
-                podstrain = []
-                for det in detectors:
-
-                    fft_cal=(snr/SNR0)*inj_fft_0_dict[det]         
-                    inj_cal=np.real(np.fft.ifft(fft_cal*fs))
-                    strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0)
-                    #Whitening final data
-                    podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
-                            -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
-
-                #podLabels={'snr': round(np.sqrt(np.sum(np.asarray(list(SNR_new.values()))**2)))}
-                #labels.update(podLabels)
-                DATA.add(DataPod(strain = podstrain
+            DATA=DataSet.generator(duration = duration
                                    ,fs = fs
-                                   ,labels =  labels
-                                   ,detectors = detKeys
-                                   ,duration = duration)) 
-                
+                                   ,size = size
+                                   ,detectors = detectors
+                                   ,injectionFolder = injectionFolder
+                                   ,labels = labels
+                                   ,backgroundType = backgroundType
+                                   ,injectionSNR = injectionSNR
+                                   ,noiseSourceFile = noiseSourceFile
+                                   ,windowSize = windowSize          
+                                   ,timeSlides = timeSlides
+                                   ,startingPoint = startingPoint
+                                   ,single = single
+                                   ,injectionCrop = injectionCrop
+                                   ,disposition = disposition
+                                   ,maxDuration = maxDuration
+                                   ,differentSignals = differentSignals
+                                   ,extras = extras)
+
+
             random.shuffle(DATA.dataPods)
-            
-            data = DATA.unloadData(shape = (len(DATA),*trained_model.input_shape[1:] ))
-            score= trained_model.predict(data, batch_size=1)[:,column]
-            resultDict[str(snr)]=score.tolist()
-
-            snrs.append(snr)
-            error.append(np.std(resultDict[str(snr)]))
-            acc.append(np.mean(resultDict[str(snr)]))#float(np.around(np.mean(resultDict[str(snr)])*100,1)))
-            score_f.append(resultDict[str(snr)])
 
 
-        snrs=np.array(snrs)
-        acc=np.array(acc)
-        error=np.array(error)
-        score_f=np.array(score_f)
+            result[loopname].append(val)
 
-        result={'snrs':snrs, 'acc': acc, 'error' :error, 'scores':score_f}
-        
-        
-        if savePath != None:
-            if savePath[-1] != '/':
-                savePath = savePath+'/'
+            for m in range(len(trained_models)):
+                dataList=[]
+                input_shape=trained_models[m].input_shape
+                if isinstance(input_shape,tuple): input_shape=[input_shape]
+                for i in data_inputs_index[m]:
+                    if i==0:
+                        dataList.append(DATA.unloadData(shape=input_shape[i]))
+                    else:
+                        dataList.append(DATA.unloadData(extras = extras[i-1]
+                                    ,shape=input_shape[i]))
+                print(data_inputs_index[m])
+                if len(dataList)==1: dataList=dataList[0]
+                scores =  trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
+                
+                if 'scores'+str(m+1) in list(result.keys()):
+                    result['scores'+str(m+1)].append(scores.tolist())
+                else:
+                    result['scores'+str(m+1)]=[scores.tolist()]
+
+
+        if savePath==None:
+            savePath='./'
+
+        if name!=None:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result, output, pickle.HIGHEST_PROTOCOL)
-                
+        
         return(result)
+
     
     
-    
-    
-    
-    
-    
-    
-    def falseAlarmTest(model
+    def falseAlarmTest(models
                        ,duration
                        ,fs
                        ,size
                        ,detectors
+                       ,labels = {'type': 'noise'}
                        ,backgroundType = None
                        ,noiseSourceFile = None  
                        ,windowSize = None #(32)            
                        ,timeSlides = None #(1)
                        ,startingPoint= None #(32)
                        ,name = None
-                       ,savePath = None):       
-
-
-       
-        # Integration limits for the calculation of analytical SNR
-        # These values are very important for the calculation
-
-        fl, fm=20, int(fs/2)#
-      
-        profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
+                       ,savePath = None
+                       ,extras=None
+                       ,mapping=None):    
         
-        # ---------------------------------------------------------------------------------------- #   
+        
+        t0=time.time()
+        # ---------------------------------------------------------------------------------------- #    
         # --- model ------------------------------------------------------------------------------ #
+        # 
+        # This first input has a complicated format in the rare case of trying
+        # to test two models in parallel but with different subset of the data as input.
+        #
+        # Case of one model as it was before
+        if not isinstance(models,list):
+            models=[[models],[None]]
+        # Case where all models have all data to use
+        if isinstance(models,list) and not all(isinstance(m,list) for m in models):
+            models=[models,len(models)*[None]]
+        # Case where index is not given for all models.
+        if len(models[0])!=len(models[1]):
+            raise ValueError('You have to define input index for all maodels')
+        # Case somebody doesn't put the right amount of indexes for the data inputs. 
+
+        if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
+            raise TypeError('models have to be a list of two sublists. '
+                            +'First list has the models and the second has the'
+                            +' indexes of the data each one uses following the order strain, extra1, extra2...'
+                            +'[model1,model2,model3],[[0,1],[0,2],[2]]')
+
+        # models[0] becomes the trained models list
+        trained_models=[]
+        for model in models[0]:  
+            if isinstance(model,str):
+                if os.path.isfile(model):    
+                    trained_models.append(load_model(model))
+                else:
+                    raise FileNotFoundError("No model file in "+model)
+            else:
+                trained_models.append(model) 
+
+        # models[1] becomes the the input inexes of the data 
+        if extras==None:
+            number_of_extras=0
+        else:
+            number_of_extras=len(extras)
+
+        data_inputs_index=[]
+        for index in models[1]:
+            if index==None :
+                data_inputs_index.append([k for k in range(number_of_extras+1)])
+            elif all(j<= number_of_extras for j in index):
+                data_inputs_index.append(index)
+            else:
+                raise TypeError(str(index)+' is not a valid index')
+
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- mappings --------------------------------------------------------------------------- #
+        # 
+        # Mappings are a way to make sure the model has the same translation for the
+        # labels as we have. All models trained in mly will have a mapping defined
+        # during the data formating in the model training.
+
+        if len(trained_models)==1 and isinstance(mapping,dict):
+            mapping=[mapping]
+        elif len(trained_models)!=1 and isinstance(mapping,dict):
+            mapping=len(trained_models)*[mapping]
+        if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
+            pass
+        else:
+            raise TypeError('Mappings have to be a list of dictionaries for each model.')
+
+        columns=[]
+        for m in range(len(trained_models)):
+            columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
+
+        # Using a generator for the data to use for testing
+        DATA=DataSet.generator(duration=duration
+                               ,fs =fs
+                               ,size=size
+                               ,detectors=detectors
+                               ,backgroundType=backgroundType
+                               ,injectionSNR = 0
+                               ,noiseSourceFile =noiseSourceFile
+                               ,windowSize =windowSize       
+                               ,timeSlides =timeSlides
+                               ,startingPoint=startingPoint
+                               ,name =name
+                               ,extras=extras)   
         
-        # check model here
-        if isinstance(model,str):
-            if os.path.isfile(model):    
-                trained_model = load_model(model)
-            else:
-                raise FileNotFoundError("Model file "+model+" was not found.")
-        else:
-            trained_model = model 
+        
+        t1=time.time()
+        print('Time to generation: '+str(t1-t0))
+        result_list=[]
+        scores_collection=[]
 
+        for m in range(len(trained_models)):
+            dataList=[]
+            input_shape=trained_models[m].input_shape
+            if isinstance(input_shape,tuple): input_shape=[input_shape]
+            for i in data_inputs_index[m]:
+                if i==0:
+                    dataList.append(DATA.unloadData(shape=input_shape[i]))
+                elif extras!=None:
+                    dataList.append(DATA.unloadData(extras = extras[i-1]
+                                ,shape=input_shape[i]))
+            if len(dataList)==1: dataList=dataList[0]
+            scores = 1.0 - trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
+
+            scores_collection.append(scores.tolist())
+
+        gps_times=DATA.unloadGPS()
+
+        if len(scores_collection)==1:
+            scores_collection=np.expand_dims(np.array(scores_collection),0)
+        else:
+            scores_collection=np.array(scores_collection)
+        scores_collection=np.transpose(scores_collection)
+
+        print(scores_collection.shape,np.array(gps_times).shape)
+        result=np.hstack((scores_collection,np.array(gps_times)))
+
+        result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
+                                 +list('GPS'+str(det) for det in detectors))
+
+        for m in range(len(trained_models)):
+            if m==0: 
+                result_pd['total']=result_pd['scores'+str(m+1)]
+            else:
+                result_pd['total']=result_pd['total']*result_pd['scores'+str(m+1)]
+
+        result_pd = result_pd.sort_values(by=['total'],ascending = False)
+        
+        t2=time.time()
+        print('Time to generation: '+str(t2-t1))
+        if savePath==None:
+            savePath=='./'
+
+        if name!=None:
+            with open(savePath+name+'.pkl', 'wb') as output:
+                pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
+        
+        t3=time.time()
+        print('Time to save: '+str(t3-t2))
+        return(result_pd)
+
+
+    def glitchTest(models
+                       ,duration
+                       ,fs
+                       ,size
+                       ,glitchSourceFile
+                       ,detectors 
+                       ,labels = {'type':'signal'}
+                       ,backgroundType = None
+                       ,injectionSNR = [0]
+                       ,noiseSourceFile = None  
+                       ,windowSize = None #(32)            
+                       ,timeSlides = None #(1)
+                       ,startingPoint= None #(32)
+                       ,name = None
+                       ,savePath = None
+                       ,single = False  # Making single detector injections as glitch
+                       ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
+                       ,disposition=None
+                       ,maxDuration=None
+                       ,differentSignals=False   # In case we want to put different injection to every detector.
+                       ,extras=None
+                       ,mapping=None
+                       ,substitute=None):
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- model ------------------------------------------------------------------------------ #
+        # 
+        # This first input has a complicated format in the rare case of trying
+        # to test two models in parallel but with different subset of the data as input.
+        #
+        # Case of one model as it was before
+        if not isinstance(models,list):
+            models=[[models],[None]]
+        # Case where all models have all data to use
+        if isinstance(models,list) and not all(isinstance(m,list) for m in models):
+            models=[models,len(models)*[None]]
+        # Case where index is not given for all models.
+        if len(models[0])!=len(models[1]):
+            raise ValueError('You have to define input index for all maodels')
+        # Case somebody doesn't put the right amount of indexes for the data inputs. 
+
+        if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
+            raise TypeError('models have to be a list of two sublists. '
+                            +'First list has the models and the second has the'
+                            +' indexes of the data each one uses following the order strain, extra1, extra2...'
+                            +'[model1,model2,model3],[[0,1],[0,2],[2]]')
+
+        # models[0] becomes the trained models list
+        trained_models=[]
+        for model in models[0]:  
+            if isinstance(model,str):
+                if os.path.isfile(model):    
+                    trained_models.append(load_model(model))
+                else:
+                    raise FileNotFoundError("No model file in "+model)
+            else:
+                trained_models.append(model) 
+
+        # models[1] becomes the the input inexes of the data 
+        if extras==None:
+            number_of_extras=0
+        else:
+            number_of_extras=len(extras)
+
+        data_inputs_index=[]
+        for index in models[1]:
+            if index==None :
+                data_inputs_index.append([k for k in range(number_of_extras+1)])
+            elif all(j<= number_of_extras for j in index):
+                data_inputs_index.append(index)
+            else:
+                raise TypeError(str(index)+' is not a valid index')
+
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- mappings --------------------------------------------------------------------------- #
+
+        # Mappings are a way to make sure the model has the same translation for the
+        # labels as we have. All models trained in mly will have a mapping defined
+        # during the data formating in the model training.
+
+        if len(trained_models)==1 and isinstance(mapping,dict):
+            mapping=[mapping]
+        elif len(trained_models)!=1 and isinstance(mapping,dict):
+            mapping=len(trained_models)*[mapping]
+        if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
+            pass
+        else:
+            raise TypeError('Mappings have to be a list of dictionaries for each model.')
+
+        columns=[]
+        for m in range(len(trained_models)):
+            columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
+
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- injectionSNR ----------------------------------------------------------------------- #
+
+        if isinstance(injectionSNR,list): 
+            snrInList=True
+            snrs=injectionSNR
+        else:
+            snrInList=False
+
+        # ---------------------------------------------------------------------------------------- #    
+        # --- disposition ------------------------------------------------------------------------ #
+
+        if isinstance(disposition,list): 
+            dispositionInList=True
+            dispositions=disposition
+        else:
+            dispositionInList=False
+
+        # ---------------------------------------------------------------------------------------- #    
+
+        if substitute==None:
+            substitute='R1'   
+            subs=np.arange(len(detectors))
             
-        # Labels used in saving file
-        #lab={10:'X', 100:'C', 1000:'M', 10000:'XM',100000:'CM'}  
+        elif substitute in ['R1','R2','R3']:
+            subs=np.arange(len(detectors))
 
-        lab={}
-        if size not in lab:
-            lab[size]=str(size)
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- duration --------------------------------------------------------------------------- #
-
-        if not (isinstance(duration,(float,int)) and duration>0 ):
-            raise ValueError('The duration value has to be a possitive float'
-                +' or integer representing seconds.')
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- fs - sample frequency -------------------------------------------------------------- #
-
-        if not (isinstance(fs,int) and fs>0):
-            raise ValueError('Sample frequency has to be a positive integer.')
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- detectors -------------------------------------------------------------------------- #
-
-        if isinstance(detectors,(str,list)):
-            for d in detectors:
-                if d not in ['H','L','V','K','I']: 
-                    raise ValueError("detectors have to be a list of strings or a string"+
-                " with at least one the followings as elements: \n"+
-                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-                "\n'U' if you don't want to specify detector")
         else:
-            raise ValueError("detectors have to be a list of strings or a string"+
-                " with at least one the followings as elements: \n"+
-                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-                "\n'U' if you don't want to specify detector")
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- size ------------------------------------------------------------------------------- #        
-
-        if not (isinstance(size, int) and size > 0):
-            raise ValuError("size must be a possitive integer.")
-
-
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- backgroundType --------------------------------------------------------------------- #
-
-        if backgroundType == None:
-            backgroundType = 'optimal'
-        elif not (isinstance(backgroundType,str) 
-              and (backgroundType in ['optimal','sudo_real','real'])):
-            raise ValueError("backgroundType is a string that can take values : "
-                            +"'optimal' | 'sudo_real' | 'real'.")
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- noiseSourceFile -------------------------------------------------------------------- #
-
-        if (backgroundType == 'sudo_real' or backgroundType =='real'):
-
-            if noiseSourceFile == None:
-                raise TypeError('If you use sudo_real or real noise you need'
-                    +' a real noise file as a source.')
-
-            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
-                    and len(noiseSourceFile)==2 
-                    and all(isinstance(el,str) for el in noiseSourceFile)):
-
-                if '.txt' in noiseSourceFile[1]:
-                    noiseSourceFile[1] = noiseSourceFile[1][:-4]
-
-                path_main=''
-                path_check = False
-
-                if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
-                                +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
-                    path_main = ''
-                    path_check = True
-
-
-                elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
-                    for p in sys.path:
-                        if ('ligo_data' in p):
-                            path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
-                            if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
-                                    +noiseSourceFile[1]+'.txt') for det in detectors):    
-                                path_check = True
-                                break
-                            else:
-                                raise FileNotFoundError("No such file or directory: "+path_main
-                                                        +"/<detector>/"+noiseSourceFile[1]+".txt")
-                if path_check == False:
-                    raise FileNotFoundError(
-                        "No such file or directory: "+noiseSourceFile[0]
-                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+            if not isinstance(substitute,list):
+                substitute=[substitute]
+            if all((isinstance(sub,int) and sub<len(detectors)) for sub in substitute):
+                pass
+            elif all((isinstance(sub,str) and sub in detectors) for sub in substitute):
+                substitute=list(detectors.index(sub) for sub in substitute)
             else:
-                raise TypeError("Noise source file has to be a list of two strings:\n"
-                                +"--> The first is the path to the date folder that include\n "
-                                +"    the data of all the detectors or just the datefile given\n"
-                                +"    that the path is in sys.path.\n\n"
-                                +"--> The second is the file name of the segment to be used.")
-        # ---------------------------------------------------------------------------------------- #   
-        # --- windowSize --(for PSD)-------------------------------------------------------------- #        
-
-        if windowSize == None: windowSize = 32
-        if not isinstance(windowSize,int):
-            raise ValueError('windowSize needs to be an integral')
-        if windowSize < duration :
-            raise ValueError('windowSize needs to be bigger than the duration')
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- timeSlides ------------------------------------------------------------------------- #
-
-        if timeSlides == None: timeSlides = 1
-        if not (isinstance(timeSlides, int) and timeSlides >=1) :
-            raise ValueError('timeSlides has to be an integer equal or bigger than 1')
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- startingPoint ---------------------------------------------------------------------- #
-
-        if startingPoint == None : startingPoint = windowSize 
-        if not (isinstance(startingPoint, int) and startingPoint >=0) :
-            raise ValueError('lags has to be an integer')        
-
-        # ---------------------------------------------------------------------------------------- #   
-        # --- name ------------------------------------------------------------------------------- #
-
-        if name == None : name = 'untitledFalseAlarmTest'
-        if not isinstance(name,str): 
-            raise ValueError('name optional value has to be a string')
+                raise ValueError(str(substitute)+' is not a valid form for substitution')
 
 
-        # ---------------------------------------------------------------------------------------- #   
-        # --- savePath --------------------------------------------------------------------------- #
-
-        if savePath == None : 
-            savePath = os.getcwd()
-        elif (savePath,str): 
-            if not os.path.isdir(savePath) : 
-                raise FileNotFoundError('No such file or directory:' +savePath)
-        else:
-            raise TypeError("Destination Path has to be a string valid path")
-        if savePath[-1] != '/':
-                savePath = savePath+'/'
-                
-        # ---------------------------------------------------------------------------------------- #   
-
-
-        noise_segDict={}
-
-        if backgroundType == 'optimal':
-            magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
-            param = magic[fs]
-
-        elif backgroundType in ['sudo_real','real']:
-            param = 1
-            for det in detectors:
-                noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
-                                                       +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-            ind=index_combinations(detectors = detectors
-                               ,lags = timeSlides
-                               ,length = duration
+        DATA=DataSet.generator(duration = duration
                                ,fs = fs
                                ,size = size
-                               ,start_from_sec=startingPoint)
-
-            gps0 = int(noiseSourceFile[1].split('_')[1])
+                               ,detectors = detectors
+                               #,injectionFolder = injectionFolder
+                               ,labels = labels
+                               ,backgroundType = backgroundType
+                               ,injectionSNR = 0
+                               ,noiseSourceFile = noiseSourceFile
+                               ,windowSize = windowSize          
+                               ,timeSlides = timeSlides
+                               ,startingPoint = startingPoint
+                               ,single = single
+                               ,injectionCrop = injectionCrop
+                               ,disposition = disposition
+                               ,maxDuration = maxDuration
+                               ,differentSignals = differentSignals
+                               ,extras = extras)
         
-            
-        result_list=[]
-        for I in range(size):
-        
-            back_dict={}
-            asd_dict={}
-            gps_dict = {}
-            for det in list(detectors):
+        random.shuffle(DATA.dataPods)
 
-                if backgroundType == 'optimal':
-
-                    # Creation of the artificial noise.
-                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
-                    back_dict[det] = X
-                    # Making the noise a TimeSeries
-                    back=TimeSeries(X,sample_rate=fs) 
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asd=back.asd(1,0.5)
-                    asd_dict[det] = asd
-                    gps_dict[det] = 0.0
-
-
-                elif backgroundType == 'sudo_real':
-
-                    noise_seg=noise_segDict[det]
-                    # Calling the real noise segments
-                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs]  
-                    # Generating the PSD of it
-                    p, f = psd(noise, Fs=fs, NFFT=fs) 
-                    p, f=p[1::],f[1::]
-                    # Feeding the PSD to generate the sudo-real noise.            
-                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
-                    # Making the noise a TimeSeries
-                    back=TimeSeries(X,sample_rate=fs)
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asd=back.asd(1,0.5)                 
-                    asd_dict[det] = asd
-                    gps_dict[det] = gps0+ind[det][I]/fs
-                    back_dict[det] = back.value
-                elif backgroundType == 'real':
-
-                    noise_seg=noise_segDict[det]
-                    # Calling the real noise segments
-                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
-                    # Calculatint the psd of FFT=1s
-                    p, f = psd(noise, Fs=fs,NFFT=fs)
-                    # Interpolate so that has t*fs values
-                    psd_int=interp1d(f,p)                                     
-                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
-                    # Making the noise a TimeSeries
-                    back=TimeSeries(noise,sample_rate=fs)
-                    back_dict[det] = back
-                    # Calculating the ASD so tha we can use it for whitening later
-                    asd=back.asd(1,0.5)
-                    asd_dict[det] = asd
-                    gps_dict[det] = gps0+ind[det][I]/fs
-
+        if os.path.isfile(glitchSourceFile+'index.pkl'):
+            with open(glitchSourceFile+'index.pkl','rb') as handle:
+                gl= pickle.load(handle)  
                 
-            # Tuning injection amplitude to the SNR wanted
-            podstrain = []
-            for det in detectors:
+            _columns=['chisq', 'chisqDof', 'confidence','imgUrl','Q-value','imgUrl','id']
+            for col in _columns:
+                try:
+                    gl=gl.drop(columns=col)
+                except:
+                    pass
 
-                strain=TimeSeries(back_dict[det] ,sample_rate=fs,t0=0)
-                #Whitening final data
-                podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
-                        -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
+            glitch_list={'H': gl[gl['ifo']=='H1']['filename'].tolist(),
+                         'L': gl[gl['ifo']=='L1']['filename'].tolist(),
+                         'V': gl[gl['ifo']=='V1']['filename'].tolist()}
 
-            podstrain= np.transpose(np.array([podstrain]),(0,2,1))
-            score = trained_model.predict(podstrain, batch_size=1)[0][1]
-            result_list.append([score]+list(gps_dict[det] for det in detectors))
+            random.shuffle(glitch_list['H'])
+            random.shuffle(glitch_list['L'])
+            random.shuffle(glitch_list['V'])
             
-            print("Test number "+str(I)+" finished with score: "+str(score))
+            frames={}
+            if substitute in ['R1','R2','R3']:
+                for n in range(int(substitute[1])):
+                    frames[n]=gl.iloc[:0]
+            else:
+                for n in range(len(substitute)):
+                    frames[n]=gl.iloc[:0]
+
+        else:
+            result=pd.DataFrame([])    
+            glitch_list={'H': dirlist(glitchSourceFile,exclude=['.pkl']),
+                         'L': dirlist(glitchSourceFile,exclude=['.pkl']),
+                         'V': dirlist(glitchSourceFile,exclude=['.pkl'])}
+
+        filenames={}
+
+        for d in DATA.dataPods:
+            if substitute in ['R1','R2','R3']:
+                np.random.shuffle(subs)
+
+                _subs=subs[:int(substitute[1])].tolist()
+            else:
+                _subs=substitute
+                
+                
+            for n in range(len(_subs)):
+                if os.path.isfile(glitchSourceFile+'index.pkl'):
+                    g_index=int(np.random.randint(0,len(glitch_list[detectors[_subs[n]]]),1))
+                    frames[n]=frames[n].append(gl[gl['filename']==glitch_list[detectors[_subs[n]]][g_index]])
+                    glitch=np.loadtxt(glitchSourceFile+glitch_list[detectors[_subs[n]]][g_index])
+                else:
+                    g_index=np.random.randint(0,len(glitch_list[detectors[_subs[n]]]))
+                    glitch=np.loadtxt(glitchSourceFile+glitch_list[detectors[_subs[n]]][g_index])
+                    if detectors[_subs[n]] in list(filenames.keys()):
+                        filenames[detectors[_subs[n]]]=[glitch_list[detectors[_subs[n]]][g_index]]
+                    else:
+                        filenames[detectors[_subs[n]]].append(glitch_list[detectors[_subs[n]]][g_index])
+                d._strain[_subs[n]]=glitch
+
+            podCorrelations=[]
+            for i in np.arange(len(d.detectors)):
+                for j in np.arange(i+1,len(d.detectors)):
+                    window= int((2*6371/300000)*fs)+1
+                    podCorrelations.append(correlate(d.strain[i],d.strain[j],window))  
+            d.metadata['correlation']=np.array(podCorrelations)
             
-        result_pd = pd.DataFrame(np.array(result_list),columns = ['SCORE']+list('GPS'+det for det in detectors))
-        result_pd = result_pd.sort_values(by=['SCORE'],ascending = False)
-        
-        with open(savePath+name+'.pkl', 'wb') as output:
-            pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
+        if os.path.isfile(glitchSourceFile+'index.pkl'):
+            for n in list(frames.keys()):
+                frames[n].columns=list(c+'_'+str(n) for c in frames[n].columns.tolist())
+                frames[n].reset_index(drop=True, inplace=True)
+            result=pd.concat(list(frames[n] for n in list(frames.keys())), axis=1)
+            newcolumns=result.columns.tolist()
+            index=np.arange(len(newcolumns)).tolist()
+            order=['GPStime','filename','bandwidth','centralFreq'
+                   ,'peakFreq','amplitude','label','maxFreq'
+                   ,'label','duration','ifo','duration','snr']
+            rearanged=[]
+            for o in order:
+                rearanged+=list(o+'_'+str(n) for n in range(len(frames.keys())))
 
-        return result_pd
+            for col in rearanged:
+                try:
+                    newcolumns.append(newcolumns.pop(newcolumns.index(col)))
+                except:
+                    pass
+            result=result[newcolumns]
+            result['snr']=np.sqrt(sum(list(result['snr_'+str(n)]**2 for n in list(frames.keys()))))
+        else:
+            for det in list(filenames.keys()):
+                result['filename_'+det]=filenames[det]
+
+        for m in range(len(trained_models)):
+            dataList=[]
+            input_shape=trained_models[m].input_shape
+            if isinstance(input_shape,tuple): input_shape=[input_shape]
+            for i in data_inputs_index[m]:
+                if i==0:
+                    dataList.append(DATA.unloadData(shape=input_shape[i]))
+                else:
+                    dataList.append(DATA.unloadData(extras = extras[i-1]
+                                ,shape=input_shape[i]))
+            print(data_inputs_index[m])
+            if len(dataList)==1: dataList=dataList[0]
+            scores =  trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
+            result['scores'+str(m+1)]=scores.tolist()
+
+        if savePath==None:
+            savePath='./'
 
 
-    
-    
-    
-    
+        if name!=None:
+            result.to_pickle(savePath+name+'.pkl')
+        else:
+            return(result)
+
+
+
+
+
 
 def auto_FAR(model
              ,duration 
@@ -756,19 +660,21 @@ def auto_FAR(model
              ,timeSlides = None #(1)
              ,startingPoint = None
              ,name = None
-             ,savePath = None):
+             ,savePath = None
+             ,extras=None
+             ,mapping=None):
 
     
-    # ---------------------------------------------------------------------------------------- #    
-    # --- model ------------------------------------------------------------------------------ #
+#     # ---------------------------------------------------------------------------------------- #    
+#     # --- model ------------------------------------------------------------------------------ #
         
-    if isinstance(model,str) and os.path.isfile(model):
-        if model[:5]!='/home':
-            cwd = os.getcwd()
-            model = cwd+'/'+model
-        trained_model = load_model(model)
-    else:
-        raise FileNotFoundError("Model file "+model+" was not found.")
+#     if isinstance(model,str) and os.path.isfile(model):
+#         if model[:5]!='/home':
+#             cwd = os.getcwd()
+#             model = cwd+'/'+model
+#         trained_model = load_model(model)
+#     else:
+#         raise FileNotFoundError("Model file "+model+" was not found.")
         
 
     # ---------------------------------------------------------------------------------------- #
@@ -1182,12 +1088,22 @@ def auto_FAR(model
             
     print('Initiating procedure ...')
     os.system('mkdir '+path+dir_name)
-    print('Creation of temporary directory complete: '+path+dir_name)
     
+    error = path+dir_name+'/condor/error'
+    output = path+dir_name+'/condor/output'
+    log = path+dir_name+'/condor/log'
+    submit = path+dir_name+'/condor/submit'
+
+    dagman = Dagman(name='falsAlarmDagman',
+            submit=submit)
+    job_list=[]
+    
+    print('Creation of temporary directory complete: '+path+dir_name)
+
     for i in range(len(d['size'])):
 
         with open(path+dir_name+'/test_'+d['name'][i]+'_'
-            +str(d['size'][i])+'.py','w') as f:
+            +str(d['size'][i])+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             #This path is used only for me to test it
@@ -1206,7 +1122,7 @@ def auto_FAR(model
             if backgroundType=='optimal':
                 
                 command=( "TEST = Validator.falseAlarmTest(\n"
-                         +24*" "+"model = '"+str(model)+"'\n"
+                         +24*" "+"models = "+str(model)+"\n"
                          +24*" "+",duration = "+str(duration)+"\n"
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
@@ -1215,79 +1131,50 @@ def auto_FAR(model
                          +24*" "+",windowSize ="+str(windowSize)+"\n"
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-                         +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
+                         +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
+                         +24*" "+",extras ="+str(extras)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+")\n")
+                                                
 
                 
             else:
+                #f.write("sys.path.append('"+date_list_path+"/')\n")
+
                 command=( "TEST = Validator.falseAlarmTest(\n"
-                         +24*" "+"model = '"+str(model)+"'\n"
+                         +24*" "+"models = "+str(model)+"\n"
                          +24*" "+",duration = "+str(duration)+"\n"
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                         +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
+                         +24*" "+",noiseSourceFile = ['"+date_list_path+"/"+str(d['segment'][i])[2:]+"\n"
                          +24*" "+",windowSize ="+str(windowSize)+"\n"
                          +24*" "+",timeSlides ="+str(timeSlides)+"\n"
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-                         +24*" "+",savePath ='"+savePath+dir_name+"/')\n")
+                         +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
+                         +24*" "+",extras ="+str(extras)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+")\n")
 
+                                                
             f.write(command+'\n\n')
             f.write("print(time.time()-t0)\n")
-            f.write("sys.stdout.flush()")
-    with open(path+dir_name+'/auto_far.sh','w') as f2:
-
-        f2.write('#!/usr/bin/bash \n\n')
-        f2.write("commands=()\n\n")
         
-        for i in range(len(d['size'])):
+        os.system('chmod 777 '+path+dir_name+'/test_'+d['name'][i]+'_'+str(d['size'][i])+'.py')
+        job = Job(name='partOfGeneratio_'+str(i)
+               ,executable=path+dir_name+'/test_'+d['name'][i]+'_'+str(d['size'][i])+'.py'
+               ,submit=submit
+               ,error=error
+               ,output=output
+               ,log=log
+               ,getenv=True
+               ,dag=dagman
+               ,extra_lines=["accounting_group_user=vasileios.skliris"
+                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
 
-            f2.write("commands+=('"+'nohup python '+path+dir_name+'/test_'+d['name'][i]
-                +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_test_'
-                +d['name'][i]+'_'+str(d['size'][i])+'.out &'+"')\n")
-            
-        f2.write("# Number of processes\n")
-        f2.write("N="+str(len(d['size']))+"\n\n")
-        f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/4))\n")
-        f2.write("jobArray=()\n")
-        f2.write("countOurActiveJobs(){\n")
-        f2.write("    activeid=$(pgrep -u $USER)\n")
-        f2.write("    jobsN=0\n")
-        f2.write("    for i in ${jobArray[*]}; do  \n")
-        f2.write("        for j in ${activeid[*]}; do  \n")     
-        f2.write("            if [ $i = $j ]; then\n")
-        f2.write("                jobsN=$(($jobsN+1))\n")
-        f2.write("            fi\n")
-        f2.write("        done\n")
-        f2.write("    done\n")
-        f2.write("}\n\n")
-        f2.write("eval ProcessList=({1..$N})\n")
-        f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
-        f2.write("do\n")
-        f2.write("    countOurActiveJobs\n")
-        f2.write("    echo \"Number of jobs running: $jobsN\"\n")
-        f2.write("    while [ $jobsN -ge $ProcessLimit ]\n")
-        f2.write("    do\n")
-        f2.write("        echo \"Waiting for space\"\n")
-        f2.write("        sleep 10\n")
-        f2.write("        countOurActiveJobs\n")
-        f2.write("    done\n")
-        f2.write("    eval ${commands[$k]}\n")
-        f2.write("    jobArray+=$(echo \"$! \")\n")
-        f2.write("done\n\n")
-        
-        f2.write("countOurActiveJobs\n")
-        f2.write("while [ $jobsN != 0 ]\n")
-        f2.write("do\n")
-        f2.write("    echo \"Genrating... \"\n")
-        f2.write("    sleep 60\n")
-        f2.write("    countOurActiveJobs\n")
-        f2.write("done\n")
-        f2.write("nohup python "+path+dir_name+"/finalise_test.py > "
-                 +path+dir_name+"/finalise_test.out")
+        job_list.append(job)
 
-    with open(path+dir_name+'/'+name+'_info.txt','w') as f3:
+    with open(path+dir_name+'/'+name+'_info.txt','w+') as f3:
         f3.write('INFO ABOUT TEST DATA \n\n')
         f3.write('fs: '+str(fs)+'\n')
         f3.write('duration: '+str(duration)+'\n')
@@ -1301,7 +1188,7 @@ def auto_FAR(model
                          +' '+str(d['size'][i])+' '
                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
                 
-    with open(path+dir_name+'/finalise_test.py','w') as f4:
+    with open(path+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
         pwd=os.getcwd()
         if 'vasileios.skliris' in pwd:
@@ -1309,13 +1196,31 @@ def auto_FAR(model
             f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+path+dir_name+"')\n")
+        
+    os.system('chmod 777 '+path+dir_name+'/finalise_test.py')
+    final_job = Job(name='finishing'
+               ,executable=path+dir_name+'/finalise_test.py'
+               ,submit=submit
+               ,error=error
+               ,output=output
+               ,log=log
+               ,getenv=True
+               ,dag=dagman
+               ,extra_lines=["accounting_group_user=vasileios.skliris"
+                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+    
+    final_job.add_parents(job_list)
 
     print('All set. Initiate dataset generation y/n?')
     answer4=input()
 
     if answer4 in ['yes','y','YES','Yes','Y']:
-        os.system('nohup sh '+path+dir_name+'/auto_far.sh > '+path+dir_name+'/auto_far.out &')
+        print('Creating Job queue')
+        
+        dagman.build_submit()
+
         return
+    
     else:
         print('Data generation canceled')
         os.system('cd')
@@ -1324,12 +1229,13 @@ def auto_FAR(model
 
 
     
-def finalise_far(path):
+
+    
+def finalise_far(path,generation=True):
     
     if path[-1]!='/': path=path+'/' # making sure path is right
     files=dirlist(path)             # making a list of files in that path 
     merging_flag=False              # The flag that makes the fusion to happen
-
     print('Running diagnostics for file: '+path+'  ... \n') 
     pyScripts=[]
     farTests=[]
@@ -1360,7 +1266,19 @@ def finalise_far(path):
                 failed_pyScripts.append(pyScripts[i])
                 
                 
-    if merging_flag==False:
+    if merging_flag==False and generation==False:
+    
+        with open(path+'/'+'flag_file.sh','w+') as f2:
+             f2.write('#!/usr/bin/bash +x\n\n')
+        print(path)
+        error = path+'condor/error'
+        output = path+'condor/output'
+        log = path+'condor/log'
+        submit = path+'condor/submit'
+
+        repeat_dagman = Dagman(name='repeat_falsAlarmDagman',
+                submit=submit)
+        repeat_job_list=[]
         
         if os.path.isfile(path+'/'+'auto_far_redo.sh'):
             print("\nThe following scripts failed to run trough:\n")
@@ -1368,57 +1286,40 @@ def finalise_far(path):
                 print(failed_pyScript+"\n")
         else:
             with open(path+'/'+'auto_far_redo.sh','w') as f2:
-
                 f2.write('#!/usr/bin/bash +x\n\n')
-                f2.write("commands=()\n\n")
+                f2.write("echo Some parts haven't been generated")
 
-                for script in failed_pyScripts:
+            for script in failed_pyScripts:
+                    
+                repeat_job = Job(name='partOfGeneratio_'+str(i)
+                           ,executable=path+script
+                           ,submit=submit
+                           ,error=error
+                           ,output=output
+                           ,log=log
+                           ,getenv=True
+                           ,dag=repeat_dagman
+                           ,extra_lines=["accounting_group_user=vasileios.skliris"
+                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
 
-                    f2.write("commands+=('"+'nohup python '+path+script
-                             +' > '+path+'out_'+script[:-3]+'.out &'+"')\n")
+                repeat_job_list.append(repeat_job)
 
-                f2.write("# Number of processes\n")
-                f2.write("N="+str(len(failed_pyScripts))+"\n\n")
-                f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/4))\n")
-                f2.write("jobArray=()\n")
-                f2.write("countOurActiveJobs(){\n")
-                f2.write("    activeid=$(pgrep -u $USER)\n")
-                f2.write("    jobsN=0\n")
-                f2.write("    for i in ${jobArray[*]}; do  \n")
-                f2.write("        for j in ${activeid[*]}; do  \n")     
-                f2.write("            if [ $i = $j ]; then\n")
-                f2.write("                jobsN=$(($jobsN+1))\n")
-                f2.write("            fi\n")
-                f2.write("        done\n")
-                f2.write("    done\n")
-                f2.write("}\n\n")
-                f2.write("eval ProcessList=({1..$N})\n")
-                f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
-                f2.write("do\n")
-                f2.write("    countOurActiveJobs\n")
-                f2.write("    echo \"Number of jobs running: $jobsN\"\n")
-                f2.write("    while [ jobsN -ge ProcessLimit ]\n")
-                f2.write("    do\n")
-                f2.write("        echo \"Waiting for space\"\n")
-                f2.write("        sleep 10\n")
-                f2.write("        countOurActiveJobs\n")
-                f2.write("    done\n")
-                f2.write("    eval ${commands[$k]}\n")
-                f2.write("    jobArray+=$(echo \"$! \")\n")
-                f2.write("done\n\n")
+               
+        repeat_final_job = Job(name='repeat_finishing'
+                           ,executable=path+'finalise_test.py'
+                           ,submit=submit
+                           ,error=error
+                           ,output=output
+                           ,log=log
+                           ,getenv=True
+                           ,dag=repeat_dagman
+                           ,extra_lines=["accounting_group_user=vasileios.skliris"
+                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
 
-                f2.write("countOurActiveJobs\n")
-                f2.write("while [ $jobsN != 0 ]\n")
-                f2.write("do\n")
-                f2.write("    echo \"Genrating... \"\n")
-                f2.write("    sleep 60\n")
-                f2.write("    countOurActiveJobs\n")
-                f2.write("done\n")
-                f2.write("nohup python "+path+"finalise_test.py > "+path+"finalise_test.out")
-
-            os.system('nohup sh '+path+'auto_far_redo.sh > '+path+'auto_far_redo.out &')
-            
-
+        repeat_final_job.add_parents(repeat_job_list)
+        
+        repeat_dagman.build_submit()
+        
     if merging_flag==True:
         
         setNames=[]
@@ -1438,7 +1339,7 @@ def finalise_far(path):
                 finaltest = finaltest.append(part_of_test)
                 print(k)
 
-        finaltest = finaltest.sort_values(by=['SCORE'],ascending = False)
+        finaltest = finaltest.sort_values(by=['total'],ascending = False)
         with open(path+'FAR_TEST.pkl', 'wb') as output:
             pickle.dump(finaltest, output, pickle.HIGHEST_PROTOCOL)
                 
@@ -1448,4 +1349,9 @@ def finalise_far(path):
             if (('.out' in file) or ('.py' in file)
                 or ('part_of' in file) or ('.sh' in file) or ('10000' in file)):
                 os.system('rm '+path+file)
+  
+    
+    
 
+    
+    
