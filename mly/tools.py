@@ -4,7 +4,7 @@ from math import ceil
 from gwpy.timeseries import TimeSeries
 from gwpy.io.kerberos import kinit
 from gwpy.segments import DataQualityFlag
-from gwpy.segments import Segment
+from gwpy.segments import Segment,SegmentList
 from gwpy.time import to_gps
 from gwpy.time import from_gps
 from dqsegdb2.query import query_segments
@@ -166,9 +166,274 @@ def correlate(x,y,window):
 
 
 
-
-
 def get_ligo_noise(days
+                   , fs=1024 
+                   , detectors='HLV' 
+                   , destinationPath=None 
+                   , minDuration=None
+                   , key=None):
+    
+    """This functions will download all the strain ligo data that coincide 
+    between all detectors specified for the desired days. Furthermore it will
+    downsample them to the specfied sample frequency (fs). More specifically,
+    for a given day it will create a directory at the destinationPath, this 
+    directory will have a short version of the date as a name ex. 12 August 2017 
+    --> 20170812. Inside this directory, a directory for each detector will be created.
+    For every day the function checks when these channels H1:DMT-ANALYSIS_READY:1
+    , L1:DMT-ANALYSIS_READY:1, V': 'V1:ITF_SCIENCE:1' or some of these chennels given
+    the detectors option. The segments that are overlapping are downloaded (SEG#). Additionally 
+    all segments are checked for zero gaps and in that case the are fragmenteted even
+    more with a letter as an indicatior(SEG0 --> SEG0, SEG0b). Finally for every segment
+    the beggining gps time and the duration of the segment in seconds is writen on the name 
+    creating files like SEG0c_122345678_5555.txt which have the same name at all 
+    detector directories.
+
+    Arguments
+    ---------
+    
+    days: list of strings
+        This argument is a list of days of which data we want to download. 
+        Days must be in the date format ex: ['13 July 2017', ... ]
+        
+    fs: int
+        The sample frequency of the final data. If not specified it set to 1024.
+    
+    detectors: string/list of strings 
+        The detectors that we care to have overlaping times. If not specified
+        all detectors ('HLV') option is set.
+    
+    destinationPath: string/ path (optional)
+        The desired path for the data to be structured. If not specified it is
+        set to the current directory.
+    
+    minDuration: int (optional)
+        The minimum duration of segments we want. Sometimes for example having
+        a segment of 3 seconds might create problems. If not specified it is set
+        to 128.
+    
+    key: str path (optional)
+        If you need permision to download the data you can use a kerberos key.
+        If needed specify the path to the key here.
+    
+    Notes
+    -----
+    
+    This function downloads the following frametypes{'H': 'H1_HOFT_C00'
+    ,'L': 'L1_HOFT_C00','V': 'V1Online'}
+    """
+    
+    if isinstance(days,str): days = [days]
+    if not all(isinstance(d,str) for d in days): 
+        raise ValueError('Days must be in the date format ex: 13 July 2017')
+        
+    if not (isinstance(fs,int) and fs%2==0):
+        raise ValueError('Sample frequency must be a valid number miltpiple of 2')
+        
+    if not ((isinstance(detectors,str) and (det in 'HLV' for det in detectors))
+             or (isinstance(detectors,list)) and (det in 'HLV' for det in detectors)):
+        raise ValueError("Detectors can be any collection of 'H','L','V' in string or list format")
+        
+    if destinationPath==None:
+        destinationPath='./'
+        
+    if minDuration==None:
+        minDuration = 128
+        
+    if isinstance(key,str):
+        kinit(keytab = key)
+        
+    for day in days:
+        
+        
+        gps_start = to_gps(day)
+        gps_end = gps_start+24*3600     
+        GPS = [gps_start, gps_end]
+        
+        # Looking for segments that data exists
+
+        det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
+                           ,'L': 'L1:DMT-ANALYSIS_READY:1'
+                           ,'V': 'V1:ITF_SCIENCE:1'}
+        det_segs=[]
+        for det in detectors:
+            det_segs.append(query_segments(det_seg_channels[det], GPS[0],GPS[1]))
+
+        # Finding the time segments where all detectors are on observing mode.
+        
+        sim_seg = det_segs[0]['active']
+        for seg in det_segs[1:]:
+            sim_seg = sim_seg & seg['active']
+
+        if not sim_seg==[]:
+
+            seg_time=[]      
+            sim_time_total=0 
+            seg_no=0         
+
+            maxseg=10000 # We don't want huge segments
+            for seg in sim_seg:
+                if seg[1]-seg[0] >maxseg:
+                    for r in range(int((seg[1]-seg[0])//maxseg)):
+                        seg_time.append([seg[0]+r*maxseg,seg[0]+(r+1)*maxseg])
+                        sim_time_total+=maxseg
+                        seg_no+=1
+                    seg_time.append([seg[0]+maxseg*((seg[1]-seg[0])//maxseg),seg[1]])
+                    sim_time_total+=(seg[1]-(seg[0]+maxseg*((seg[1]-seg[0])//maxseg)))
+                    seg_no+=1
+                elif seg[1]-seg[0] < minDuration:
+                    continue
+                else:
+                    seg_time.append([seg[0],seg[1]])
+                    sim_time_total+=(seg[1]-seg[0])
+                    seg_no+=1
+            print('There are '+str(seg_no)
+                  +' segments of simultaneous GPS time, with total duration of \n'
+                  +str(sim_time_total)+' seconds  =  '+str(sim_time_total/3600)+' hours')
+            print('More specifically:')
+            for i in range(0,len(seg_time)):
+                print('Segment No:'+str(i)+' Time: '+str(seg_time[i][0])
+                      +' to '+str(seg_time[i][1])+' Duration: '+str(seg_time[i][1]-seg_time[i][0]))    
+
+            # Creating director name acording to date
+
+            year=str(from_gps(gps_start).year)
+            month=str(from_gps(gps_start).month)
+            day_=str(from_gps(gps_start).day)
+
+            if len(month)==1: month='0'+month
+            if len(day_)==1: day_='0'+day_
+
+            filename = year + month + day_
+
+            if os.path.isdir(destinationPath+filename):
+                pass
+                # avoiding overighting
+                #raise NameError('Directory '+filename+' already exists')
+            else:
+                os.mkdir(destinationPath+filename)
+                for det in detectors:
+                    os.mkdir(destinationPath+filename+'/'+det)
+            print('File '+destinationPath+filename+' has been created.')
+
+
+            # Getting the data and saving them downsampled to the desired sample frequency
+
+            det_channels = {'H': 'H1:GDS-CALIB_STRAIN'
+                           ,'L': 'L1:GDS-CALIB_STRAIN'
+                           ,'V': 'V1:Hrec_hoft_16384Hz'}
+            det_frametypes = {'H': 'H1_HOFT_C00'
+                             ,'L': 'L1_HOFT_C00'
+                             ,'V': 'V1Online'}
+            for segment in range(seg_no):
+
+                gpsStart = seg_time[segment][0]
+                gpsEnd   = seg_time[segment][1]
+                data_dict={}
+                nameref_dict={}
+                if gpsEnd-gpsStart >= minDuration:
+                    
+                    for det in detectors:
+
+                        try:
+                            data=TimeSeries.get( det_channels[det]
+                                                 , gpsStart
+                                                 , gpsEnd
+                                                 , frametype = det_frametypes[det]
+                                                 , verbose=True).astype('float64')
+                        except: # using the kerberos key if permition is expired
+                            if isinstance(key,str):
+                                os.system("ligo-proxy-init -k")
+                                try:
+                                    data=TimeSeries.get( det_channels[det]
+                                                         , gpsStart
+                                                         , gpsEnd
+                                                         , frametype = det_frametypes[det]
+                                                         , verbose=True).astype('float64')
+                                except:
+                                    break
+                                    
+                            else:
+                                break
+                                
+                        data_dict[det]=data.resample(fs) # resampling the data
+                        nameref_dict[det] = str('SEG'+str(segment)+'_'+str(int(gpsStart))
+                                      +'_'+str(int(gpsEnd-gpsStart))+'s.txt')
+                        
+                    # In case one of the detectors fails to give data we ignore the segment.
+                    if len(detectors)!=len(list(data_dict.keys())): continue
+
+                    # Checking for zeros is a complicated procedure.
+                    # We check every second insted of each element to make it faster.
+                    intervalList=[]
+                    for det in detectors:
+                        strain=data_dict[det][::fs]
+                        non_zero_indexes=np.where(strain != 0)[0]
+                        # The intervals are the intervals with non zero data.
+                        intervals=SegmentList([])
+                        interval=[]
+                        if strain[0]!=0 : interval.append(0)
+                        for i in range(1,len(strain)):
+                            if (strain[i]==0 and strain[i-1]!=0 and len(interval)==1):
+                                if (i-1-interval[0])>=128:
+                                    interval.append(i-1)
+                                    print(interval)
+                                    intervals.append(Segment((np.array(interval)*fs).tolist()))
+                                    interval=[]
+                                else:
+                                    interval=[]
+                            elif (strain[i]!=0 and strain[i-1]==0 and len(interval)==0):
+                                interval.append(i)
+
+                            if i==len(strain)-1 and len(interval)==1:
+                                if ((len(strain)-1-interval[0])>=128):
+                                    interval.append(i-1)
+                                    print(interval)
+                                    intervals.append(Segment((np.array(interval)*fs).tolist()))
+                                    interval=[]
+                                else:
+                                    interval=[]
+                        print(intervals)
+                        if len(strain)-len(non_zero_indexes) == 0:
+                            print('   '+det+' - '+nameref_dict[det]+' has no zeros')
+                        else:
+                            print('   '+det+' - '+nameref_dict[det]+' had zeros '+str(np. array(intervals)*fs))
+
+                        intervalList.append(intervals)
+                    intervRef=intervalList[0]
+                    for interv in intervalList: 
+                        intervRef=intervRef & interv
+                        print(intervRef)
+
+                    intervals=list(list(s) for s in intervRef.coalesce())
+                    print(intervals)
+                    if len(intervals)!=0:
+                        sublabels=['','b','c','d','e','f','g','h','i','j','k']
+                        for d in detectors:
+                            for I in range(len(intervals)): 
+                                sub_duration=int((intervals[I][1]-intervals[I][0])/fs)
+                                sub_strain=data_dict[d][intervals[I][0]:intervals[I][0]+sub_duration*fs]
+                                sub_seg=nameref_dict[d].split('_')[0]+sublabels[I]+'_'+str(int(nameref_dict[d].split('_')[1])+int(intervals[I][0]/fs))+'_'+str(sub_duration)+'.txt'
+                                print(destinationPath+filename+'/'+d+'/'+sub_seg+' has been created')
+
+                                np.savetxt(destinationPath+filename+'/'+d+'/'+sub_seg,sub_strain)
+                                print('File .../'+d+'/'+sub_seg+' is successfully saved')
+
+                    # end check of zeros
+
+
+                else:
+                    print('Duration '+str(int(gpsEnd-gpsStart))+'s is below minimum duration')
+
+        else:
+            print('No simultaneous GPS time for '+day+', sorry ...')
+
+
+
+            
+
+
+
+def old_get_ligo_noise(days
                    , fs=1024 
                    , detectors='HLV' 
                    , destinationPath=None 
@@ -319,8 +584,12 @@ def get_ligo_noise(days
 
                         np.savetxt(destinationPath+filename+'/'+det+'/'+nameref,data)
                         print('File '+nameref+' is successfully saved')
+
+
                 else:
                     print('Duration '+str(int(gpsEnd-gpsStart))+'s is below minimum duration')
+                                              
+                    
         else:
             print('No simultaneous GPS time for '+day+', sorry ...')
 
