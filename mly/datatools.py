@@ -22,7 +22,6 @@ from math import ceil
 #  TODO:You have to make nan checks to the injection files and noise files 
 #  before running the generator function.
 # 
-#  auto_gen does not work on optimal noise
 ################################################################################
 
 class DataPod(DataPodBase):
@@ -920,7 +919,7 @@ class DataSet(DataSetBase):
         DATA=DataSet(name = name)
         
         for I in range(size):
-
+            print(I)
             detKeys = list(injectionFileDict.keys())
             
             if single == True: luckyDet = np.random.choice(detKeys)
@@ -1186,7 +1185,6 @@ class DataSet(DataSetBase):
 
                 
 
-            print(np.sum(podstrain[0]),np.sum(podstrain[1]),np.sum(podstrain[2]))
             DATA.add(DataPod(strain = podstrain
                                ,fs = fs
                                ,gps = gps_list
@@ -1524,12 +1522,12 @@ def auto_gen(duration
             # the method.
 
             if timeSlides==1:    # zero lag case
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
+                local_size=int((duration_[i]-3*windowSize-tail_crop)/duration) #changed ceil to int
             if timeSlides%2 == 0:
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                local_size=int((duration_[i]-3*windowSize-tail_crop)
                                 /duration/timeSlides)*timeSlides*(timeSlides-2)
             if timeSlides%2 != 0 and timeSlides !=1 :
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
+                local_size=int((duration_[i]-3*windowSize-tail_crop)
                                 /duration/timeSlides)*timeSlides*(timeSlides-1)
 
             # starting point always begins with the window of the psd to avoid
