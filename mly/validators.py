@@ -709,7 +709,15 @@ def auto_FAR(model
                         "\n'U' if you don't want to specify detector")
     if isinstance(detectors,str):
         detectors = list(detectors)
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- timeSlides ------------------------------------------------------------------------- #
 
+    if timeSlides == None: timeSlides = 1
+    if not (isinstance(timeSlides, int) and timeSlides >=1) :
+        raise ValueError('timeSlides has to be an integer equal or bigger than 1')
+        
+        
     # ---------------------------------------------------------------------------------------- #    
     # --- size ------------------------------------------------------------------------------- #        
 
@@ -744,8 +752,8 @@ def auto_FAR(model
         raise ValueError("You have to set the first day of the real data")
     elif backgroundType in ['sudo_real','real'] and isinstance(firstDay,str):
         if '/' in firstDay and os.path.isdir(firstDay):
-            sys.path.append(firstDay.split(str(fs))[0]+'/'+str(fs)+'/')
-            date_list_path=firstDay.split(str(fs))[0]+str(fs)
+            sys.path.append(firstDay)
+            date_list_path='/'.join(firstDay.split('/')[:-1])+'/'
             firstDay = firstDay.split('/')[-1]
         elif '/' not in firstDay and os.path.isdir(firstDay):
             pass
@@ -760,18 +768,12 @@ def auto_FAR(model
     # ---------------------------------------------------------------------------------------- #    
     # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-    if windowSize == None: windowSize = 32
+    if windowSize == None: windowSize = int(16*duration)
     if not isinstance(windowSize,int):
         raise ValueError('windowSize needs to be an integral')
     if windowSize < duration :
         raise ValueError('windowSize needs to be bigger than the duration')
 
-    # ---------------------------------------------------------------------------------------- #    
-    # --- timeSlides ------------------------------------------------------------------------- #
-
-    if timeSlides == None: timeSlides = 1
-    if not (isinstance(timeSlides, int) and timeSlides >=1) :
-        raise ValueError('timeSlides has to be an integer equal or bigger than 1')
 
     # ---------------------------------------------------------------------------------------- #    
     # --- startingPoint ---------------------------------------------------------------------- #
@@ -788,7 +790,7 @@ def auto_FAR(model
         raise ValueError('name optional value has to be a string')
 
     # ---------------------------------------------------------------------------------------- #    
-    # --- savePath -------------------------------------------------------------------- #
+    # --- savePath --------------------------------------------------------------------------- #
 
     if savePath == None : 
         savePath = os.getcwd()
@@ -821,7 +823,7 @@ def auto_FAR(model
     else:
 
         # Generating a list with all the available dates in the ligo_data folder
-        date_list=dirlist( date_list_path)
+        date_list=dirlist(date_list_path)
 
         # The first day is the date we want to start using data.
         # Calculating the index of the initial date
@@ -844,7 +846,7 @@ def auto_FAR(model
         if timeSlides%2 != 0 and timeSlides !=1 :
             duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
             tail_crop=timeSlides*duration
-
+            
 
 
         # Creation of lists that indicate characteristics of the segments based on the duration needed. 
@@ -853,24 +855,31 @@ def auto_FAR(model
         # The following while loop checks and stacks durations of the data in date files. In this way
         # we note which of them are we gonna need for the generation.
         duration_total = 0
-        duration_, gps_time, seg_list=[],[],[]
+        duration_, gps_time, seg_list_=[],[],[]
 
         while duration_need > duration_total:
             counter+=1
-            segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
+            segments=dirlist( date_list_path+date+'/'+detectors[0])
             print(date)
             for seg in segments:
-                for j in range(len(seg)):
-                    if seg[j]=='_': 
-                        gps, dur = seg[j+1:-5].split('_')
-                        break
+                gps = seg.split('_')[-2]
+                dur = seg.split('_')[-1][:-4]
 
-                duration_.append(int(dur))
-                gps_time.append(int(gps))
-                seg_list.append([date,seg])
 
-                duration_total+=(int(dur)-3*windowSize-tail_crop)
-                print('    '+seg)
+                dur = timeSlides*((int(dur)   # original duration
+                                   -windowSize-duration # the part used for psd (only in the beggining)
+                                   #-2*windowSize # ignoring the edges
+                                    )//timeSlides) # using only the multiples of what is left
+                #dur= int(dur)-5*windowSize-tail_crop
+                if dur >0:
+                    duration_.append(int(dur))
+                    gps_time.append(int(gps))
+                    seg_list_.append([date,seg])
+
+                    duration_total+=dur
+                    print('    '+seg, dur)
+                else:
+                    print('    '+seg+' is too small')
 
                 if duration_total > duration_need: break
 
@@ -886,17 +895,17 @@ def auto_FAR(model
 
         size_list=[]            # Sizes for each generation of noise 
         starting_point_list=[]  # Starting points for each generation of noise(s)
-        seg_list_2=[]           # Segment names for each generation of noise
+        seg_list=[]           # Segment names for each generation of noise
         number_of_set=[]        # No of set that this generation of noise will go
         name_list=[]            # List with the name of the set to be generated
-        number_of_set_counter=0 # Counter that keeps record of how many 
+        set_counter=0 # Counter that keeps record of how many 
         # instantiations have left to be generated 
                                 # to complete a set
 
 
         set_num=0
 
-        for i in range(len(np.array(seg_list)[:,1])):
+        for i in range(len(np.array(seg_list_)[:,1])):
 
 
             # local size indicates the size of the file left for generation 
@@ -905,14 +914,12 @@ def auto_FAR(model
             # the method.
 
             if timeSlides==1:    # zero lag case
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
+                segment_size_utilisation=int(duration_[i]/duration) # this is not time
             if timeSlides%2 == 0:
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                                /duration/timeSlides)*timeSlides*(timeSlides-2)
+                segment_size_utilisation=int(duration_[i]/duration/timeSlides)*timeSlides*(timeSlides-2)
             if timeSlides%2 != 0 and timeSlides !=1 :
-                local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-                                /duration/timeSlides)*timeSlides*(timeSlides-1)
-
+                segment_size_utilisation=int(duration_[i]/duration/timeSlides)*timeSlides*(timeSlides-1)
+            print(segment_size_utilisation)
             # starting point always begins with the window of the psd to avoid
             # deformed data of the begining    
             local_starting_point=windowSize
@@ -924,33 +931,42 @@ def auto_FAR(model
             # 3. It is too small to fill so its only part of a set.
             # Some of them go through all the stages
 
-            if (len(size_list) > 0 and number_of_set_counter > 0 
-                and local_size >= size-number_of_set_counter):
-
+            if (len(size_list) > 0 
+                and set_counter > 0 
+                and segment_size_utilisation >= size-set_counter):
+                print('A',segment_size_utilisation,set_counter, num_of_sets, set_num)
                 # Saving the size of the generation
-                size_list.append(size-number_of_set_counter) 
+                size_list.append(size-set_counter) 
                 # Saving the name of the date file and seg used
-                seg_list_2.append(seg_list[i])          
+                seg_list.append(seg_list_[i])          
                 # Saving the startint_point of the generation
                 starting_point_list.append(local_starting_point)
                 # Update the the values for the next set
-                local_size-=(size-number_of_set_counter)                     
                 if timeSlides==1:
-                    local_starting_point+=((size-number_of_set_counter)
+                    local_starting_point+=((size-set_counter)
                                            *duration)
+                    segment_size_utilisation-=(size-set_counter)                     
+
                 if timeSlides%2 == 0:
+                    # In the last timeslide*duration part of this generation we might not use
+                    # all the timeshifts available. For that reason we will have to update the 
+                    # utilised size of the segment by a multimple of timeslides.
+                    
+                    segment_size_utilisation -= (ceil((size-set_counter)/timeSlides)*timeSlides*(timeSlides-2))
                     local_starting_point+=(ceil((size
-                    -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
+                        -set_counter)*duration/timeSlides/(timeSlides-2))*timeSlides*duration)
+
                 if timeSlides%2 != 0 and timeSlides !=1 :
                     local_starting_point+=(ceil((size
-                    -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
-
-                number_of_set_counter += (size-number_of_set_counter)
+                        -set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
+                    
+                    segment_size_utilisation -= (ceil((size-set_counter)/timeSlides)*timeSlides*(timeSlides-1))
+                set_counter += (size-set_counter)
 
                 # If this generation completes the size of a whole set
                 # (with size=size) it changes the labels
                 print(set_num)
-                if number_of_set_counter == size:
+                if set_counter == size:
                     number_of_set.append(subset_list[set_num])
                     if size_list[-1]==size: 
                         print(set_num)
@@ -959,38 +975,43 @@ def auto_FAR(model
                         name_list.append('part_of_'
                             +name+'_'+str(subset_list[set_num]))
                     set_num+=1
-                    number_of_set_counter=0
+                    set_counter=0
                     if set_num >= num_of_sets: break
 
-                elif number_of_set_counter < size:
+                elif set_counter < size:
                     number_of_set.append(subset_list[set_num])
                     name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
 
-            if (len(size_list) == 0 or number_of_set_counter==0):
+            if (len(size_list) == 0 or set_counter==0):
 
-                while local_size >= size:
+                while segment_size_utilisation >= size:
+                    print('B',segment_size_utilisation,set_counter, num_of_sets, set_num)
 
 
                     # Generate data with size 10000 with final name of 
                     # 'name_counter'
                     size_list.append(size)
-                    seg_list_2.append(seg_list[i])
+                    seg_list.append(seg_list_[i])
                     starting_point_list.append(local_starting_point)
 
                     #Update the the values for the next set
-                    local_size -= size
-                    if timeSlides==1: local_starting_point+=size*duration
+                    if timeSlides==1: 
+                        local_starting_point+=size*duration
+                        segment_size_utilisation -= size
                     if timeSlides%2 == 0: 
                         local_starting_point+=(ceil(size/timeSlides
                                                     /(timeSlides-2))*timeSlides*duration)
+                        segment_size_utilisation -= (ceil(size/timeSlides)*timeSlides*(timeSlides-1))
                     if timeSlides%2 != 0 and timeSlides !=1 :
                         local_starting_point+=(ceil(size/timeSlides
                                                     /(timeSlides-1))*timeSlides*duration)
-                    number_of_set_counter+=size
+                        segment_size_utilisation -= (ceil(size/timeSlides)*timeSlides*(timeSlides-2))
+
+                    set_counter+=size
 
                     # If this generation completes the size of a whole set
                     # (with size=size) it changes the labels
-                    if number_of_set_counter == size:
+                    if set_counter == size:
                         number_of_set.append(subset_list[set_num])
                         if size_list[-1]==size: 
                             name_list.append(name+'_'+str(subset_list[set_num]))
@@ -999,24 +1020,26 @@ def auto_FAR(model
                                              +name+'_'+str(subset_list[set_num]))
                         set_num+=1
                         if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
-                        number_of_set_counter=0
+                        set_counter=0
 
-            if (local_size < size and local_size >0 and set_num < num_of_sets):
-                print(local_size, num_of_sets, set_num)
+            if (0 < segment_size_utilisation < size 
+                and set_num < num_of_sets):
+                
+                print('C',segment_size_utilisation,set_counter, num_of_sets, set_num)
 
-                # Generate data with size 'local_size' with local name to be
+                # Generate data with size 'segment_size_utilisation' with local name to be
                 # fused with later one
-                size_list.append(local_size)
-                seg_list_2.append(seg_list[i])
+                size_list.append(segment_size_utilisation)
+                seg_list.append(seg_list_[i])
                 starting_point_list.append(local_starting_point)
 
                 # Update the the values for the next set
-                number_of_set_counter+=local_size  
+                set_counter+=segment_size_utilisation  
 
                 # Saving a value for what is left for the next seg to generate
                 # If this generation completes the size of a whole set
                 # (with size=size) it changes the labels
-                if number_of_set_counter == size:
+                if set_counter == size:
                     number_of_set.append(subset_list[set_num])
                     if size_list[-1]==size: 
                         name_list.append(name+'_'+str(subset_list[set_num]))
@@ -1025,20 +1048,27 @@ def auto_FAR(model
                                          +name+'_'+str(subset_list[set_num]))
                     set_num+=1
                     if set_num >= num_of_sets: break
-                    number_of_set_counter=0
+                    set_counter=0
 
-                elif number_of_set_counter < size:
+                elif set_counter < size:
                     number_of_set.append(subset_list[set_num])
                     name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
 
 
-        d={'segment' : seg_list_2, 'size' : size_list 
+        d={'segment' : seg_list, 'size' : size_list 
            , 'start_point' : starting_point_list, 'set' : number_of_set
            , 'name' : name_list}
 
         print('These are the details of the data to be used for the false alarm rate test: \n')
         for i in range(len(d['segment'])):
-            print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
+            
+            diff=(timeSlides*ceil(d['size'][i]/(timeSlides*(timeSlides-1)))
+                +d['start_point'][i] - int(d['segment'][i][1].split('_')[-1][:-4]))
+            if diff >= 0:
+                print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i],'FAIL BY --------->',diff)
+
+            else:
+                print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i],'OK ')
 
         
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
@@ -1147,7 +1177,7 @@ def auto_FAR(model
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                         +24*" "+",noiseSourceFile = ['"+date_list_path+"/"+str(d['segment'][i])[2:]+"\n"
+                         +24*" "+",noiseSourceFile = ['"+date_list_path+str(d['segment'][i])[2:]+"\n"
                          +24*" "+",windowSize ="+str(windowSize)+"\n"
                          +24*" "+",timeSlides ="+str(timeSlides)+"\n"
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
@@ -1255,6 +1285,7 @@ def finalise_far(path,generation=True):
     # with the processes that failed
     else:
         failed_pyScripts=[]
+        print('The following scripts failed to procced:')
         for i in range(len(pyScripts)):
             pyScripts_id=pyScripts[i][5:-3]
             counter=0
@@ -1262,11 +1293,12 @@ def finalise_far(path,generation=True):
                 if pyScripts_id in farTest:
                     counter=1
             if counter==0:
-                print(pyScripts[i],' failed to proceed')
+                print('rm '+pyScripts[i])
                 failed_pyScripts.append(pyScripts[i])
                 
-                
-    if merging_flag==False and generation==False:
+    if generation==False: return
+    
+    if merging_flag==False:
     
         with open(path+'/'+'flag_file.sh','w+') as f2:
              f2.write('#!/usr/bin/bash +x\n\n')
