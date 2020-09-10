@@ -18,7 +18,7 @@ import random
 import copy
 from math import ceil
 
-################################################################################
+#######################################################top =#########################
 #  TODO:You have to make nan checks to the injection files and noise files 
 #  before running the generator function.
 # 
@@ -1142,14 +1142,17 @@ class DataSet(DataSetBase):
             for det in detectors:
                 fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
                 inj_cal=np.real(np.fft.ifft(fft_cal*fs))
-                                    
-                strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0)
-                strain=strain.astype('float64')
+                
+                # Joining calibrated injection and background noise
+                strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64') 
+                # Whitenning the data with the asd of the noise
+                strain=strain.whiten(1,0.5,asd=asd_dict[det])
+                # Bandpassing 
                 strain=strain.bandpass(20,int(fs/2)-1)
+                # Crop data to the duration length
+                strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
 
-                #Whitening final data
-                podstrain.append(((strain.whiten(1,0.5,asd=asd_dict[det])[int(((windowSize
-                        -duration)/2)*fs):int(((windowSize+duration)/2)*fs)]).value).tolist())
+                podstrain.append(strain.value.tolist())
                 
                 if 'snr' in extras:
                     # Calculating the new SNR which will be slightly different that the desired one.    
