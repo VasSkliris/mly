@@ -662,7 +662,8 @@ def auto_FAR(model
              ,name = None
              ,savePath = None
              ,extras=None
-             ,mapping=None):
+             ,mapping=None
+             ,maxTestSize=None):
 
     
 #     # ---------------------------------------------------------------------------------------- #    
@@ -723,16 +724,6 @@ def auto_FAR(model
 
     if not (isinstance(size, int) and size > 0):
         raise ValuError("size must be a possitive integer.")
-    if size > 10000 and size%10000!=0:
-        raise ValueError("For sizes above 10000 use only multiples of 10000")
-    if size > 10000:
-        multiples = size//10000
-        size=10000
-    else:
-        multiples = 1
-    subset_list = list('No'+str(i) for i in range(multiples))
-    num_of_sets = multiples
-        
 
     # ---------------------------------------------------------------------------------------- #    
     # --- backgroundType --------------------------------------------------------------------- #
@@ -804,17 +795,27 @@ def auto_FAR(model
     if savePath[-1] != '/' : savePath=savePath+'/'
     
     # ---------------------------------------------------------------------------------------- #    
+    # --- maxTestSize ------------------------------------------------------------------------ #
     
+    if maxTestSize == None: maxTestSize=max(10000,timeSlides**2)
+    print(maxTestSize)
+    if not (isinstance(maxTestSize,int) and maxTestSize >= timeSlides**2):
+        raise ValueError("maxTestSize must be at least the timeSlides squared")
+        
     #num_of_sets = len(injectionSNR)
 
     # If noise is optimal it is much more simple
     if backgroundType == 'optimal':
 
-        d={'size' : num_of_sets*[size]
-           , 'start_point' : num_of_sets*[startingPoint]
-           , 'set' : subset_list
-           , 'name' : list(name+'_'+subset_list[i] for i in range(num_of_sets))}
-
+        d={'size' : (size//maxTestSize)*[maxTestSize]
+           , 'start_point' : (size//maxTestSize)*[windowSize]
+           , 'name' : list(name+'_No'+str(i)+'_'
+                           +str(maxTestSize) for i in range((size//maxTestSize)))}
+        if size%maxTestSize !=0:
+            d['size'].append(size%maxTestSize)
+            d['start_point'].append(windowSize)
+            d['name'].append(name+'_No'+str(size//maxTestSize+1)+'_'
+                           +str(size%maxTestSize))
         print('These are the details of the datasets to be generated: \n')
         for i in range(len(d['size'])):
             print(d['size'][i], d['start_point'][i] ,d['name'][i])
@@ -829,23 +830,23 @@ def auto_FAR(model
         # Calculating the index of the initial date
         date=date_list[date_list.index(firstDay)]
         # All dates have an index in the list of dates following chronological order
-        counter=date_list.index(firstDay)             
+        date_counter=date_list.index(firstDay)             
 
 
         # Calculation of the duration 
         # Here we infere the duration needed given the timeSlides used in the method
-
-        # In this we just use the data as they are.
-        if timeSlides==1:
-            duration_need = size*num_of_sets*duration
-            tail_crop=0
-        # Timeslides of even numbers have a different algorithm that the odd number ones.
-        if timeSlides%2 == 0:
-            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
-            tail_crop=timeSlides*duration
-        if timeSlides%2 != 0 and timeSlides !=1 :
-            duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
-            tail_crop=timeSlides*duration
+        
+#         # In this we just use the data as they are.
+#         if timeSlides==1:
+#             test_needed = size*num_of_sets*duration
+#             tail_crop=0
+#         # Timeslides of even numbers have a different algorithm that the odd number ones.
+#         if timeSlides%2 == 0:
+#             test_needed = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
+#             tail_crop=timeSlides*duration
+#         if timeSlides%2 != 0 and timeSlides !=1 :
+#             test_needed = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
+#             tail_crop=timeSlides*duration
             
 
 
@@ -854,40 +855,7 @@ def auto_FAR(model
 
         # The following while loop checks and stacks durations of the data in date files. In this way
         # we note which of them are we gonna need for the generation.
-        duration_total = 0
-        duration_, gps_time, seg_list_=[],[],[]
-
-        while duration_need > duration_total:
-            counter+=1
-            segments=dirlist( date_list_path+date+'/'+detectors[0])
-            print(date)
-            for seg in segments:
-                gps = seg.split('_')[-2]
-                dur = seg.split('_')[-1][:-4]
-
-
-                dur = timeSlides*((int(dur)   # original duration
-                                   -windowSize-duration # the part used for psd (only in the beggining)
-                                   #-2*windowSize # ignoring the edges
-                                    )//timeSlides) # using only the multiples of what is left
-                #dur= int(dur)-5*windowSize-tail_crop
-                if dur >0:
-                    duration_.append(int(dur))
-                    gps_time.append(int(gps))
-                    seg_list_.append([date,seg])
-
-                    duration_total+=dur
-                    print('    '+seg, dur)
-                else:
-                    print('    '+seg+' is too small')
-
-                if duration_total > duration_need: break
-
-            if counter==len(date_list): counter=0 
-            if len(date_list) == 1: counter=0
-            date=date_list[counter]
-
-
+        test_total = 0
 
         # To initialise the generators, we will first create the code and the 
         # names they will have. This will create the commands that generate
@@ -896,181 +864,156 @@ def auto_FAR(model
         size_list=[]            # Sizes for each generation of noise 
         starting_point_list=[]  # Starting points for each generation of noise(s)
         seg_list=[]           # Segment names for each generation of noise
-        number_of_set=[]        # No of set that this generation of noise will go
         name_list=[]            # List with the name of the set to be generated
-        set_counter=0 # Counter that keeps record of how many 
-        # instantiations have left to be generated 
-                                # to complete a set
+        timeSlide_list=[]
+        set_num=0 
+        
+        while size > test_total:
+            date_counter+=1
+            segments=dirlist( date_list_path+date+'/'+detectors[0])
+            print(date)
+            for seg in segments:
+                print(' '+30*'-'+' '+str(100*test_total/size)[:5]+"%")
+                gps = seg.split('_')[-2]
+                dur = seg.split('_')[-1][:-4]
+                
+                dur = (int(dur) 
+                       -(windowSize-duration) # the part used for psd (only in the beggining)
+                        -2*windowSize) # ignoring the edges
+    
+                if dur <=0:
+                    print('    '+seg+' is too small')
+                    continue
+                
+                utilised_dur = timeSlides*duration*(dur//(timeSlides*duration))
+                
+                utilised_dur_left=dur-timeSlides*duration*(dur//(timeSlides*duration))
+                                                           
+                local_starting_point=windowSize
+                print(' ',seg,utilised_dur,utilised_dur_left,local_starting_point, dur)
+                # Step 1: Starting with a segment we try not to create huge files.
+                # For that reason we use a max_size for one test file to be the closest
+                # multiple of timeslides*(timeslides- 1 or 2) to 10000 that is still less
+                # than 10000. After utilising as much as possible of those big files we go
+                # to the next step.
 
-
-        set_num=0
-
-        for i in range(len(np.array(seg_list_)[:,1])):
-
-
-            # local size indicates the size of the file left for generation 
-            # of datasets, when it is depleted the algorithm moves to the next               
-            # segment. Here we infere the local size given the timeSlides used in 
-            # the method.
-
-            if timeSlides==1:    # zero lag case
-                segment_size_utilisation=int(duration_[i]/duration) # this is not time
-            if timeSlides%2 == 0:
-                segment_size_utilisation=int(duration_[i]/duration/timeSlides)*timeSlides*(timeSlides-2)
-            if timeSlides%2 != 0 and timeSlides !=1 :
-                segment_size_utilisation=int(duration_[i]/duration/timeSlides)*timeSlides*(timeSlides-1)
-            print(segment_size_utilisation)
-            # starting point always begins with the window of the psd to avoid
-            # deformed data of the begining    
-            local_starting_point=windowSize
-
-            # There are three cases when a segment is used.
-            # 1. That it has to fill a previous set first and then move 
-            # to the next
-            # 2. That it is the first set so there is no previous set to fill
-            # 3. It is too small to fill so its only part of a set.
-            # Some of them go through all the stages
-
-            if (len(size_list) > 0 
-                and set_counter > 0 
-                and segment_size_utilisation >= size-set_counter):
-                print('A',segment_size_utilisation,set_counter, num_of_sets, set_num)
-                # Saving the size of the generation
-                size_list.append(size-set_counter) 
-                # Saving the name of the date file and seg used
-                seg_list.append(seg_list_[i])          
-                # Saving the startint_point of the generation
-                starting_point_list.append(local_starting_point)
-                # Update the the values for the next set
-                if timeSlides==1:
-                    local_starting_point+=((size-set_counter)
-                                           *duration)
-                    segment_size_utilisation-=(size-set_counter)                     
-
-                if timeSlides%2 == 0:
-                    # In the last timeslide*duration part of this generation we might not use
-                    # all the timeshifts available. For that reason we will have to update the 
-                    # utilised size of the segment by a multimple of timeslides.
-                    
-                    segment_size_utilisation -= (ceil((size-set_counter)/timeSlides)*timeSlides*(timeSlides-2))
-                    local_starting_point+=(ceil((size
-                        -set_counter)*duration/timeSlides/(timeSlides-2))*timeSlides*duration)
-
+                if timeSlides==1: 
+                    max_size = maxTestSize
+                    max_dur = maxTestSize*duration
+                if timeSlides%2 == 0: 
+                    max_size = timeSlides*(timeSlides-2)*(maxTestSize//(timeSlides*(timeSlides-2)))
+                    max_dur = timeSlides*duration*(max_size//(timeSlides*(timeSlides-2)))
                 if timeSlides%2 != 0 and timeSlides !=1 :
-                    local_starting_point+=(ceil((size
-                        -set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
-                    
-                    segment_size_utilisation -= (ceil((size-set_counter)/timeSlides)*timeSlides*(timeSlides-1))
-                set_counter += (size-set_counter)
+                    max_size = timeSlides*(timeSlides-1)*(maxTestSize//(timeSlides*(timeSlides-1)))
+                    max_dur = timeSlides*duration*(max_size//(timeSlides*(timeSlides-1)))
+                
 
-                # If this generation completes the size of a whole set
-                # (with size=size) it changes the labels
-                print(set_num)
-                if set_counter == size:
-                    number_of_set.append(subset_list[set_num])
-                    if size_list[-1]==size: 
-                        print(set_num)
-                        name_list.append(name+'_'+str(subset_list[set_num]))
+                while utilised_dur >= max_dur:
+                    if local_starting_point == windowSize:
+                        print('    STEP1 ',max_size,max_dur,local_starting_point)
                     else:
-                        name_list.append('part_of_'
-                            +name+'_'+str(subset_list[set_num]))
-                    set_num+=1
-                    set_counter=0
-                    if set_num >= num_of_sets: break
-
-                elif set_counter < size:
-                    number_of_set.append(subset_list[set_num])
-                    name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
-
-            if (len(size_list) == 0 or set_counter==0):
-
-                while segment_size_utilisation >= size:
-                    print('B',segment_size_utilisation,set_counter, num_of_sets, set_num)
-
+                        print('          ',max_size,max_dur,local_starting_point)
 
                     # Generate data with size 10000 with final name of 
                     # 'name_counter'
-                    size_list.append(size)
-                    seg_list.append(seg_list_[i])
+                    size_list.append(max_size)
+                    seg_list.append([date,seg])
                     starting_point_list.append(local_starting_point)
-
+                    timeSlide_list.append(timeSlides)
+                    local_starting_point+=max_dur
+                    utilised_dur -= max_dur
                     #Update the the values for the next set
-                    if timeSlides==1: 
-                        local_starting_point+=size*duration
-                        segment_size_utilisation -= size
-                    if timeSlides%2 == 0: 
-                        local_starting_point+=(ceil(size/timeSlides
-                                                    /(timeSlides-2))*timeSlides*duration)
-                        segment_size_utilisation -= (ceil(size/timeSlides)*timeSlides*(timeSlides-1))
-                    if timeSlides%2 != 0 and timeSlides !=1 :
-                        local_starting_point+=(ceil(size/timeSlides
-                                                    /(timeSlides-1))*timeSlides*duration)
-                        segment_size_utilisation -= (ceil(size/timeSlides)*timeSlides*(timeSlides-2))
+                    test_total += max_size
 
-                    set_counter+=size
-
-                    # If this generation completes the size of a whole set
-                    # (with size=size) it changes the labels
-                    if set_counter == size:
-                        number_of_set.append(subset_list[set_num])
-                        if size_list[-1]==size: 
-                            name_list.append(name+'_'+str(subset_list[set_num]))
-                        else:
-                            name_list.append('part_of_'
-                                             +name+'_'+str(subset_list[set_num]))
-                        set_num+=1
-                        if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
-                        set_counter=0
-
-            if (0 < segment_size_utilisation < size 
-                and set_num < num_of_sets):
-                
-                print('C',segment_size_utilisation,set_counter, num_of_sets, set_num)
-
-                # Generate data with size 'segment_size_utilisation' with local name to be
-                # fused with later one
-                size_list.append(segment_size_utilisation)
-                seg_list.append(seg_list_[i])
-                starting_point_list.append(local_starting_point)
-
-                # Update the the values for the next set
-                set_counter+=segment_size_utilisation  
-
-                # Saving a value for what is left for the next seg to generate
-                # If this generation completes the size of a whole set
-                # (with size=size) it changes the labels
-                if set_counter == size:
-                    number_of_set.append(subset_list[set_num])
-                    if size_list[-1]==size: 
-                        name_list.append(name+'_'+str(subset_list[set_num]))
-                    else:
-                        name_list.append('part_of_'
-                                         +name+'_'+str(subset_list[set_num]))
+                    name_list.append(name+'_No'+str(set_num)+'_'+str(max_size))
                     set_num+=1
-                    if set_num >= num_of_sets: break
-                    set_counter=0
 
-                elif set_counter < size:
-                    number_of_set.append(subset_list[set_num])
-                    name_list.append('part_of_'+name+'_'+str(subset_list[set_num]))
+                    if test_total >= size: break
+                if test_total >= size: break
+                # Step 2: Now we have some more left to utilise (less than the maximum) and we 
+                # make a test file out of that.
+                if utilised_dur>=timeSlides*duration:
+                    if timeSlides==1: 
+                        spare_size = utilised_dur//duration
+                        spare_dur = utilised_dur
+                    if timeSlides%2 == 0: 
+                        spare_size = timeSlides*(timeSlides-2)*((utilised_dur//duration)//(timeSlides))
+                        spare_dur = timeSlides*duration*(spare_size//(timeSlides*(timeSlides-2)))
+                    if timeSlides%2 != 0 and timeSlides !=1 :
+                        spare_size = timeSlides*(timeSlides-1)*((utilised_dur//duration)//(timeSlides))
+                        spare_dur = timeSlides*duration*(spare_size//(timeSlides*(timeSlides-1)))
 
+                    print('    STEP2 ',spare_size,spare_dur,local_starting_point)
+
+                    size_list.append(spare_size)
+                    seg_list.append([date,seg])
+                    starting_point_list.append(local_starting_point)
+                    timeSlide_list.append(timeSlides)
+                    local_starting_point+= spare_dur
+
+                    test_total += spare_size
+                    name_list.append(name+'_No'+str(set_num)+'_'+str(spare_size))
+                    set_num+=1
+
+                    if test_total >= size: break
+                                                            
+                # Step 3:
+                if utilised_dur_left > 2*duration:
+
+                    _timeSlides = utilised_dur_left//duration
+
+                    if _timeSlides==1: 
+                        spare_size = utilised_dur_left//duration
+                        spare_dur = utilised_dur_left
+                    if _timeSlides%2 == 0: 
+                        spare_size = _timeSlides*(_timeSlides-2)*((utilised_dur_left//duration)//(_timeSlides))
+                        spare_dur = _timeSlides*duration*(spare_size//(_timeSlides*(_timeSlides-2)))
+                    if _timeSlides%2 != 0 and _timeSlides !=1 :
+                        spare_size = _timeSlides*(_timeSlides-1)*((utilised_dur_left//duration)//(_timeSlides))
+                        spare_dur = _timeSlides*duration*(spare_size//(_timeSlides*(_timeSlides-1))) 
+                    print('    STEP3 ',spare_size,spare_dur,local_starting_point,'timeSlide =',_timeSlides)
+
+                    size_list.append(spare_size)
+                    seg_list.append([date,seg])
+                    starting_point_list.append(local_starting_point)
+                    timeSlide_list.append(_timeSlides)
+                    local_starting_point+= spare_dur
+
+                    test_total += spare_size
+                    name_list.append(name+'_No'+str(set_num)+'_'+str(spare_size))
+                    set_num+=1
+                if test_total >= size: break
+
+
+            if date_counter==len(date_list): date_counter=0 
+            if len(date_list) == 1: date_counter=0
+            date=date_list[date_counter]
+
+
+        
 
         d={'segment' : seg_list, 'size' : size_list 
-           , 'start_point' : starting_point_list, 'set' : number_of_set
+           , 'start_point' : starting_point_list, 'timeSlides' : timeSlide_list
            , 'name' : name_list}
-
+        
+        if test_total>size:
+            d['size'][-1] -= test_total-size
+            d['name'][-1] = '_'.join(d['name'][-1].split('_')[:-1])+'_'+str(d['size'][-1])
+    
         print('These are the details of the data to be used for the false alarm rate test: \n')
         for i in range(len(d['segment'])):
             
-            diff=(timeSlides*ceil(d['size'][i]/(timeSlides*(timeSlides-1)))
-                +d['start_point'][i] - int(d['segment'][i][1].split('_')[-1][:-4]))
+            diff=(d['start_point'][i] 
+                  + d['size'][i]//(d['timeSlides'][i]-1)
+                  -int((d['segment'][i][1].split('_')[-1][:-4])))
+            
             if diff >= 0:
-                print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i],'FAIL BY --------->',diff)
-
+                print(d['segment'][i], d['size'][i], d['start_point'][i] 
+                      ,d['name'][i],d['timeSlides'][i],'FAIL BY'+30*'-'+'>',diff)
             else:
-                print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i],'OK ')
-
-        
+                print(d['segment'][i], d['size'][i], d['start_point'][i] 
+                      ,d['name'][i],d['timeSlides'][i],'OK ')
+                
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
     answer = None
     while answer not in answers:
@@ -1143,10 +1086,6 @@ def auto_FAR(model
 
             f.write('from mly.validators import *\n\n')
 
-            if isinstance(d['set'][i],(float,int)):
-                token_snr = str(d['set'][i])
-            else:
-                token_snr = '0'
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
             if backgroundType=='optimal':
@@ -1179,9 +1118,9 @@ def auto_FAR(model
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",noiseSourceFile = ['"+date_list_path+str(d['segment'][i])[2:]+"\n"
                          +24*" "+",windowSize ="+str(windowSize)+"\n"
-                         +24*" "+",timeSlides ="+str(timeSlides)+"\n"
+                         +24*" "+",timeSlides ="+str(d['timeSlides'][i])+"\n"
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
-                         +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
+                         +24*" "+",name = '"+str(d['name'][i])+"'\n"
                          +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
                          +24*" "+",extras ="+str(extras)+"\n"
                          +24*" "+",mapping ="+str(mapping)+")\n")
@@ -1298,11 +1237,21 @@ def finalise_far(path,generation=True):
                 
     if generation==False: return
     
+
+            
     if merging_flag==False:
-    
-        with open(path+'/'+'flag_file.sh','w+') as f2:
+
+        if os.path.isfile(path+'/'+'.flag_file.sh'):
+            print("\nThe following scripts failed to run trough:\n")
+            for failed_pyScript in failed_pyScripts:
+                print(failed_pyScript+"\n") 
+                
+            return
+
+
+        with open(path+'/'+'.flag_file.sh','w+') as f2:
              f2.write('#!/usr/bin/bash +x\n\n')
-        print(path)
+
         error = path+'condor/error'
         output = path+'condor/output'
         log = path+'condor/log'
@@ -1311,31 +1260,22 @@ def finalise_far(path,generation=True):
         repeat_dagman = Dagman(name='repeat_falsAlarmDagman',
                 submit=submit)
         repeat_job_list=[]
-        
-        if os.path.isfile(path+'/'+'auto_far_redo.sh'):
-            print("\nThe following scripts failed to run trough:\n")
-            for failed_pyScript in failed_pyScripts:
-                print(failed_pyScript+"\n")
-        else:
-            with open(path+'/'+'auto_far_redo.sh','w') as f2:
-                f2.write('#!/usr/bin/bash +x\n\n')
-                f2.write("echo Some parts haven't been generated")
 
-            for script in failed_pyScripts:
-                    
-                repeat_job = Job(name='partOfGeneratio_'+str(i)
-                           ,executable=path+script
-                           ,submit=submit
-                           ,error=error
-                           ,output=output
-                           ,log=log
-                           ,getenv=True
-                           ,dag=repeat_dagman
-                           ,extra_lines=["accounting_group_user=vasileios.skliris"
-                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
 
-                repeat_job_list.append(repeat_job)
+        for script in failed_pyScripts:
 
+            repeat_job = Job(name='partOfGeneratio_'+str(i)
+                       ,executable=path+script
+                       ,submit=submit
+                       ,error=error
+                       ,output=output
+                       ,log=log
+                       ,getenv=True
+                       ,dag=repeat_dagman
+                       ,extra_lines=["accounting_group_user=vasileios.skliris"
+                                     ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+
+            repeat_job_list.append(repeat_job)
                
         repeat_final_job = Job(name='repeat_finishing'
                            ,executable=path+'finalise_test.py'
@@ -1379,7 +1319,7 @@ def finalise_far(path,generation=True):
         # Deleting unnescesary file in the folder
         for file in dirlist(path):
             if (('.out' in file) or ('.py' in file)
-                or ('part_of' in file) or ('.sh' in file) or ('10000' in file)):
+                or ('part_of' in file) or ('No' in file) or ('.sh' in file) or ('10000' in file)):
                 os.system('rm '+path+file)
   
     
