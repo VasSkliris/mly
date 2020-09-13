@@ -1747,7 +1747,7 @@ def auto_gen(duration
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
-                         +24*" "+",injectionFolder = "+str(injectionFolder)+"\n"
+                         +24*" "+",injectionFolder ='"+str(injectionFolder)+"'\n"
                          +24*" "+",labels = "+str(labels)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",injectionSNR = "+token_snr+"\n"
