@@ -832,27 +832,6 @@ def auto_FAR(model
         # All dates have an index in the list of dates following chronological order
         date_counter=date_list.index(firstDay)             
 
-
-        # Calculation of the duration 
-        # Here we infere the duration needed given the timeSlides used in the method
-        
-#         # In this we just use the data as they are.
-#         if timeSlides==1:
-#             test_needed = size*num_of_sets*duration
-#             tail_crop=0
-#         # Timeslides of even numbers have a different algorithm that the odd number ones.
-#         if timeSlides%2 == 0:
-#             test_needed = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
-#             tail_crop=timeSlides*duration
-#         if timeSlides%2 != 0 and timeSlides !=1 :
-#             test_needed = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
-#             tail_crop=timeSlides*duration
-            
-
-
-        # Creation of lists that indicate characteristics of the segments based on the duration needed. 
-        # These are used for the next step.
-
         # The following while loop checks and stacks durations of the data in date files. In this way
         # we note which of them are we gonna need for the generation.
         test_total = 0
@@ -1075,8 +1054,7 @@ def auto_FAR(model
 
     for i in range(len(d['size'])):
 
-        with open(path+dir_name+'/test_'+d['name'][i]+'_'
-            +str(d['size'][i])+'.py','w+') as f:
+        with open(path+dir_name+'/test_'+d['name'][i]+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             #This path is used only for me to test it
@@ -1129,9 +1107,9 @@ def auto_FAR(model
             f.write(command+'\n\n')
             f.write("print(time.time()-t0)\n")
         
-        os.system('chmod 777 '+path+dir_name+'/test_'+d['name'][i]+'_'+str(d['size'][i])+'.py')
+        os.system('chmod 777 '+path+dir_name+'/test_'+d['name'][i]+'.py')
         job = Job(name='partOfGeneratio_'+str(i)
-               ,executable=path+dir_name+'/test_'+d['name'][i]+'_'+str(d['size'][i])+'.py'
+               ,executable=path+dir_name+'/test_'+d['name'][i]+'.py'
                ,submit=submit
                ,error=error
                ,output=output
@@ -1200,7 +1178,7 @@ def auto_FAR(model
     
 
     
-def finalise_far(path,generation=True):
+def finalise_far(path,generation=True,forceMerging=False):
     
     if path[-1]!='/': path=path+'/' # making sure path is right
     files=dirlist(path)             # making a list of files in that path 
@@ -1234,10 +1212,11 @@ def finalise_far(path,generation=True):
             if counter==0:
                 print('rm '+pyScripts[i])
                 failed_pyScripts.append(pyScripts[i])
-                
+                        
     if generation==False: return
     
-
+    if forceMerging==True:
+        merging_flag=True
             
     if merging_flag==False:
 
