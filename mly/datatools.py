@@ -1145,13 +1145,12 @@ class DataSet(DataSetBase):
                 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64') 
-                # Whitenning the data with the asd of the noise
-                strain=strain.whiten(1,0.5,asd=asd_dict[det])
                 # Bandpassing 
                 strain=strain.bandpass(20,int(fs/2)-1)
+                # Whitenning the data with the asd of the noise
+                strain=strain.whiten(1,0.5,asd=asd_dict[det])
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
-
                 podstrain.append(strain.value.tolist())
                 
                 if 'snr' in extras:
@@ -1302,7 +1301,7 @@ def auto_gen(duration
                     injectionFolder_path = (p.split('injections')[0]+'injections'
                         +'/'+injectionFolder)
                     if os.path.isdir(injectionFolder_path):
-                        injectionFolder = injectionFolder_path
+                        injectionFolder = "'"+injectionFolder_path+"'"
                         injectionFolder_set = injectionFolder.split('/')[-1]
                     else:
                         raise FileNotFoundError('No such file or directory:'
@@ -1747,7 +1746,7 @@ def auto_gen(duration
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
-                         +24*" "+",injectionFolder ='"+str(injectionFolder)+"'\n"
+                         +24*" "+",injectionFolder ="+str(injectionFolder)+"\n"
                          +24*" "+",labels = "+str(labels)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",injectionSNR = "+token_snr+"\n"
