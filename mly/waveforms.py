@@ -9,7 +9,30 @@ import matplotlib.gridspec as gridspec
 
 #########################################################################################################
 
-def envelope(strain,option=None,**kwargs):
+def envelope(strain
+             ,option=None
+             ,**kwargs):
+    
+    """Envelope is a wrapper function that covers all types of envelopes available here.
+    
+        Arguments
+        ---------
+        
+        strain: list/array/gwpy.TimeSeries
+            The timeseries to be enveloped
+            
+        option: {'sigmoid'} (optional)
+            The type of envelope you want to apply. If not specified it defaults to 'sigmoid'
+        
+        **kwargs: Any keyword arguments acompany the option of envelope.
+    
+        Returns
+        -------
+        numpy.ndarray
+            The same timeseries that had in the input, but enveloped.
+    
+    
+    """
     
     
     if option == None: option='sigmoid'
@@ -51,7 +74,7 @@ def sigmoid(timeRange
             ,stepTime=None
             ,ascending=True):
     
-    """Sigmoid is a functIon of a simple sigmoid
+    """Sigmoid is a functIon of a simple sigmoid.
 
         Parameters
         ----------
@@ -227,13 +250,90 @@ def decimal_power(t,n):
 
 
 
+def csg(frequency 
+        ,duration 
+        ,phase=None   
+        ,fs=None
+        ,sigma=None
+        ,amplitude=None):
+    
+    """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a 
+    gaussian envelope to make the transition from 0 to maximum amplitude smooth. The signal 
+    follows the following formula:
+    
+    ..math:: hp=A\cos(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
+    ..math:: hc=A\sin(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
+
+    
+    Parameters
+    ----------
+
+    frequency: int/float
+        The frequency of the oscilator.
+
+    duration: int/float 
+        The duration of the final timeseries.
+
+    phase: int/float - (0,2π] , optional 
+        The phase of the oscilator. If not specified the default is a random phase.
+
+    fs: int , optional
+        The sample frequency of the timeseries to be generated. If not specified 
+        the default is 1.
+        
+    sigma: int/float, optional
+        The standar deviation of the gaussian envelope. If not specified the default
+        is 5. This scales along with duration, so don't use smaller numbers to avoid
+        edge cut effects.
+
+    amplitude: int/float , optional
+        The maximum amplitude of the singal. If not specied 
+        the default is 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        A numpy array with size fs*duration
+
+    Notes
+    -----
+
+    If you want to generate many of those waveforms, the main parameters you need to 
+    loop around are frequency, duration and phase.
+
+    """
+    if not frequency >=0:
+        raise ValueError('Frequency must be a positive number')
+        
+    if phase == None:
+        phase = np.random.rand()*2*np.pi
+    elif not (isinstance(phase,(int,float)) and 0<=phase<=2*np.pi):
+        raise ValueError('phase must be a number between zero and 2pi.')
+        
+    if fs == None:
+        fs=1
+    elif not (isinstance(fs,int) and fs>=1):
+        raise ValueError('sample frequency must be an integer bigger than 1.')    
+    
+    if sigma == None: sigma = 5
+    if not (sigma > 0):
+        rais
+    if amplitude == None:
+        amplitude = 1
+    elif not (isinstance(amplitude,(int,float))):
+        raise ValueError('amplitude must be a number,')
+         
+    t=np.arange(0,duration,1/fs)
+    hp=np.sin(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
+    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
+    
+    return(hp,hc)
 
 
-
-def ringdown(frequency        # Frequency
+def ringdown(frequency 
              ,duration = None
              ,damping = None   
-             ,phase=None    # Phase
+             ,phase=None 
              ,fs=None
              ,amplitude=None):
     
@@ -532,111 +632,110 @@ def chirplet(duration
         return (hp,hc)
 
     
+
     
     
-    
-    
-def old_chirplet(T,fs
-              ,t0=0
-              ,f0=20+np.random.rand()*30
-              ,fe=50+np.random.rand()*(250)
-              ,phi=np.random.rand()*2*np.pi
-              ,n='default'
-              ,tc='default'
-              ,wnb_envelope=True
-              ,ENV='single'
-              ,envDuration=None
-              ,demo=False):
+# def old_chirplet(T,fs
+#               ,t0=0
+#               ,f0=20+np.random.rand()*30
+#               ,fe=50+np.random.rand()*(250)
+#               ,phi=np.random.rand()*2*np.pi
+#               ,n='default'
+#               ,tc='default'
+#               ,wnb_envelope=True
+#               ,ENV='single'
+#               ,envDuration=None
+#               ,demo=False):
 
 
 
-    # ENVELOPE FORM
+#     # ENVELOPE FORM
 
-    ## WNB FORM
+#     ## WNB FORM
 
-    if wnb_envelope==True:
+#     if wnb_envelope==True:
         
-        wnb_fc = 2+np.random.rand()*10
-        wnb_df = 1+np.random.rand()+5
-        t,wnb=WNB(param=[1, wnb_fc, wnb_df ],T=T,fs=fs,q='noenv')
-    else:
-        t,wnb=np.arange(0,T,1/fs), -0.5*np.ones(fs)
+#         wnb_fc = 2+np.random.rand()*10
+#         wnb_df = 1+np.random.rand()+5
+#         t,wnb=WNB(param=[1, wnb_fc, wnb_df ],T=T,fs=fs,q='noenv')
+#     else:
+#         t,wnb=np.arange(0,T,1/fs), -0.5*np.ones(fs)
 
 
-    ## EDGE SMOOTHING OUTTER ENVELOPE
-    if ENV=='double':
-        q1=0.2+np.random.rand()*0.6
-        q2=0.2+np.random.rand()*0.6
+#     ## EDGE SMOOTHING OUTTER ENVELOPE
+#     if ENV=='double':
+#         q1=0.2+np.random.rand()*0.6
+#         q2=0.2+np.random.rand()*0.6
         
-        sig1=2.5+np.random.rand()*2
-        sig2=2.5+np.random.rand()*2
+#         sig1=2.5+np.random.rand()*2
+#         sig2=2.5+np.random.rand()*2
 
-        a1=0.2+np.random.rand()*0.8
-        a2=0.2+np.random.rand()*0.8
+#         a1=0.2+np.random.rand()*0.8
+#         a2=0.2+np.random.rand()*0.8
 
-        e1=a1*envelope(T,fs,q=q1,t0='default',sig=sig1,duration=envDuration)
-        e2=a2*envelope(T,fs,q=q2,t0='default',sig=sig2,duration=envDuration)
+#         e1=a1*envelope(T,fs,q=q1,t0='default',sig=sig1,duration=envDuration)
+#         e2=a2*envelope(T,fs,q=q2,t0='default',sig=sig2,duration=envDuration)
 
-        env=(wnb+1.5)*(e1+e2)
+#         env=(wnb+1.5)*(e1+e2)
 
-    elif ENV=='single':
-        q1=0.1+np.random.rand()*0.8
-        env=(wnb+1.5)*envelope(T,fs,q=q1,t0='default',sig=2.5+np.random.rand()*2,duration=envDuration)
+#     elif ENV=='single':
+#         q1=0.1+np.random.rand()*0.8
+#         env=(wnb+1.5)*envelope(T,fs,q=q1,t0='default',sig=2.5+np.random.rand()*2,duration=envDuration)
 
-    # FREQUENCY FUNCTION
+#     # FREQUENCY FUNCTION
 
-    if n=='default':
-        token=np.random.randint(0,2)
+#     if n=='default':
+#         token=np.random.randint(0,2)
 
-        ## Power 0 < n <1
-        if (-1)**token == -1:
-            n = 0.1+np.random.rand()*0.9
-        ## Power 1 < n < 5
-        elif (-1)**token == 1:
-            n = 1+np.random.rand()*4
+#         ## Power 0 < n <1
+#         if (-1)**token == -1:
+#             n = 0.1+np.random.rand()*0.9
+#         ## Power 1 < n < 5
+#         elif (-1)**token == 1:
+#             n = 1+np.random.rand()*4
 
-    if tc=='default':
-        tc = 0.2+np.random.rand()*0.6
+#     if tc=='default':
+#         tc = 0.2+np.random.rand()*0.6
 
-    f=f0+((fe-f0)/((1-tc)**n+tc**n))*decimal_power(t-tc,n)+((fe-f0)*(tc**n)/((1-tc)**n+tc**n))
+#     f=f0+((fe-f0)/((1-tc)**n+tc**n))*decimal_power(t-tc,n)+((fe-f0)*(tc**n)/((1-tc)**n+tc**n))
 
 
 
-    # FINAL BURST INJECTION
-    s=env*np.cos(2*np.pi*f*(t-t0)+phi)   
+#     # FINAL BURST INJECTION
+#     s=env*np.cos(2*np.pi*f*(t-t0)+phi)   
 
-    if demo==True:
-        fig=plt.figure(figsize=(15,7))
+#     if demo==True:
+#         fig=plt.figure(figsize=(15,7))
 
-        gs = gridSpec.GridSpec(2,3, figure=fig)
+#         gs = gridSpec.GridSpec(2,3, figure=fig)
         
-        ax0=fig.add_subplot(gs[0,0:2])
-        ax0.plot(t,s,'royalblue')
-        ax0.set_title('Waveform Timeseries')
-        ax0.set_xlabel('Time')
-        ax0.set_ylabel('Amplitude')
+#         ax0=fig.add_subplot(gs[0,0:2])
+#         ax0.plot(t,s,'royalblue')
+#         ax0.set_title('Waveform Timeseries')
+#         ax0.set_xlabel('Time')
+#         ax0.set_ylabel('Amplitude')
 
-        ax0s=fig.add_subplot(gs[1,0:2])
-        ax0s.loglog(np.fft.fftfreq(len(s),1/fs)[0:int(fs/2)],np.abs(np.fft.rfft(s)[:-1]),'darksalmon')
-        ax0s.set_xlim(20,1024)
-        ax0s.set_title('Waveform FFT')
-        ax0s.set_xlabel('Frequency')
-        ax0s.set_ylabel('Amplitude')
+#         ax0s=fig.add_subplot(gs[1,0:2])
+#         ax0s.loglog(np.fft.fftfreq(len(s),1/fs)[0:int(fs/2)],np.abs(np.fft.rfft(s)[:-1]),'darksalmon')
+#         ax0s.set_xlim(20,1024)
+#         ax0s.set_title('Waveform FFT')
+#         ax0s.set_xlabel('Frequency')
+#         ax0s.set_ylabel('Amplitude')
         
-        ax1=fig.add_subplot(gs[0,2])
-        ax1.plot(t,f,'blueviolet')
-        ax1.set_title('Frequency change function')
-        ax1.set_ylabel('Frequency')
-        ax1.set_xlabel('Time')
+#         ax1=fig.add_subplot(gs[0,2])
+#         ax1.plot(t,f,'blueviolet')
+#         ax1.set_title('Frequency change function')
+#         ax1.set_ylabel('Frequency')
+#         ax1.set_xlabel('Time')
 
         
-        ax2=fig.add_subplot(gs[1,2])
-        ax2.plot(t,env,'g')
-        ax2.set_title('Envelope function')
-        ax2.set_xlabel('Time')
-        ax2.set_ylabel('Amplitude')        
-        if wnb_envelope==True:
-            ax2.plot(t,wnb+1.5)
-    else:
-        return(t,s)
+#         ax2=fig.add_subplot(gs[1,2])
+#         ax2.plot(t,env,'g')
+#         ax2.set_title('Envelope function')
+#         ax2.set_xlabel('Time')
+#         ax2.set_ylabel('Amplitude')        
+#         if wnb_envelope==True:
+#             ax2.plot(t,wnb+1.5)
+#     else:
+#         return(t,s)
 
