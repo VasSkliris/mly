@@ -427,9 +427,8 @@ def get_ligo_noise(days
         else:
             print('No simultaneous GPS time for '+day+', sorry ...')
 
-
-
             
+
 
 
 

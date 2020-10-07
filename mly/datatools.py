@@ -18,7 +18,7 @@ import random
 import copy
 from math import ceil
 
-#######################################################top =#########################
+################################################################################
 #  TODO:You have to make nan checks to the injection files and noise files 
 #  before running the generator function.
 # 
@@ -79,8 +79,6 @@ class DataPod(DataPodBase):
     metadata : dict (optional)
         A dictionary with additional infromation about the pod.
     '''
-    
-    
         
     def __getitem__(self,index):
         if isinstance(index,int): index=slice(index,None,None)
@@ -160,6 +158,33 @@ class DataPod(DataPodBase):
             return(nArray)
         else:
             raise TypeError("Only .pkl files are supported for loading")
+
+    
+    
+    def addPlugIn(self,plugin):
+        """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
+        data derived either from the already existing data in the pod or tottaly new
+        ones. You can add a simple value to generation function and also a plot function
+        if you need to plot the new data.
+
+        Parameters
+        ----------
+
+        plugin : PlugIn object
+            The PlugIn object that you have already defined.
+
+        """
+        plugAttributes=[]
+        for at in plugin.attributes:
+            if at in dir(self):
+                plugAttributes.append(self.__getattribute__(at))
+            else:
+                raise AttributeError(at+" is not part of DataPod instance")
+                
+        self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes))
+        
+        self._pluginDict[plugin.name]=plugin
+                
             
     def plot(self,type_='strain'):
         
@@ -178,8 +203,9 @@ class DataPod(DataPodBase):
         
         colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b','U':'black'}
         names=[]
-        plt.figure(figsize=(15,7))#,facecolor='lightslategray')
         if type_ == 'strain':
+            
+            plt.figure(figsize=(15,7))#,facecolor='lightslategray')
             if 'U' in self.detectors:
                 names = list('Strain '+str(i) for i in range(len(self.detectors)))
             else:
@@ -215,22 +241,16 @@ class DataPod(DataPodBase):
         elif type_ =='psd' and not ('psd' in list(self.metadata.keys())):
             raise KeyError("psd key is not pressent in the pod")
             
+        
+        elif type_ in dir(self):
             
-        elif type_ =='correlation' and ('correlation' in list(self.metadata.keys())):
+            plugin=self._pluginDict[type_]
+            plugAttributes=[]
+            for at in plugin.attributes:
+                plugAttributes.append(self.__getattribute__(at))
+            self._pluginDict[type_].plotFunction(*plugAttributes,data=self.__getattribute__(type_))
 
-            plt.xlabel('Time Shift')
-            plt.ylabel('Pearson Correlation')
-            tlength=len(self.metadata['correlation'][0])/self.fs
-            tarray=np.arange(-tlength/2,tlength/2,1/self.fs)
-            count_=0
-            for i in np.arange(len(self.detectors)):
-                for j in np.arange(i+1,len(self.detectors)):
-                    plt.plot(tarray,self.metadata['correlation'][count_]
-                             ,label=str(self.detectors[i])+str(self.detectors[j]))
-                    plt.legend()
-                    count_+=1
-
-            
+              
             
 class DataSet(DataSetBase):
     
@@ -1740,6 +1760,8 @@ def auto_gen(duration
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
             
+            if injectionFolder!=None and injectionFolder[0]!="'":
+                injectionFolder = "'"+injectionFolder+"'"
             if backgroundType == 'optimal':
                 comand=( "SET = DataSet.generator(\n"
                          +24*" "+"duration = "+str(duration)+"\n"
@@ -1973,6 +1995,113 @@ def finalise_gen(path,generation=True):
                 or ('part_of' in file) or ('.sh' in file)):
                 os.system('rm '+path+file)
 
+                
+                
+class PlugIn:
+    
+    """PlugIn is a class to encapsulate any additional data we want to
+    have along with the main data a DataPod has. The new data we introduce
+    with a PlugIn object might be just a value or something that is calcukated
+    from other PlugIns or strain already present in the DataPod instance. Every
+    PlugIn has a name and a generation function. Additionally it can have
+    attributes (related to the attributes use to create the plugin data) and
+    also a plot function that will help plot the data from the DataPod.plot(<name>).
+    
+    When the PlugIn is added to a DataPod through DataPod.addPlugIn() method
+    it will create a new attribute for the DataPod to be called like strain 
+    DataPod.<name>.
+    
+    Attributes
+    ---------
+    
+    name: str
+        The name you want to use for the data you add. This is going to be an
+        attribute of the DataPod object that the plugin will be added.
+        
+    genFunction: function/value
+        The fuction to use to infere the new data from other attributes in the 
+        targeted DataPod. You can also just pass a value if no use of other 
+        attributes is needed.
+        
+    attributes: list/tuple of strings 
+        A list or tuple of the names of attributes used by the genFunction.
+        These attributes must be attributes of the DataPod you plan to add 
+        the plugin.
+        
+    plotFunction: function (optional)
+        A function with the same attributes as genFunction that returns a
+        matplotlib.pyplot plot. This will be called if you want to plot 
+        the data that the plugin will have.
+            
+            
+    Notes
+    -----
+    
+    When you call plotFunction, make sure that genFunction and plotFunction
+    call the same attributes with the same order. 
+    """
+    
+    def __init__(self
+                 ,name
+                 ,genFunction
+                 ,attributes=None
+                 ,plotFunction=None):
+
+        self.name = name
+        self.attributes=attributes
+        self.genFunction=genFunction
+        self.plotFunction=plotFunction
+    
+    @property
+    def name(self):
+        return self._name                 
+    @name.setter
+    def name(self,_name):
+        if isinstance(_name,str) and not any(ic in _name for ic in " -!@£$%^&*()±§?\"|><.,`~+=:;'" ):
+            self._name=_name
+        else:
+            raise AttributeError("Name must be a string with valid characters")
+            
+    @property
+    def genFunction(self):
+        return self._genFunction               
+    @genFunction.setter
+    def genFunction(self,function):
+        if callable(function):
+            self._genFunction=function
+        else:
+            def token():
+                return function
+            self._genFunction=token
+                
+
+    @property
+    def attributes(self):
+        return self._attributes                 
+    @attributes.setter
+    def attributes(self,attributes):
+        if attributes==None:
+            attributes =[]
+        if not isinstance(attributes,(list,tuple)):
+            raise TypeError("Attributes must be in a list or tuple")
+        if not all(isinstance(at,str) for at in attributes):
+            raise TypeError("Attributes can only be strings")
+        self._attributes=attributes
+
+    @property
+    def plotFunction(self):
+        return self._plotFunction               
+    @plotFunction.setter
+    def plotFunction(self,function):
+        if function==None:
+            self._plotFunction=None
+        elif callable(function):
+            self._plotFunction=function
+        else:
+            def token():
+                return function
+            self._plotFunction=token                
+                
 # def old_auto_gen(duration 
 #              ,fs
 #              ,detectors

@@ -105,6 +105,7 @@ class DataPodBase:
                  , duration = None    # Duration of the data
                  , metadata = None):  # Any other useful information 
         
+        self.pluginDict={}  #
         
         # -------------------------------------------------------------------- #
         # -- strain check ---------------------------------------------------- #
