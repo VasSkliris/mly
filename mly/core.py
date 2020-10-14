@@ -589,6 +589,7 @@ class DataSetBase:
     #                                                                          #
     
     def __init__(self, dataPods=None, name = None):
+        
         # data check
         if isinstance(dataPods,list):
             if all(isinstance(x , DataPodBase) for x in dataPods):
@@ -620,6 +621,7 @@ class DataSetBase:
                 if not all(d in pod0.detectors for d in pod.detectors):
                     print("Pods with different detectors")
 
+        self.pluginDict={}  #
 
     #                                                                          #
     ### --- setters and getters ---------------------------------------------###

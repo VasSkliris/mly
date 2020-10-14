@@ -1241,10 +1241,10 @@ def finalise_far(path,generation=True,forceMerging=False):
         repeat_job_list=[]
 
 
-        for script in failed_pyScripts:
+        for i in range(len(failed_pyScripts)):
 
-            repeat_job = Job(name='partOfGeneratio_'+str(i)
-                       ,executable=path+script
+            repeat_job = Job(name='repeat_partOfGeneratio_'+str(i)
+                       ,executable=path+failed_pyScripts[i]
                        ,submit=submit
                        ,error=error
                        ,output=output

@@ -1,6 +1,7 @@
 from .core import DataPodBase
 from .core import DataSetBase
 from .tools import dirlist, index_combinations, correlate
+from .plugins import *
 from .simulateddetectornoise import *  
 from gwpy.timeseries import TimeSeries
 import matplotlib.pyplot as plt
@@ -161,7 +162,7 @@ class DataPod(DataPodBase):
 
     
     
-    def addPlugIn(self,plugin):
+    def addPlugIn(self,*args):
         """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
         data derived either from the already existing data in the pod or tottaly new
         ones. You can add a simple value to generation function and also a plot function
@@ -170,21 +171,25 @@ class DataPod(DataPodBase):
         Parameters
         ----------
 
-        plugin : PlugIn object
-            The PlugIn object that you have already defined.
+        *args: PlugIn objects
+            The PlugIn objects that you have already defined and you want to add on the pod.
 
         """
-        plugAttributes=[]
-        for at in plugin.attributes:
-            if at in dir(self):
-                plugAttributes.append(self.__getattribute__(at))
-            else:
-                raise AttributeError(at+" is not part of DataPod instance")
+        for plugin in args:
+            if not isinstance(plugin,PlugIn):
+                raise TypeError("Inputs must be PlugIn objects")
                 
-        self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes))
-        
-        self._pluginDict[plugin.name]=plugin
-                
+        for plugin in args:
+            plugAttributes=[]
+            for at in plugin.attributes:
+                if at in dir(self):
+                    plugAttributes.append(self.__getattribute__(at))
+                else:
+                    raise AttributeError(at+" is not part of DataPod instance")
+            self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes,**plugin.kwargs))
+
+            self.pluginDict[plugin.name]=plugin
+
             
     def plot(self,type_='strain'):
         
@@ -221,37 +226,18 @@ class DataPod(DataPodBase):
                 minim =max(self.strain[i]+minim+abs(min(self.strain[i])))
             plt.legend()
             
-        elif type_ =='psd' and ('psd' in list(self.metadata.keys())):
-            if 'U' in self.detectors:
-                names = list('PSD '+str(i) for i in range(len(self.detectors)))
-            else:
-                names = list(det for det in self.detectors)
-
-            plt.xlabel('Frequency')
-            plt.ylabel('Power Spectral Density')
-            colors = {'H': '#ee0000','L':'#4ba6ff','V':'#9b59b6','K':'#ffb200','I':'#b0dd8b','U': 'black'}
-            f=np.arange(0,int(self.fs/2)+1)
-
-            #minim=0
-            for det in self.detectors:
-                plt.loglog(f,self.metadata['psd'][self.detectors.index(det)],color= colors[det]
-                           ,label = names[self.detectors.index(det)] )
-                #minim =max(self.strain[i]+minim+abs(min(self.strain[i])))
-            plt.legend()
-        elif type_ =='psd' and not ('psd' in list(self.metadata.keys())):
-            raise KeyError("psd key is not pressent in the pod")
-            
-        
         elif type_ in dir(self):
             
-            plugin=self._pluginDict[type_]
+            plugin=self.pluginDict[type_]
             plugAttributes=[]
-            for at in plugin.attributes:
+            for at in plugin.plotAttributes:
                 plugAttributes.append(self.__getattribute__(at))
-            self._pluginDict[type_].plotFunction(*plugAttributes,data=self.__getattribute__(type_))
+            self.pluginDict[type_].plotFunction(*plugAttributes,data=self.__getattribute__(type_))
+        
+        else:
+            raise ValueError("The type specified is not present in the DataPod or it does not have a plot function.")
 
               
-            
 class DataSet(DataSetBase):
     
     
@@ -285,6 +271,7 @@ class DataSet(DataSetBase):
             
     # --- loading method ------------------------------------------------------#    
     
+    # needs chop
     def load(filename, source = 'file'):
         if source == 'file':
             if ".pkl" in filename:
@@ -364,8 +351,35 @@ class DataSet(DataSetBase):
         else:
             raise TypeError("Appended object is not a DataPod or Dataset")
             
+    def addPlugIn(self,*args):
+        """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
+        data derived either from the already existing data in the pod or tottaly new
+        ones. You can add a simple value to generation function and also a plot function
+        if you need to plot the new data.
+
+        Parameters
+        ----------
+
+        *args: PlugIn objects
+            The PlugIn objects that you have already defined and you want to add on the pod.
+
+        """
+        for plugin in args:
+            if not isinstance(plugin,PlugIn):
+                raise TypeError("Inputs must be PlugIn objects")
+                
+        for plugin in args:
+            plugAttributes=[]
+            for at in plugin.attributes:
+                if at in dir(self.dataPods[0]):
+                    for pod in self.dataPods:
+                        pod.addPlugIn(plugin)
+                else:
+                    raise AttributeError(at+" is not part of DataPod instance")
+
+            self.pluginDict[plugin.name]=plugin
             
-            
+           
     # --- fusion method --        
     def fusion(elements, sizes = None, save = None):
         
@@ -558,20 +572,20 @@ class DataSet(DataSetBase):
         self._dataPods = finalPods
         
 
-    def unloadData(self,extras=None, shape = None):
+    def exportData(self,plugin=None, shape = None):
 
         goods =[]
-        if extras==None:
+        if plugin==None:
             for pod in self.dataPods:
                 goods.append(pod.strain.tolist())
             goods=np.array(goods)                
 
-        elif isinstance(extras,str):
+        elif isinstance(plugin,str):
             for pod in self.dataPods:
-                goods.append(pod.metadata[extras].tolist())
+                goods.append(pod.__getattribute__(plugin))
             goods=np.array(goods)
         else:
-            raise ValueError('Metadata have no option for '+str(extras))
+            raise ValueError('PlugIn '+str(extras)+' not present in DataPod')
             
         if shape == None:
             shape = goods.shape
@@ -592,7 +606,7 @@ class DataSet(DataSetBase):
         print("DataSet with shape "+str(goods.shape)+" is unloaded")
         return(goods)
     
-    def unloadLabels(self,*args,reshape=False):
+    def exportabels(self,*args,reshape=False):
         # Checking the types of labels and how many
         # pods have the specific label.
         labelOccur={}
@@ -629,7 +643,7 @@ class DataSet(DataSetBase):
         print("Labels "+str(list(args))+" with shape "+str(goods.shape)+" are unloaded")
         return goods
    
-    def unloadGPS(self):
+    def exportGPS(self):
         goods =[]
         for pod in self.dataPods:
             goods.append(pod.gps)
@@ -655,7 +669,7 @@ class DataSet(DataSetBase):
                    ,disposition=None
                    ,maxDuration=None
                    ,differentSignals=False   # In case we want to put different injection to every detector.
-                   ,extras=None):
+                   ,plugins=None):
 
         # Integration limits for the calculation of analytical SNR
         # These values are very important for the calculation
@@ -861,15 +875,18 @@ class DataSet(DataSetBase):
         # ---------------------------------------------------------------------------------------- #   
         # --- extras ----------------------------------------------------------------------------- #
         
-        theExtras=['snr','psd','correlation']
-        if extras == None:
-            extras = []
-        elif isinstance(extras,str):
-            extras = [extras]
-        elif isinstance(extras,list) and all(ex in theExtras for ex in extras):
-            pass
-        else:
-            raise ValueError('extras must be a list of valid strings included in '+str(theExtras))
+        if plugins == None:
+            plugins = []
+        elif not isinstance(plugins,list):
+            plugins = [plugins]
+        if isinstance(plugins,list):
+            for pl in plugins:
+                if pl in ['snr','psd']:
+                    pass
+                elif isinstance(pl,PlugIn):
+                    pass
+                else:
+                    raise TypeError("plugins must be a list of PlugIn object or from ['snr','psd']")
 
             
         ### disposition
@@ -1158,7 +1175,9 @@ class DataSet(DataSetBase):
             podPSD = []
             podCorrelations=[]
             SNR_new=[]
-            
+            psdPlugDict={}
+            plugInToApply=[]
+
             for det in detectors:
                 fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
                 inj_cal=np.real(np.fft.ifft(fft_cal*fs))
@@ -1173,47 +1192,41 @@ class DataSet(DataSetBase):
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
                 
-                if 'snr' in extras:
+                if 'snr' in plugins:
+                    # Adding snr value as plugin.
                     # Calculating the new SNR which will be slightly different that the desired one.    
                     inj_fft_N=np.abs(fft_cal[1:int(windowSize*fs/2)+1]) 
-
-
                     SNR_new.append(np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_N
                                 *inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+                    
+                    plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
 
-
-                if 'psd' in extras:
+                if 'psd' in plugins:
                     podPSD.append(asd_dict[det]**2)
             
-            if 'correlation' in extras:
-
-                for i in np.arange(len(detectors)):
-                    for j in np.arange(i+1,len(detectors)):
-                        window= int((2*6371/300000)*fs)+1
-                        podCorrelations.append(correlate(podstrain[i],podstrain[j],window))
-                        
-            
-            podMetadata={}
-            
-            if 'snr' in extras:
-                podMetadata['snr']=np.array(SNR_new)
-            if 'psd' in extras:
-                podMetadata['psd'] = np.array(podPSD)
-            if 'correlation' in extras:
-                if len(np.array(podCorrelations).shape)==1: podCorrelations=[podCorrelations]
-                podMetadata['correlation'] = np.array(podCorrelations)
-            
-
+            if 'psd' in plugins:
+                plugInToApply.append(PlugIn('psd'
+                                            ,genFunction=podPSD
+                                            ,plotFunction=plotpsd
+                                            ,plotAttributes=['detectors','fs']))
                 
+            if 'correlation' in plugins:
+                plugInToApply.append(correlationPlugIn)
 
-            DATA.add(DataPod(strain = podstrain
+            pod = DataPod(strain = podstrain
                                ,fs = fs
                                ,gps = gps_list
                                ,labels =  labels
                                ,detectors = detKeys
-                               ,duration = duration
-                               ,metadata = podMetadata))   
+                               ,duration = duration)
+            
+            for pl in plugInToApply:
+                pod.addPlugIn(pl)
+                
+            DATA.add(pod)
+            
+            
         random.shuffle(DATA.dataPods)
         if savePath!=None:
             DATA.save(savePath+'/'+name,'pkl')
@@ -1224,17 +1237,7 @@ class DataSet(DataSetBase):
         
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+           
         
         
 
@@ -1995,113 +1998,6 @@ def finalise_gen(path,generation=True):
                 or ('part_of' in file) or ('.sh' in file)):
                 os.system('rm '+path+file)
 
-                
-                
-class PlugIn:
-    
-    """PlugIn is a class to encapsulate any additional data we want to
-    have along with the main data a DataPod has. The new data we introduce
-    with a PlugIn object might be just a value or something that is calcukated
-    from other PlugIns or strain already present in the DataPod instance. Every
-    PlugIn has a name and a generation function. Additionally it can have
-    attributes (related to the attributes use to create the plugin data) and
-    also a plot function that will help plot the data from the DataPod.plot(<name>).
-    
-    When the PlugIn is added to a DataPod through DataPod.addPlugIn() method
-    it will create a new attribute for the DataPod to be called like strain 
-    DataPod.<name>.
-    
-    Attributes
-    ---------
-    
-    name: str
-        The name you want to use for the data you add. This is going to be an
-        attribute of the DataPod object that the plugin will be added.
-        
-    genFunction: function/value
-        The fuction to use to infere the new data from other attributes in the 
-        targeted DataPod. You can also just pass a value if no use of other 
-        attributes is needed.
-        
-    attributes: list/tuple of strings 
-        A list or tuple of the names of attributes used by the genFunction.
-        These attributes must be attributes of the DataPod you plan to add 
-        the plugin.
-        
-    plotFunction: function (optional)
-        A function with the same attributes as genFunction that returns a
-        matplotlib.pyplot plot. This will be called if you want to plot 
-        the data that the plugin will have.
-            
-            
-    Notes
-    -----
-    
-    When you call plotFunction, make sure that genFunction and plotFunction
-    call the same attributes with the same order. 
-    """
-    
-    def __init__(self
-                 ,name
-                 ,genFunction
-                 ,attributes=None
-                 ,plotFunction=None):
-
-        self.name = name
-        self.attributes=attributes
-        self.genFunction=genFunction
-        self.plotFunction=plotFunction
-    
-    @property
-    def name(self):
-        return self._name                 
-    @name.setter
-    def name(self,_name):
-        if isinstance(_name,str) and not any(ic in _name for ic in " -!@£$%^&*()±§?\"|><.,`~+=:;'" ):
-            self._name=_name
-        else:
-            raise AttributeError("Name must be a string with valid characters")
-            
-    @property
-    def genFunction(self):
-        return self._genFunction               
-    @genFunction.setter
-    def genFunction(self,function):
-        if callable(function):
-            self._genFunction=function
-        else:
-            def token():
-                return function
-            self._genFunction=token
-                
-
-    @property
-    def attributes(self):
-        return self._attributes                 
-    @attributes.setter
-    def attributes(self,attributes):
-        if attributes==None:
-            attributes =[]
-        if not isinstance(attributes,(list,tuple)):
-            raise TypeError("Attributes must be in a list or tuple")
-        if not all(isinstance(at,str) for at in attributes):
-            raise TypeError("Attributes can only be strings")
-        self._attributes=attributes
-
-    @property
-    def plotFunction(self):
-        return self._plotFunction               
-    @plotFunction.setter
-    def plotFunction(self,function):
-        if function==None:
-            self._plotFunction=None
-        elif callable(function):
-            self._plotFunction=function
-        else:
-            def token():
-                return function
-            self._plotFunction=token                
-                
 # def old_auto_gen(duration 
 #              ,fs
 #              ,detectors
