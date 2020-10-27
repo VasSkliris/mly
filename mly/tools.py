@@ -39,6 +39,71 @@ def dirlist(filename,exclude=None):
     fn_clean.sort()
     return fn_clean
 
+
+
+
+def internalLags(detectors
+                   ,duration
+                   ,size
+                   ,lags=None
+                   ,fs=None
+                   ,start_from_sec=None):    
+    
+    if size%2!=0:
+        lagmax=size-1
+    else:
+        lagmax=size-2
+    if lags==None:
+        lags=lagmax
+    if lags > lagmax: raise ValueError("Maximum lags given the size are "+str(lagmax))
+    if lags < len(detectors)-1: ValueError("Minimum lags given the number of detectors are "+str(len(detectors)-1))
+        
+    if fs==None: fs=1
+    if start_from_sec==None: start_from_sec=0
+        
+    indexes={} 
+    for det in detectors:
+        indexes[det]=[]
+
+    if lags==0 or len(detectors)==1:
+        for det in detectors:
+            indexes[det]=np.arange(start_from_sec*fs
+                                   ,start_from_sec*fs+size*duration*fs, duration*fs)
+
+    elif lags>0:
+         
+        if len(detectors)==2:
+            for i in np.arange(lags):
+                indexes[detectors[0]]+=np.arange(start_from_sec*fs,start_from_sec+int(size)*duration*fs,duration*fs).tolist()
+                indexes[detectors[1]]+=np.roll(np.arange(start_from_sec*fs,start_from_sec+int(size)*duration*fs,duration*fs),np.arange(1,lagmax+1)[i]).tolist()
+            
+        elif len(detectors)==3:
+            if size%2!=0:
+                for i in range(lags):
+                    indexes[detectors[0]]+=np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs).tolist()
+                    indexes[detectors[1]]+=np.roll(np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs),np.arange(1,lags+1)[i]).tolist()
+                    indexes[detectors[2]]+=np.roll(np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs),np.arange(lags,0,-1)[i]).tolist()
+                    #print(np.arange(1,lags+1)[i],np.arange(lags,0,-1)[i])
+            else:
+                for i in range(lags):
+                    indexes[detectors[0]]+=np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs).tolist()
+                    indexes[detectors[1]]+=np.roll(np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs),np.arange(1,lagmax+1)[i]).tolist()
+                    indexes[detectors[2]]+=np.roll(np.arange(start_from_sec*fs,start_from_sec*fs+int(size)*duration*fs,duration*fs),(list(range(lagmax+1,int(size/2),-1))+list(range(int(size/2-1),0,-1)))[i]).tolist()
+                    #print(np.arange(1,lags+1)[i],(list(range(lagmax+1,int(size/2),-1))+list(range(int(size/2-1),0,-1)))[i])
+
+    return(indexes)
+    
+def externalLags(detectors
+                   ,duration
+                   ,size):
+        
+    size=int(size/duration)
+    ind=internalLags(detectors
+                       ,duration
+                       ,size)
+    return(ind)
+
+
 # This function creates a list of indeses as begining for every instantiation of
 # noise generated. This makes the lag method happen.
 def index_combinations(detectors

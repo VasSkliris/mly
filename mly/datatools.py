@@ -1,9 +1,13 @@
 from .core import DataPodBase
 from .core import DataSetBase
-from .tools import dirlist, index_combinations, correlate
+from .tools import dirlist, internalLags, correlate
 from .plugins import *
 from .simulateddetectornoise import *  
 from gwpy.timeseries import TimeSeries
+from gwpy.segments import Segment,SegmentList,DataQualityFlag
+
+from gwpy.time import to_gps
+from gwpy.time import from_gps
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
 from scipy.stats import pearsonr
@@ -825,12 +829,29 @@ class DataSet(DataSetBase):
                     raise FileNotFoundError(
                         "No such file or directory: "+noiseSourceFile[0]
                         +"/<detector>/"+noiseSourceFile[1]+".txt")
-            else:
-                raise TypeError("Noise source file has to be a list of two strings:\n"
-                                +"--> The first is the path to the date folder that include\n "
-                                +"    the data of all the detectors or just the datefile given\n"
-                                +"    that the path is in sys.path.\n\n"
-                                +"--> The second is the file name of the segment to be used.")
+            
+            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+                    and len(noiseSourceFile)==len(detectors) 
+                    and all(len(el)==2 for el in noiseSourceFile)):
+                # Open Data Channels
+                det_seg_channels = {'H': 'H1_DATA','L': 'L1_DATA','V': 'V1_DATA'}
+                # Feching the segment times that detectors were active
+                for d in range(len(detectors)):
+                    #print(noiseSourceFile[2*d][0], noiseSourceFile[2*d][1])
+                    seg_=DataQualityFlag.fetch_open_data(det_seg_channels[detectors[d]], noiseSourceFile[2*d][0], noiseSourceFile[2*d][1]).active
+
+                    if len(seg_)==0: 
+                        raise ValueError("No active segments during those gps times for "+detectors[d]+" detector.")
+                    elif len(seg_)>1:
+                        raise ValueError("There are more than one active segments during those gps times for "+detectors[d]+" detector.")
+                    elif (len(seg_)==1 and seg_[0][1]-seg_[0][0]!=noiseSourceFile[2*d][1]-noiseSourceFile[2*d][0]) : 
+                        raise ValueError("Only part of the required segment is active.")
+                    else:
+                        raise TypeError("Noise source file has to be a list of two strings:\n"
+                                        +"--> The first is the path to the date folder that include\n "
+                                        +"    the data of all the detectors or just the datefile given\n"
+                                        +"    that the path is in sys.path.\n\n"
+                                        +"--> The second is the file name of the segment to be used.")
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
@@ -843,14 +864,14 @@ class DataSet(DataSetBase):
         # ---------------------------------------------------------------------------------------- #   
         # --- timeSlides ------------------------------------------------------------------------- #
 
-        if timeSlides == None: timeSlides = 1
-        if not (isinstance(timeSlides, int) and timeSlides >=1) :
-            raise ValueError('timeSlides has to be an integer equal or bigger than 1')
+        if timeSlides == None: timeSlides = 0
+        if not (isinstance(timeSlides, int) and timeSlides >=0) :
+            raise ValueError('timeSlides has to be an integer equal or bigger than 0')
 
         # ---------------------------------------------------------------------------------------- #   
         # --- startingPoint ---------------------------------------------------------------------- #
 
-        if startingPoint == None : startingPoint = windowSize 
+        if startingPoint == None : startingPoint = 0 
         if not (isinstance(startingPoint, int) and startingPoint >=0) :
             raise ValueError('lags has to be an integer')        
 
@@ -939,17 +960,32 @@ class DataSet(DataSetBase):
 
         elif backgroundType in ['sudo_real','real']:
             param = 1
-            for det in detectors:
-                noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
-                                                       +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-            ind=index_combinations(detectors = detectors
-                               ,lags = timeSlides
-                               ,length = duration
-                               ,fs = fs
-                               ,size = size
-                               ,start_from_sec=startingPoint)
+            if isinstance(noiseSourceFile[0],str):
+                for det in detectors:
+                    noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
+                                                           +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
+                    gps0 = int(noiseSourceFile[1].split('_')[1])
 
-            gps0 = int(noiseSourceFile[1].split('_')[1])
+
+            elif isinstance(noiseSourceFile[0],list):
+                for d in range(len(detectors)):
+                    print(noiseSourceFile[d][0],noiseSourceFile[d][1])
+                    noise_segDict[detectors[d]] = TimeSeries.fetch_open_data(detectors[0]+'1'
+                                                                    ,noiseSourceFile[d][0]
+                                                                    ,noiseSourceFile[d][1]).astype('float64').resample(fs).value
+                    print(len(noise_segDict[detectors[d]])/fs)
+                    gps0 = int(noiseSourceFile[d][0])
+                    
+
+                
+            ind=internalLags(detectors = detectors
+                               ,lags = timeSlides
+                               ,duration = duration
+                               ,fs = fs
+                               ,size = int(len(noise_segDict[detectors[0]])/fs)-windowSize
+                               ,start_from_sec=startingPoint)
+            print(ind)
+
 
 
         thetime = time.time()
@@ -1053,11 +1089,13 @@ class DataSet(DataSetBase):
                     asd_dict[det] = asd
                     gps_list.append(gps0+ind[det][I]/fs)
                     back_dict[det] = back.value
+                    
                 elif backgroundType == 'real':
                     noise_seg=noise_segDict[det]
-
+                    print(det,noise_seg)
                     # Calling the real noise segments
                     noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
+                    print(det,noise,len(noise)/fs)
                     # Calculatint the psd of FFT=1s
                     p, f = psd(noise, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
@@ -1067,6 +1105,7 @@ class DataSet(DataSetBase):
                     # Making the noise a TimeSeries
                     back=TimeSeries(noise,sample_rate=fs)
                     back_dict[det] = back
+                    print(det,back)
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
