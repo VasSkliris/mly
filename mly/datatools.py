@@ -5,6 +5,8 @@ from .plugins import *
 from .simulateddetectornoise import *  
 from gwpy.timeseries import TimeSeries
 from gwpy.segments import Segment,SegmentList,DataQualityFlag
+from dqsegdb2.query import query_segments
+from gwpy.io.kerberos import kinit
 
 from gwpy.time import to_gps
 from gwpy.time import from_gps
@@ -13,8 +15,8 @@ from matplotlib.mlab import psd
 from scipy.stats import pearsonr
 from scipy.special import comb
 from pycondor import Job, Dagman
-
-import numpy as np
+from urllib.error import HTTPError
+import numpy as npl
 import pickle
 import os
 import sys
@@ -83,6 +85,12 @@ class DataPod(DataPodBase):
               
     metadata : dict (optional)
         A dictionary with additional infromation about the pod.
+        
+    plugins : Plugin / str (optional)
+        Except strain data it might be wanted to have other related data. 
+        You can define PlugIn objects and pass them into the Dataset. Some
+        of those PlugIns like 'correlation', are already defined and you can 
+        call them as by passing their names as strings.
     '''
         
     def __getitem__(self,index):
@@ -193,7 +201,7 @@ class DataPod(DataPodBase):
             self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes,**plugin.kwargs))
 
             self.pluginDict[plugin.name]=plugin
-
+            
             
     def plot(self,type_='strain'):
         
@@ -204,9 +212,9 @@ class DataPod(DataPodBase):
         ------------
         
         type_ : str (optional)
-            The type of data to plot. Some pods might have extra data generated that will be in the
-            metadata dictionary. In this case you can provide the name of that metadata to be ploted.
-            Currently only strain, psd and correlation are supported. The default value is strain.
+            The type of data to plot. Some pods might have plottable PlugIn data. In this case
+            you can provide the name of that PlugIn to be ploted. Currently only strain, psd and
+            correlation are supported. The default value is strain.
         
         """
         
@@ -244,6 +252,24 @@ class DataPod(DataPodBase):
               
 class DataSet(DataSetBase):
     
+    """DataSet is an object that helps manipulate groups of DataPods as a whole.
+    The main attribute is a list of the DataPods. All methods are providing ways
+    to manipulate the data and export them to desired shapes. Finally it provides
+    a DataSet generator.
+    
+    Attributes
+    ----------
+    
+    dataPods: list of DataPod objects (optional)
+        List of the DataPod objects to be part of this DataSet instance. All DataPods
+        are checked for inconsistences such as different shapes, different number of
+        detectors and different sample frequencies.
+    
+    name: str (optional)
+        The name of the DataSet
+    
+    """
+    
     
     def __getitem__(self,index):
         if isinstance(index,int):
@@ -261,6 +287,19 @@ class DataSet(DataSetBase):
     # --- saving method -------------------------------------------------------#
     
     def save(self, name = None,type_ = 'pkl'):
+        
+        """Method to save the DataSet.
+        
+        Parameters
+        -------------
+        name : str  (optional)
+            Name of the file to be saved. If not specified the name becomes the 
+            name attribute.
+        
+        type_ : '.pkl'
+            The format to save the DataSet. Currently available only as pkl.
+        
+        """       
         if name == None : name= self.name
         if name == None:
             finalName = 'dataSetNameToken'+str("%04d" %
@@ -277,6 +316,16 @@ class DataSet(DataSetBase):
     
     # needs chop
     def load(filename, source = 'file'):
+        
+        """Method to load a DataSet object
+        
+        Parameters
+        -------------
+        filename : str (path)
+            Path to the file.
+        
+        """
+        
         if source == 'file':
             if ".pkl" in filename:
                 with open(filename,'rb') as obj:
@@ -330,6 +379,12 @@ class DataSet(DataSetBase):
     # --- add method ---------------------------------------------------------#    
     
     def add(self, newData):
+        """This method works similarly to how append works in lists. You can
+        add a new DataPod or a new DataSet.
+            
+        
+        
+        """
         if isinstance(newData,DataPod):
             if self._dataPods==[]:
                 pod0 = newData
@@ -594,20 +649,24 @@ class DataSet(DataSetBase):
         if shape == None:
             shape = goods.shape
         if isinstance(shape,tuple):
-            if shape[0]==None: 
-                shapeList=list(shape)
-                shapeList[0]=len(self)
-                shape=tuple(shapeList)
-            if all(dim in goods.shape for dim in shape):
+
+            if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
-                goodsShapeList = list(goods.shape)
-                newIndex = list(shapeList.index(goods.shape[i]) for i in range(len(shape)))
+                print(shapeList)
+                goodsShapeList = [None]+list(goods.shape)[1:]
+                print(goodsShapeList)
+                newIndex = list(shapeList.index(goodsShapeList[i]) for i in range(len(shape)))
+                print(newIndex)
                 goods = np.transpose(goods, newIndex)
             else:
                 raise ValueError("Shape values are not the same as the DataSet shape")
+#             if None in goods.shape: 
+#                 shapeList=list(shape)
+#                 shapeList[0]=len(self)
+#                 shape=tuple(shapeList)
         else:
             raise TypeError("Not valid shape.")
-        print("DataSet with shape "+str(goods.shape)+" is unloaded")
+        print("DataSet with shape "+str(goods.shape)+" is exported")
         return(goods)
     
     def exportabels(self,*args,reshape=False):
@@ -726,7 +785,7 @@ class DataSet(DataSetBase):
         # --- size ------------------------------------------------------------------------------- #        
 
         if not (isinstance(size, int) and size > 0):
-            raise ValuError("size must be a possitive integer.")
+            raise ValueError("size must be a possitive integer.")
 
         # ---------------------------------------------------------------------------------------- #   
         # --- injectionFolder -------------------------------------------------------------------- #
@@ -825,6 +884,12 @@ class DataSet(DataSetBase):
                             else:
                                 raise FileNotFoundError("No such file or directory: "+path_main
                                                         +"/<detector>/"+noiseSourceFile[1]+".txt")
+                else:
+                    raise TypeError("Noise source file has to be a list of two strings:\n"
+                                    +"--> The first is the path to the date folder that include\n "
+                                    +"    the data of all the detectors or just the datefile given\n"
+                                    +"    that the path is in sys.path.\n\n"
+                                    +"--> The second is the file name of the segment to be used.")
                 if path_check == False:
                     raise FileNotFoundError(
                         "No such file or directory: "+noiseSourceFile[0]
@@ -833,25 +898,60 @@ class DataSet(DataSetBase):
             elif (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
-                # Open Data Channels
-                det_seg_channels = {'H': 'H1_DATA','L': 'L1_DATA','V': 'V1_DATA'}
-                # Feching the segment times that detectors were active
-                for d in range(len(detectors)):
-                    #print(noiseSourceFile[2*d][0], noiseSourceFile[2*d][1])
-                    seg_=DataQualityFlag.fetch_open_data(det_seg_channels[detectors[d]], noiseSourceFile[2*d][0], noiseSourceFile[2*d][1]).active
+                pass
+#                 seg_=Segment(noiseSourceFile[d][0], noiseSourceFile[d][1])
+#                 print(seg_)
+#                 # Open Data Channels
+#                 det_seg_channels = {'H': 'H1_DATA','L': 'L1_DATA','V': 'V1_DATA'}
+#                 # Feching the segment times that detectors were active
+#                 for d in range(len(detectors)):
+#                     print(noiseSourceFile[d])
+#                     print(noiseSourceFile[d][0], noiseSourceFile[d][1])
+                    
 
-                    if len(seg_)==0: 
-                        raise ValueError("No active segments during those gps times for "+detectors[d]+" detector.")
-                    elif len(seg_)>1:
-                        raise ValueError("There are more than one active segments during those gps times for "+detectors[d]+" detector.")
-                    elif (len(seg_)==1 and seg_[0][1]-seg_[0][0]!=noiseSourceFile[2*d][1]-noiseSourceFile[2*d][0]) : 
-                        raise ValueError("Only part of the required segment is active.")
-                    else:
-                        raise TypeError("Noise source file has to be a list of two strings:\n"
-                                        +"--> The first is the path to the date folder that include\n "
-                                        +"    the data of all the detectors or just the datefile given\n"
-                                        +"    that the path is in sys.path.\n\n"
-                                        +"--> The second is the file name of the segment to be used.")
+#                     try:
+#                         seg_=DataQualityFlag.fetch_open_data(
+#                             det_seg_channels[detectors[d]]
+#                             , noiseSourceFile[d][0]
+#                             , noiseSourceFile[d][1]).active
+                        
+#                     except:
+#                         try:
+#                             print('Trying non open data')
+#                             det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
+#                                                 ,'L': 'L1:DMT-ANALYSIS_READY:1'
+#                                                 ,'V': 'V1:ITF_SCIENCE:1'}
+
+#                             seg_= query_segments(
+#                                 det_seg_channels_[detectors[d]]
+#                                 , noiseSourceFile[d][0]
+#                                 , noiseSourceFile[d][1])
+                            
+#                         except:
+#                             try:
+#                                 kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+#                                 os.system("ligo-proxy-init -k")
+#                                 det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
+#                                                     ,'L': 'L1:DMT-ANALYSIS_READY:1'
+#                                                     ,'V': 'V1:ITF_SCIENCE:1'}
+
+#                                 seg_= query_segments(
+#                                     det_seg_channels_[detectors[d]]
+#                                     , noiseSourceFile[d][0]
+#                                     , noiseSourceFile[d][1])
+#                             except:
+#                                 print('everything failed')
+#                                 raise
+
+
+#                 print(seg_,len(seg_),seg_[0][1]-seg_[0][0],noiseSourceFile[d][1]-noiseSourceFile[d][0])
+#                 if len(seg_)==0: 
+#                     raise ValueError("No active segments during those gps times for "+detectors[d]+" detector.")
+#                 elif len(seg_)>1:
+#                     raise ValueError("There are more than one active segments during those gps times for "+detectors[d]+" detector.")
+#                 elif (len(seg_)==1 and seg_[0][1]-seg_[0][0]!=noiseSourceFile[d][1]-noiseSourceFile[d][0]) : 
+#                     raise ValueError("Only part of the required segment is active.")
+
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
@@ -894,7 +994,7 @@ class DataSet(DataSetBase):
             raise TypeError("Destination Path has to be a string valid path")
             
         # ---------------------------------------------------------------------------------------- #   
-        # --- extras ----------------------------------------------------------------------------- #
+        # --- plugins ---------------------------------------------------------------------------- #
         
         if plugins == None:
             plugins = []
@@ -902,12 +1002,13 @@ class DataSet(DataSetBase):
             plugins = [plugins]
         if isinstance(plugins,list):
             for pl in plugins:
-                if pl in ['snr','psd']:
+                print(pl,known_plug_ins)
+                if pl in known_plug_ins:
                     pass
                 elif isinstance(pl,PlugIn):
                     pass
                 else:
-                    raise TypeError("plugins must be a list of PlugIn object or from ['snr','psd']")
+                    raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
 
             
         ### disposition
@@ -969,22 +1070,73 @@ class DataSet(DataSetBase):
 
             elif isinstance(noiseSourceFile[0],list):
                 for d in range(len(detectors)):
-                    print(noiseSourceFile[d][0],noiseSourceFile[d][1])
-                    noise_segDict[detectors[d]] = TimeSeries.fetch_open_data(detectors[0]+'1'
-                                                                    ,noiseSourceFile[d][0]
-                                                                    ,noiseSourceFile[d][1]).astype('float64').resample(fs).value
+                    
+                    try:
+                        det_channels_open = {'H1': 'H1_DATA'
+                                            ,'L1': 'L1_DATA'
+                                            ,'V1': 'V1_DATA'}
+                        noise_segDict[detectors[d]] = TimeSeries.fetch_open_data(
+                            det_channels_open[detectors[d]+'1']
+                            ,noiseSourceFile[d][0]
+                            ,noiseSourceFile[d][1]).astype('float64').resample(fs).value
+                        
+                    except:
+                        try:
+                            print('opened data failed ')
+                            det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
+                                               ,'L1': 'L1:GDS-CALIB_STRAIN'
+                                               ,'V1': 'V1:Hrec_hoft_16384Hz'}
+
+                            det_frametypes = {'H1': 'H1_HOFT_C00'
+                                             ,'L1': 'L1_HOFT_C00'
+                                             ,'V1': 'V1Online'}
+                            noise_segDict[detectors[d]]=TimeSeries.get(
+                                det_channels_get[detectors[d]+'1']
+                                ,noiseSourceFile[d][0]
+                                ,noiseSourceFile[d][1]
+                                ,frametype=det_frametypes[detectors[d]+'1']
+                                ,verbose=True).astype('float64').resample(fs).value
+                            
+                        except RuntimeError:
+                            print('non public data get failed too')
+                            raise
+                            
+                        except:
+                            try:
+                                print('opened data failed again')
+                                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+                                os.system("ligo-proxy-init -k")
+                                
+                                det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
+                                                   ,'L1': 'L1:GDS-CALIB_STRAIN'
+                                                   ,'V1': 'V1:Hrec_hoft_16384Hz'}
+
+                                det_frametypes = {'H1': 'H1_HOFT_C00'
+                                                 ,'L1': 'L1_HOFT_C00'
+                                                 ,'V1': 'V1Online'}
+
+                                noise_segDict[detectors[d]]=TimeSeries.get(
+                                    det_channels_get[detectors[d]+'1']
+                                    ,noiseSourceFile[d][0]
+                                    ,noiseSourceFile[d][1]
+                                    ,frametype=det_frametypes[detectors[d]+'1']
+                                    ,verbose=True).astype('float64').resample(fs).value
+                            except:
+                                print('non public data get failed too')
+                                raise
+                            
                     print(len(noise_segDict[detectors[d]])/fs)
                     gps0 = int(noiseSourceFile[d][0])
-                    
+
 
                 
             ind=internalLags(detectors = detectors
                                ,lags = timeSlides
                                ,duration = duration
                                ,fs = fs
-                               ,size = int(len(noise_segDict[detectors[0]])/fs)-windowSize
+                               ,size = int(len(noise_segDict[detectors[0]])/fs-windowSize+duration)
                                ,start_from_sec=startingPoint)
-            print(ind)
+            #print(ind)
 
 
 
@@ -1092,10 +1244,8 @@ class DataSet(DataSetBase):
                     
                 elif backgroundType == 'real':
                     noise_seg=noise_segDict[det]
-                    print(det,noise_seg)
                     # Calling the real noise segments
                     noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
-                    print(det,noise,len(noise)/fs)
                     # Calculatint the psd of FFT=1s
                     p, f = psd(noise, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
@@ -1105,7 +1255,6 @@ class DataSet(DataSetBase):
                     # Making the noise a TimeSeries
                     back=TimeSeries(noise,sample_rate=fs)
                     back_dict[det] = back
-                    print(det,back)
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
@@ -1251,7 +1400,7 @@ class DataSet(DataSetBase):
                                             ,plotAttributes=['detectors','fs']))
                 
             if 'correlation' in plugins:
-                plugInToApply.append(correlationPlugIn)
+                plugInToApply.append(knownPlugIns('correlation'))
 
             pod = DataPod(strain = podstrain
                                ,fs = fs
@@ -1346,7 +1495,7 @@ def auto_gen(duration
     # --- size ------------------------------------------------------------------------------- #        
 
     if not (isinstance(size, int) and size > 0):
-        raise ValuError("size must be a possitive integer.")
+        raise ValueError("size must be a possitive integer.")
 
 
     # ---------------------------------------------------------------------------------------- #
@@ -1849,7 +1998,7 @@ def auto_gen(duration
 
         os.system('chmod 777 '+path+dir_name+'/'+'gen_'+d['name'][i]+'_'
             +str(d['size'][i])+'.py' )
-        job = Job(name='partOfGeneratio_'+str(i)
+        job = Job(name='partOfGeneration_'+str(i)
                   ,executable=path+dir_name+'/'+'gen_'+d['name'][i]+'_'+str(d['size'][i])+'.py' 
                ,submit=submit
                ,error=error
@@ -1973,7 +2122,7 @@ def finalise_gen(path,generation=True):
             print("\nThe following scripts failed to run trough:\n")
             for script in failed_pyScripts:
                     
-                repeat_job = Job(name='partOfGeneratio_'+str(i)
+                repeat_job = Job(name='partOfGeneration_'+str(i)
                            ,executable=path+script
                            ,submit=submit
                            ,error=error
@@ -2036,772 +2185,3 @@ def finalise_gen(path,generation=True):
             if (('.out' in file) or ('.py' in file)
                 or ('part_of' in file) or ('.sh' in file)):
                 os.system('rm '+path+file)
-
-# def old_auto_gen(duration 
-#              ,fs
-#              ,detectors
-#              ,size
-#              ,injectionFolder = None
-#              ,labels = None
-#              ,backgroundType = None
-#              ,injectionSNR = None
-#              ,firstDay = None
-#              ,windowSize = None #(32)            
-#              ,timeSlides = None #(1)
-#              ,startingPoint = None
-#              ,name = None
-#              ,savePath = None                  
-#              ,single = False  # Making single detector injections as glitch
-#              ,injectionCrop = 0   # Allowing part precentage of the injection to be croped
-#                                   # so that the signal can move from the center. Used only 
-#                                   # when injection duration = duaration
-#              ,disposition=None
-#              ,maxDuration=None
-#              ,differentSignals=False
-#              ,extras=None): 
-
-
-
-
-#     # ---------------------------------------------------------------------------------------- #
-#     # --- duration --------------------------------------------------------------------------- #
-
-#     if not (isinstance(duration,(float,int)) and duration>0 ):
-#         raise ValueError('The duration value has to be a possitive float'
-#             +' or integer representing seconds.')
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- fs - sample frequency -------------------------------------------------------------- #
-
-#     if not (isinstance(fs,int) and fs>0):
-#         raise ValueError('Sample frequency has to be a positive integer.')
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- detectors -------------------------------------------------------------------------- #
-
-#     if isinstance(detectors,(str,list)):
-#         for d in detectors:
-#             if d not in ['H','L','V','K','I']:
-#                 raise ValueError("detectors have to be a list of strings or a string"+
-#                                 " with at least one the followings as elements: \n"+
-#                                 "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-#                                 "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-#                                 "\n'U' if you don't want to specify detector")
-#     else:
-#         raise ValueError("detectors have to be a list of strings or a string"+
-#                         " with at least one the followings as elements: \n"+
-#                         "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-#                         "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-#                         "\n'U' if you don't want to specify detector")
-#     if isinstance(detectors,str):
-#         detectors = list(detectors)
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- size ------------------------------------------------------------------------------- #        
-
-#     if not (isinstance(size, int) and size > 0):
-#         raise ValuError("size must be a possitive integer.")
-
-
-#     # ---------------------------------------------------------------------------------------- #
-#     # --- injectionFolder -------------------------------------------------------------------- #
-
-#     if injectionFolder == None:
-#         pass
-#     elif isinstance(injectionFolder, str):            
-#         if (('/' in injectionFolder) and os.path.isdir(injectionFolder)):
-#             injectionFolder_set = injectionFolder.split('/')[-1]
-#         elif (('/' not in injectionFolder) and any('injections' in p for p in sys.path)):
-#             for p in sys.path:
-#                 if ('injections' in p):
-#                     injectionFolder_path = (p.split('injections')[0]+'injections'
-#                         +'/'+injectionFolder)
-#                     if os.path.isdir(injectionFolder_path):
-#                         injectionFolder = injectionFolder_path
-#                         injectionFolder_set = injectionFolder.split('/')[-1]
-#                     else:
-#                         raise FileNotFoundError('No such file or directory:'
-#                                                 +injectionFolder_path)
-
-#         else:
-#             raise FileNotFoundError('No such file or directory:'+injectionFolder) 
-#     else:
-#         raise TypeError("cbcFolder has to be a string indicating a folder "
-#                         +"in MLyWorkbench or a full path to a folder")
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- labels ----------------------------------------------------------------------------- #
-
-#     if labels == None:
-#         labels = {'type' : 'UNDEFINED'}
-        
-#     elif not isinstance(labels,dict):
-#         raise TypeError(" Labels must be a dictionary.Suggested keys for labels"
-#                         +"are the following: \n{ 'type' : ('noise' , 'cbc' , 'signal'"
-#                         +" , 'burst' , 'glitch', ...),\n'snr'  : ( any int or float number "
-#                         +"bigger than zero),\n'delta': ( Declination for sky localisation,"
-#                         +" float [-pi/2,pi/2])\n'ra'   : ( Right ascention for sky "
-#                         +"localisation float [0,2pi) )})")
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- backgroundType --------------------------------------------------------------------- #
-
-#     if backgroundType == None:
-#         backgroundType = 'optimal'
-#     elif not (isinstance(backgroundType,str) 
-#           and (backgroundType in ['optimal','sudo_real','real'])):
-#         raise ValueError("backgroundType is a string that can take values : "
-#                         +"'optimal' | 'sudo_real' | 'real'.")
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- injectionSNR ----------------------------------------------------------------------- #
-#     if injectionSNR == None :
-#         injectionSNR = [0]
-#         print("Injection SNR is None. Only one noise set will be created")
-#     if (isinstance(injectionSNR, (int,float)) and injectionSNR >= 0):
-#         injectionSNR = [injectionSNR]
-#     if not isinstance(injectionSNR, list):
-#         raise TypeError("InjectionSNR must be a list with SNR values of the sets. If you "
-#                         +"don't want injections just set the value to 0 for the sets")
-#     if (any(snr != 0 for snr in injectionSNR)  and  injectionFolder == None):
-#         raise ValueError("If you want to use an injection for generation of"+
-#                          "data, you have to specify the SNR you want and no zero.")
-#     if not all((isinstance(snr,(int,float)) and snr >=0) for snr in injectionSNR):
-#         raise ValueError("injectionSNR values have to be a positive numbers or zero")
-#     snr_list=[]
-#     c=0
-#     for snr in injectionSNR:
-#         if snr!=0:
-#             snr_list.append(snr)
-#         else:
-#             c+=1
-#             snr_list.append('No'+str(c))
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- firstDay --------------------------------------------------------------------------- #
-    
-#     if backgroundType in ['sudo_real','real'] and firstDay == None:
-#         raise ValueError("You have to set the first day of the real data")
-#     elif backgroundType in ['sudo_real','real'] and isinstance(firstDay,str):
-#         if '/' in firstDay and os.path.isdir(firstDay):
-#             sys.path.append(firstDay.split(str(fs))[0]+'/'+str(fs)+'/')
-#             date_list_path=firstDay.split(str(fs))[0]+'/'+str(fs)
-#             firstDay = firstDay.split('/')[-1]
-#         elif '/' not in firstDay and os.path.isdir(firstDay):
-#             pass
-#         else:
-#             raise FileNotFoundError("No such file or directory:"+firstDay)
-#     elif backgroundType == 'optimal':
-#         pass
-#     else:
-#         raise TypeError("Path must be a string")
-            
-    
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- windowSize --(for PSD)-------------------------------------------------------------- #        
-
-#     if windowSize == None: windowSize = duration*8
-#     if not isinstance(windowSize,int):
-#         raise ValueError('windowSize needs to be an integral')
-#     if windowSize < duration :
-#         raise ValueError('windowSize needs to be bigger than the duration')
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- timeSlides ------------------------------------------------------------------------- #
-
-#     if timeSlides == None: timeSlides = 1
-#     if not (isinstance(timeSlides, int) and timeSlides >=1) :
-#         raise ValueError('timeSlides has to be an integer equal or bigger than 1')
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- startingPoint ---------------------------------------------------------------------- #
-
-#     if startingPoint == None : startingPoint = windowSize 
-#     if not (isinstance(startingPoint, int) and startingPoint >=0) :
-#         raise ValueError('timeSlides has to be an integer')        
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- name ------------------------------------------------------------------------------- #
-
-#     if name == None : name = ''
-#     if not isinstance(name,str): 
-#         raise ValueError('name optional value has to be a string')
-
-#     # ---------------------------------------------------------------------------------------- #    
-#     # --- savePath --------------------------------------------------------------------------- #
-
-#     if savePath == None : 
-#         savePath ='.'
-#     elif (savePath,str): 
-#         if not os.path.isdir(savePath) : 
-#             raise FileNotFoundError('No such file or directory:' +savePath)
-#     else:
-#         raise TypeError("Destination Path has to be a string valid path")
-#     if savePath[-1] == '/' : savePath=savePath[:-1]
-    
-#     # ---------------------------------------------------------------------------------------- #    
-               
-#     # The number of sets to be generated.
-#     num_of_sets = len(injectionSNR)
-
-#     # If noise is optimal it is much more simple
-#     if backgroundType == 'optimal':
-
-#         d={'size' : num_of_sets*[size]
-#            , 'start_point' : num_of_sets*[startingPoint]
-#            , 'set' : snr_list
-#            , 'name' : list(name+'_'+str(snr_list[i]) for i in range(num_of_sets))}
-
-#         print('These are the details of the datasets to be generated: \n')
-#         for i in range(len(d['size'])):
-#             print(d['size'][i], d['start_point'][i] ,d['name'][i])
-                           
-#     # If noise is using real noise segments it is complicated   
-#     else:
-        
-#         # Generating a list with all the available dates in the ligo_data folder
-#         date_list=dirlist( date_list_path)
-
-#         # The first day is the date we want to start using data.
-#         # Calculating the index of the initial date
-#         date=date_list[date_list.index(firstDay)]
-#         # All dates have an index in the list of dates following chronological order
-#         counter=date_list.index(firstDay)  
-        
-#         # Calculation of the duration 
-#         # Here we infere the duration needed given the timeSlides used in the method
-        
-#         # In this we just use the data as they are.
-#         if timeSlides==1:
-#             duration_need = size*num_of_sets*duration
-#             tail_crop=0
-#         # Timeslides of even numbers have a different algorithm that the odd number ones.
-#         if timeSlides%2 == 0:
-#             duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-2)))*timeSlides*duration
-#             tail_crop=timeSlides*duration
-#         if timeSlides%2 != 0 and timeSlides !=1 :
-#             duration_need = ceil(size*num_of_sets/(timeSlides*(timeSlides-1)))*timeSlides*duration
-#             tail_crop=timeSlides*duration
-
-
-#         # Creation of lists that indicate characteristics of the segments based on the duration needed. 
-#         # These are used for the next step.
-
-#         # The following while loop checks and stacks durations of the data in date files. In this way
-#         # we note which of them are we gonna need for the generation.
-#         duration_total = 0
-#         duration_, gps_time, seg_list=[],[],[]
-
-#         while duration_need > duration_total:
-#             counter+=1
-#             segments=dirlist( date_list_path+'/'+date+'/'+detectors[0])
-#             print(date)
-#             for seg in segments:
-#                 for j in range(len(seg)):
-#                     if seg[j]=='_': 
-#                         gps, dur = seg[j+1:-5].split('_')
-#                         break
-
-#                 duration_.append(int(dur))
-#                 gps_time.append(int(gps))
-#                 seg_list.append([date,seg])
-
-#                 duration_total+=(int(dur)-3*windowSize-tail_crop)
-#                 print('    '+seg)
-
-#                 if duration_total > duration_need: break
-
-#             if counter==len(date_list): counter==0        
-#             date=date_list[counter]
-
-
-#         # To initialise the generators, we will first create the code and the 
-#         # names they will have. This will create the commands that generate
-#         # all the segments needed.
-
-#         size_list=[]            # Sizes for each generation of noise 
-#         starting_point_list=[]  # Starting points for each generation of noise(s)
-#         seg_list_2=[]           # Segment names for each generation of noise
-#         number_of_set=[]        # No of set that this generation of noise will go
-#         name_list=[]            # List with the name of the set to be generated
-#         number_of_set_counter=0 # Counter that keeps record of how many 
-#         # instantiations have left to be generated 
-#                                 # to complete a set
-
-
-#         set_num=0
-
-#         for i in range(len(np.array(seg_list)[:,1])):
-
-
-#             # local size indicates the size of the file left for generation 
-#             # of datasets, when it is depleted the algorithm moves to the next               
-#             # segment. Here we infere the local size given the timeSlides used in 
-#             # the method.
-
-#             if timeSlides==1:    # zero lag case
-#                 local_size=ceil((duration_[i]-3*windowSize-tail_crop)/duration)
-#             if timeSlides%2 == 0:
-#                 local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-#                                 /duration/timeSlides)*timeSlides*(timeSlides-2)
-#             if timeSlides%2 != 0 and timeSlides !=1 :
-#                 local_size=ceil((duration_[i]-3*windowSize-tail_crop)
-#                                 /duration/timeSlides)*timeSlides*(timeSlides-1)
-
-#             # starting point always begins with the window of the psd to avoid
-#             # deformed data of the begining    
-#             local_starting_point=windowSize
-
-#             # There are three cases when a segment is used.
-#             # 1. That it has to fill a previous set first and then move 
-#             # to the next
-#             # 2. That it is the first set so there is no previous set to fill
-#             # 3. It is too small to fill so its only part of a set.
-#             # Some of them go through all the stages
-
-#             if (len(size_list) > 0 and number_of_set_counter > 0 
-#                 and local_size >= size-number_of_set_counter):
-
-#                 # Saving the size of the generation
-#                 size_list.append(size-number_of_set_counter) 
-#                 # Saving the name of the date file and seg used
-#                 seg_list_2.append(seg_list[i])          
-#                 # Saving the startint_point of the generation
-#                 starting_point_list.append(local_starting_point)
-#                 # Update the the values for the next set
-#                 local_size-=(size-number_of_set_counter)                     
-#                 if timeSlides==1:
-#                     local_starting_point+=((size-number_of_set_counter)
-#                                            *duration)
-#                 if timeSlides%2 == 0:
-#                     local_starting_point+=(ceil((size
-#                     -number_of_set_counter)/timeSlides/(timeSlides-2))*timeSlides*duration)
-#                 if timeSlides%2 != 0 and timeSlides !=1 :
-#                     local_starting_point+=(ceil((size
-#                     -number_of_set_counter)/timeSlides/(timeSlides-1))*timeSlides*duration)
-
-#                 number_of_set_counter += (size-number_of_set_counter)
-
-#                 # If this generation completes the size of a whole set
-#                 # (with size=size) it changes the labels
-#                 if number_of_set_counter == size:
-#                     number_of_set.append(snr_list[set_num])
-#                     if size_list[-1]==size: 
-#                         name_list.append(name+'_'+str(snr_list[set_num]))
-#                     else:
-#                         name_list.append('part_of_'
-#                             +name+'_'+str(snr_list[set_num]))
-#                     set_num+=1
-#                     number_of_set_counter=0
-#                     if set_num >= num_of_sets: break
-
-#                 elif number_of_set_counter < size:
-#                     number_of_set.append(snr_list[set_num])
-#                     name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
-
-#             if (len(size_list) == 0 or number_of_set_counter==0):
-
-#                 while local_size >= size:
-
-
-#                     # Generate data with size 10000 with final name of 
-#                     # 'name_counter'
-#                     size_list.append(size)
-#                     seg_list_2.append(seg_list[i])
-#                     starting_point_list.append(local_starting_point)
-
-#                     #Update the the values for the next set
-#                     local_size -= size
-#                     if timeSlides==1: local_starting_point+=size*duration
-#                     if timeSlides%2 == 0: 
-#                         local_starting_point+=(ceil(size/timeSlides
-#                                                     /(timeSlides-2))*timeSlides*duration)
-#                     if timeSlides%2 != 0 and timeSlides !=1 :
-#                         local_starting_point+=(ceil(size/timeSlides
-#                                                     /(timeSlides-1))*timeSlides*duration)
-#                     number_of_set_counter+=size
-
-#                     # If this generation completes the size of a whole set
-#                     # (with size=size) it changes the labels
-#                     if number_of_set_counter == size:
-#                         #print(set_num)
-#                         number_of_set.append(snr_list[set_num])
-#                         if size_list[-1]==size: 
-#                             name_list.append(name+'_'+str(snr_list[set_num]))
-#                         else:
-#                             name_list.append('part_of_'
-#                                              +name+'_'+str(snr_list[set_num]))
-#                         set_num+=1
-#                         if set_num >= num_of_sets: break # CHANGED FROM > TO >= DUE TO ERROR
-#                         number_of_set_counter=0
-
-#             if (local_size < size and local_size >0 and set_num < num_of_sets):
-#                 print(local_size, num_of_sets, set_num)
-
-#                 # Generate data with size 'local_size' with local name to be
-#                 # fused with later one
-#                 size_list.append(local_size)
-#                 seg_list_2.append(seg_list[i])
-#                 starting_point_list.append(local_starting_point)
-
-#                 # Update the the values for the next set
-#                 number_of_set_counter+=local_size  
-
-#                 # Saving a value for what is left for the next seg to generate
-#                 # If this generation completes the size of a whole set
-#                 # (with size=size) it changes the labels
-#                 if number_of_set_counter == size:
-#                     number_of_set.append(snr_list[set_num])
-#                     if size_list[-1]==size: 
-#                         name_list.append(name+'_'+str(snr_list[set_num]))
-#                     else:
-#                         name_list.append('part_of_'
-#                                          +name+'_'+str(snr_list[set_num]))
-#                     set_num+=1
-#                     if set_num >= num_of_sets: break
-#                     number_of_set_counter=0
-
-#                 elif number_of_set_counter < size:
-#                     number_of_set.append(snr_list[set_num])
-#                     name_list.append('part_of_'+name+'_'+str(snr_list[set_num]))
-
-
-#         d={'segment' : seg_list_2, 'size' : size_list 
-#            , 'start_point' : starting_point_list, 'set' : number_of_set
-#            , 'name' : name_list}
-
-#         print('These are the details of the datasets to be generated: \n')
-#         for i in range(len(d['segment'])):
-#             print(d['segment'][i], d['size'][i], d['start_point'][i] ,d['name'][i])
-        
-        
-#     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
-#     answer = None
-#     while answer not in answers:
-#         print('Should we proceed to the generation of the following'
-#               +' data y/n ? \n \n')
-#         answer=input()
-#         if answer not in answers: print("Not valid answer ...")
-    
-#     if answer in ['no','n', 'No','NO','N','exit']:
-#         print('Exiting procedure ...')
-#         return
-#     elif answer in ['yes','y','YES','Yes','Y']:
-#         print('Type the name of the dataset directory:')
-#         dir_name = '0 0'
-#         while not dir_name.isidentifier():
-#             dir_name=input()
-#             if not dir_name.isidentifier(): print("Not valid Folder name ...")
-        
-#     path = savePath+'/'
-#     print("The current path of the directory is: \n"+path+dir_name+"\n" )  
-#     answer = None
-#     while answer not in answers:
-#         print('Do you accept the path y/n ?')
-#         answer=input()
-#         if answer not in answers: print("Not valid answer ...")
-
-#     if answer in ['no','n', 'No','NO','N','exit']:
-#         print('Exiting procedure ...')
-#         return
-            
-#     elif answer in ['yes','y','YES','Yes','Y']:
-#         if os.path.isdir(path+dir_name):
-#             answer = None
-#             while answer not in answers:
-#                 print('Already existing '+dir_name+' directory, do you want to'
-#                       +' overwrite it? y/n')
-#                 answer=input()
-#                 if answer not in answers: print("Not valid answer ...")
-#             if answer in ['yes','y','YES','Yes','Y']:
-#                 os.system('rm -r '+path+dir_name)
-#             elif answer in ['no','n', 'No','NO','N']:
-#                 print('Generation is cancelled\n')
-#                 print('Exiting procedure ...')
-#                 return
-            
-#     print('Initiating procedure ...')
-#     os.system('mkdir '+path+dir_name)
-#     print('Creation of directory complete: '+path+dir_name)
-#     os.system('cd '+path+dir_name)
-                
-
-#     for i in range(len(d['size'])):
-
-#         with open(path+dir_name+'/'+'gen_'+d['name'][i]+'_'
-#             +str(d['size'][i])+'.py','w') as f:
-#             f.write('#! /usr/bin/env python3\n')
-#             f.write('import sys \n')
-#             #This path is used only for me to test it
-#             pwd=os.getcwd()
-#             if 'vasileios.skliris' in pwd:
-#                 f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
-
-#             f.write('from mly.datatools import DataPod, DataSet\n\n')
-
-#             if isinstance(d['set'][i],(float,int)):
-#                 token_snr = str(d['set'][i])
-#             else:
-#                 token_snr = '0'
-#             f.write("import time\n\n")
-#             f.write("t0=time.time()\n")
-            
-#             if backgroundType == 'optimal':
-#                 comand=( "SET = DataSet.generator(\n"
-#                          +24*" "+"duration = "+str(duration)+"\n"
-#                          +24*" "+",fs = "+str(fs)+"\n"
-#                          +24*" "+",size = "+str(d['size'][i])+"\n"
-#                          +24*" "+",detectors = "+str(detectors)+"\n"
-#                          +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
-#                          +24*" "+",labels = "+str(labels)+"\n"
-#                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-#                          +24*" "+",injectionSNR = "+token_snr+"\n"
-#                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-#                          +24*" "+",savePath ='"+path+dir_name+"'\n"
-#                          +24*" "+",single = "+str(single)+"\n"
-#                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
-#                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-#                          +24*" "+",extras = "+str(extras)+")\n")
-
-#             else:
-#                 f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
-#                 comand=( "SET = DataSet.generator(\n"
-#                          +24*" "+"duration = "+str(duration)+"\n"
-#                          +24*" "+",fs = "+str(fs)+"\n"
-#                          +24*" "+",size = "+str(d['size'][i])+"\n"
-#                          +24*" "+",detectors = "+str(detectors)+"\n"
-#                          +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
-#                          +24*" "+",labels = "+str(labels)+"\n"
-#                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-#                          +24*" "+",injectionSNR = "+token_snr+"\n"
-#                          +24*" "+",noiseSourceFile = "+str(d['segment'][i])+"\n"
-#                          +24*" "+",windowSize ="+str(windowSize)+"\n"
-#                          +24*" "+",timeSlides ="+str(timeSlides)+"\n"
-#                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
-#                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
-#                          +24*" "+",savePath ='"+path+dir_name+"'\n"
-#                          +24*" "+",single = "+str(single)+"\n"
-#                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
-#                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-#                          +24*" "+",extras = "+str(extras)+")\n")
-
-            
-#             f.write(comand+'\n\n')
-#             f.write("print(time.time()-t0)\n")
-#             f.write("sys.stdout.flush()")
-#     with open(path+dir_name+'/'+'auto_gen.sh','w') as f2:
-
-#         f2.write('#!/usr/bin/bash \n\n')
-#         f2.write("commands=()\n\n")
-        
-#         for i in range(len(d['size'])):
-
-#             f2.write("commands+=('"+'nohup python '+path+dir_name+'/gen_'+d['name'][i]
-#                 +'_'+str(d['size'][i])+'.py > '+path+dir_name+'/out_gen_'
-#                 +d['name'][i]+'_'+str(d['size'][i])+'.out &'+"')\n")
-            
-#         f2.write("# Number of processes\n")
-#         f2.write("N="+str(len(d['size']))+"\n\n")
-#         f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/2))\n")
-#         f2.write("jobArray=()\n")
-#         f2.write("countOurActiveJobs(){\n")
-#         f2.write("    activeid=$(pgrep -u $USER)\n")
-#         f2.write("    jobsN=0\n")
-#         f2.write("    for i in ${jobArray[*]}; do  \n")
-#         f2.write("        for j in ${activeid[*]}; do  \n")     
-#         f2.write("            if [ $i = $j ]; then\n")
-#         f2.write("                jobsN=$(($jobsN+1))\n")
-#         f2.write("            fi\n")
-#         f2.write("        done\n")
-#         f2.write("    done\n")
-#         f2.write("}\n\n")
-#         f2.write("eval ProcessList=({1..$N})\n")
-#         f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
-#         f2.write("do\n")
-#         f2.write("    countOurActiveJobs\n")
-#         f2.write("    echo \"Number of jobs running: $jobsN\"\n")
-#         f2.write("    while [ $jobsN -ge $ProcessLimit ]\n")
-#         f2.write("    do\n")
-#         f2.write("        echo \"Waiting for space\"\n")
-#         f2.write("        sleep 10\n")
-#         f2.write("        countOurActiveJobs\n")
-#         f2.write("    done\n")
-#         f2.write("    eval ${commands[$k]}\n")
-#         f2.write("    jobArray+=$(echo \"$! \")\n")
-#         f2.write("done\n\n")
-        
-#         f2.write("countOurActiveJobs\n")
-#         f2.write("while [ $jobsN != 0 ]\n")
-#         f2.write("do\n")
-#         f2.write("    echo \"Genrating... \"\n")
-#         f2.write("    sleep 60\n")
-#         f2.write("    countOurActiveJobs\n")
-#         f2.write("done\n")
-#         f2.write("nohup python "+path+dir_name+"/final_gen.py > "+path+dir_name+"/final_gen.out")
-
-#     with open(path+dir_name+'/info.txt','w') as f3:
-#         f3.write('INFO ABOUT DATASETS GENERATION \n\n')
-#         f3.write('fs: '+str(fs)+'\n')
-#         f3.write('duration: '+str(duration)+'\n')
-#         f3.write('window: '+str(windowSize)+'\n')
-#         if backgroundType != 'optimal':
-#             f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
-
-#             for i in range(len(d['size'])):
-#                 f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
-#                          +' '+str(d['size'][i])+' '
-#                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
-            
-#     with open(path+dir_name+'/final_gen.py','w') as f4:
-#         f4.write("#! /usr/bin/env python3\n")
-#         pwd=os.getcwd()
-#         if 'vasileios.skliris' in pwd:
-#             f4.write("import sys \n")
-#             f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
-#         f4.write("from mly.datatools import *\n")
-#         f4.write("finalise_gen('"+path+dir_name+"')\n")
-
-#     print('All set. Initiate dataset generation y/n?')
-#     answer4=input()
-
-#     if answer4 in ['yes','y','YES','Yes','Y']:
-#         os.system('nohup sh '+path+dir_name+'/auto_gen.sh > '+path+dir_name+'/auto_gen.out &')
-#         return
-#     else:
-#         print('Data generation canceled')
-#         os.system('cd')
-#         os.system('rm -r '+path+dir_name)
-#         return
-
-
-    
-# def old_finalise_gen(path):
-    
-#     if path[-1]!='/': path=path+'/' # making sure path is right
-#     files=dirlist(path)             # making a list of files in that path 
-#     merging_flag=False              # The flag that makes the fusion to happen
-
-#     print('Running diagnostics for file: '+path+'  ... \n') 
-#     pyScripts=[]
-#     dataSets=[]
-#     for file in files:
-#         if (file[-3:]=='.py') and ('gen_' in file):
-#             pyScripts.append(file)
-#         if file[-4:]=='.pkl': 
-#             dataSets.append(file)
-
-#     # Checking if all files that should have been generated 
-#     # from auto_gen are here
-#     if len(dataSets)==len(pyScripts):
-#         print('Files succesfully generated, all files are here')
-#         print(len(dataSets),' out of ',len(pyScripts))
-#         merging_flag=True  # Declaring that merging can happen now
-    
-#     # If some files haven't been generated it will show a failing message
-#     # with the processes that failed
-#     else:
-#         failed_pyScripts=[]
-#         for i in range(len(pyScripts)):
-#             pyScripts_id=pyScripts[i][4:-3]
-#             counter=0
-#             for dataset in dataSets:
-#                 if pyScripts_id in dataset:
-#                     counter=1
-#             if counter==0:
-#                 print(pyScripts[i],' failed to proceed')
-#                 failed_pyScripts.append(pyScripts[i])
-                
-                
-#     if merging_flag==False:
-        
-#         if os.path.isfile(path+'/'+'auto_gen_redo.sh'):
-#             print("\nThe following scripts failed to run trough:\n")
-#             for failed_pyScript in failed_pyScripts:
-#                 print(failed_pyScript+"\n")
-#         else:
-#             with open(path+'/'+'auto_gen_redo.sh','w') as f2:
-
-#                 f2.write('#!/usr/bin/bash +x\n\n')
-#                 f2.write("commands=()\n\n")
-
-#                 for script in failed_pyScripts:
-
-#                     f2.write("commands+=('"+'nohup python '+path+script
-#                              +' > '+path+'out_'+script[:-3]+'.out &'+"')\n")
-
-#                 f2.write("# Number of processes\n")
-#                 f2.write("N="+str(len(failed_pyScripts))+"\n\n")
-#                 f2.write("ProcessLimit=$(($(grep -c ^processor /proc/cpuinfo)/2))\n")
-#                 f2.write("jobArray=()\n")
-#                 f2.write("countOurActiveJobs(){\n")
-#                 f2.write("    activeid=$(pgrep -u $USER)\n")
-#                 f2.write("    jobsN=0\n")
-#                 f2.write("    for i in ${jobArray[*]}; do  \n")
-#                 f2.write("        for j in ${activeid[*]}; do  \n")     
-#                 f2.write("            if [ $i = $j ]; then\n")
-#                 f2.write("                jobsN=$(($jobsN+1))\n")
-#                 f2.write("            fi\n")
-#                 f2.write("        done\n")
-#                 f2.write("    done\n")
-#                 f2.write("}\n\n")
-#                 f2.write("eval ProcessList=({1..$N})\n")
-#                 f2.write("for (( k = 0; k < ${#commands[@]} ; k++ ))\n")
-#                 f2.write("do\n")
-#                 f2.write("    countOurActiveJobs\n")
-#                 f2.write("    echo \"Number of jobs running: $jobsN\"\n")
-#                 f2.write("    while [ $jobsN -ge $ProcessLimit ]\n")
-#                 f2.write("    do\n")
-#                 f2.write("        echo \"Waiting for space\"\n")
-#                 f2.write("        sleep 10\n")
-#                 f2.write("        countOurActiveJobs\n")
-#                 f2.write("    done\n")
-#                 f2.write("    eval ${commands[$k]}\n")
-#                 f2.write("    jobArray+=$(echo \"$! \")\n")
-#                 f2.write("done\n\n")
-
-#                 f2.write("countOurActiveJobs\n")
-#                 f2.write("while [ $jobsN != 0 ]\n")
-#                 f2.write("do\n")
-#                 f2.write("    echo \"Genrating... \"\n")
-#                 f2.write("    sleep 60\n")
-#                 f2.write("    countOurActiveJobs\n")
-#                 f2.write("done\n")
-#                 f2.write("nohup python "+path+"/final_gen.py > "+path+"/final_gen.out")
-
-#             os.system('nohup sh '+path+'/auto_gen_redo.sh > '+path+'/auto_gen.out &')
-            
-
-#     if merging_flag==True:
-        
-#         setNames=[]
-#         setIDs=[]
-#         setSizes=[]
-#         finalNames=[]
-#         IDs,new_dat=[],[]
-#         for dataset in dataSets:
-#             if 'part_of' in dataset:
-#                 setNames.append(dataset)
-#                 setIDs.append(dataset.split('_')[-2])
-#                 setSizes.append(dataset.split('_')[-1].split('.')[0])
-#                 finalNames.append('_'.join(dataset.split('part_of_')[1].split('_')[:-2]))
-
-#                 if dataset.split('_')[-2] not in IDs:
-#                     IDs.append(dataset.split('_')[-2])
-
-#         # Creating the inputs for the function data_fusion
-#         for k in range(len(IDs)):
-#             fusionNames=[]
-#             sizes = []
-#             for i in range(len(setNames)):
-#                 if setIDs[i]==IDs[k]:
-#                     fusionNames.append(path+setNames[i])
-#                     sizes.append(int(setSizes[i]))
-#                     finalName = finalNames[i]+'_'+str(IDs[k])+'_'
-#             _=DataSet.fusion(fusionNames, sizes = sizes, save = path+finalName+str(sum(sizes)))
-
-#         # Deleting unnescesary file in the folder
-#         for file in dirlist(path):
-#             if (('.out' in file) or ('.py' in file)
-#                 or ('part_of' in file) or ('.sh' in file)):
-#                 os.system('rm '+path+file)
-
