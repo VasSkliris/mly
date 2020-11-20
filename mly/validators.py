@@ -7,16 +7,21 @@ import time
 import random
 import copy
 from math import ceil
+from dqsegdb2.query import query_segments
+from gwpy.io.kerberos import kinit
 
 from .simulateddetectornoise import * 
-from .tools import dirlist, index_combinations , fromCategorical, correlate
+from .tools import dirlist,  fromCategorical, correlate,internalLags,externalLags
 from .datatools import DataPod, DataSet
+from gwpy.time import to_gps
+from gwpy.segments import DataQualityFlag
+from gwpy.segments import Segment,SegmentList
 
 from gwpy.timeseries import TimeSeries
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
 
-from keras.models import load_model, Sequential, Model
+from tensorflow.keras.models import load_model, Sequential, Model
 from pycondor import Job, Dagman
 
 class Validator:
@@ -230,8 +235,9 @@ class Validator:
                        ,startingPoint= None #(32)
                        ,name = None
                        ,savePath = None
-                       ,extras=None
-                       ,mapping=None):    
+                       ,plugins=None
+                       ,mapping=None
+                       ,restriction=None):    
         
         
         t0=time.time()
@@ -269,21 +275,20 @@ class Validator:
             else:
                 trained_models.append(model) 
 
-        # models[1] becomes the the input inexes of the data 
-        if extras==None:
-            number_of_extras=0
-        else:
-            number_of_extras=len(extras)
+        #         models[1] becomes the the input inexes of the data 
+        #         if plugin==None:
+        #             number_of_plugins=0
+        #         else:
+        #             number_of_plugins=len(plugins)
 
-        data_inputs_index=[]
-        for index in models[1]:
-            if index==None :
-                data_inputs_index.append([k for k in range(number_of_extras+1)])
-            elif all(j<= number_of_extras for j in index):
-                data_inputs_index.append(index)
-            else:
-                raise TypeError(str(index)+' is not a valid index')
-
+        #         data_inputs=[]
+        #         for pl in models[1]:
+        #             if pl==None :
+        #                 data_inputs.append(['strain']+plugins)
+        #             elif all(pl in  for j in index):
+        #                 data_inputs_index.append(index)
+        #             else:
+        #                 raise TypeError(str(index)+' is not a valid index')
 
         # ---------------------------------------------------------------------------------------- #    
         # --- mappings --------------------------------------------------------------------------- #
@@ -317,7 +322,7 @@ class Validator:
                                ,timeSlides =timeSlides
                                ,startingPoint=startingPoint
                                ,name =name
-                               ,extras=extras)   
+                               ,plugins=plugins)   
         
         
         t1=time.time()
@@ -329,18 +334,17 @@ class Validator:
             dataList=[]
             input_shape=trained_models[m].input_shape
             if isinstance(input_shape,tuple): input_shape=[input_shape]
-            for i in data_inputs_index[m]:
-                if i==0:
-                    dataList.append(DATA.unloadData(shape=input_shape[i]))
-                elif extras!=None:
-                    dataList.append(DATA.unloadData(extras = extras[i-1]
-                                ,shape=input_shape[i]))
+            for i in range(len(models[1][m])):
+                print(input_shape[i],models[1][m][i])
+                print(DATA[0].__getattribute__(models[1][m][i]).shape)
+                dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
+
             if len(dataList)==1: dataList=dataList[0]
             scores = 1.0 - trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
 
             scores_collection.append(scores.tolist())
 
-        gps_times=DATA.unloadGPS()
+        gps_times=DATA.exportGPS()
 
         if len(scores_collection)==1:
             scores_collection=np.expand_dims(np.array(scores_collection),0)
@@ -361,6 +365,9 @@ class Validator:
                 result_pd['total']=result_pd['total']*result_pd['scores'+str(m+1)]
 
         result_pd = result_pd.sort_values(by=['total'],ascending = False)
+        
+        if isinstance(restriction,(int,float)):
+            result_pd=result_pd[result_pd['total']>=restriction]
         
         t2=time.time()
         print('Time to generation: '+str(t2-t1))
@@ -1193,6 +1200,7 @@ def finalise_far(path,generation=True,forceMerging=False):
             farTests.append(file)
     # Checking if all files that should have been generated 
     # from auto_test are here
+    print(len(farTests),len(pyScripts))
     if len(farTests)==len(pyScripts):
         print('Files succesfully generated, all files are here')
         print(len(farTests),' out of ',len(pyScripts))
@@ -1204,7 +1212,7 @@ def finalise_far(path,generation=True,forceMerging=False):
         failed_pyScripts=[]
         print('The following scripts failed to procced:')
         for i in range(len(pyScripts)):
-            pyScripts_id=pyScripts[i][5:-3]
+            pyScripts_id=pyScripts[i][:-2]
             counter=0
             for farTest in farTests:
                 if pyScripts_id in farTest:
@@ -1270,7 +1278,7 @@ def finalise_far(path,generation=True,forceMerging=False):
         repeat_final_job.add_parents(repeat_job_list)
         
         repeat_dagman.build_submit()
-        
+    
     if merging_flag==True:
         
         setNames=[]
@@ -1298,7 +1306,7 @@ def finalise_far(path,generation=True,forceMerging=False):
         # Deleting unnescesary file in the folder
         for file in dirlist(path):
             if (('.out' in file) or ('.py' in file)
-                or ('part_of' in file) or ('No' in file) or ('.sh' in file) or ('10000' in file)):
+                or ('part_of' in file) or ('No' in file) or ('test' in file) or ('.sh' in file) or ('10000' in file)):
                 os.system('rm '+path+file)
   
     
@@ -1306,3 +1314,634 @@ def finalise_far(path,generation=True,forceMerging=False):
 
     
     
+
+    
+    
+def online_FAR(model
+             ,duration 
+             ,fs
+             ,detectors
+             ,size
+             ,dates=None
+             ,backgroundType = None
+             ,windowSize = None #(32)            
+             ,destinationFile = None
+             ,mapping=None
+             ,plugins=None
+             ,externalLagSize=None
+             ,maxExternalLag=None
+             ,restriction=None):
+    
+    # ---------------------------------------------------------------------------------------- #
+    # --- duration --------------------------------------------------------------------------- #
+
+    if not (isinstance(duration,(float,int)) and duration>0 ):
+        raise ValueError('The duration value has to be a possitive float'
+            +' or integer representing seconds.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- fs - sample frequency -------------------------------------------------------------- #
+
+    if not (isinstance(fs,int) and fs>0):
+        raise ValueError('Sample frequency has to be a positive integer.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- detectors -------------------------------------------------------------------------- #
+
+    if isinstance(detectors,(str,list)):
+        for d in detectors:
+            if d not in ['H','L','V','K','I']:
+                raise ValueError("detectors have to be a list of strings or a string"+
+                                " with at least one the followings as elements: \n"+
+                                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                                "\n'U' if you don't want to specify detector")
+    else:
+        raise ValueError("detectors have to be a list of strings or a string"+
+                        " with at least one the followings as elements: \n"+
+                        "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                        "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                        "\n'U' if you don't want to specify detector")
+    if isinstance(detectors,str):
+        detectors = list(detectors)
+        
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- size ------------------------------------------------------------------------------- #        
+
+    if not (isinstance(size, int) and size > 0):
+        raise ValuError("size must be a possitive integer.")
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- dates ------------------------------------------------------------------------------ #
+    
+    gps_start = to_gps(dates[0])
+    gps_end = to_gps(dates[1])
+    
+    if gps_start > gps_end: raise ValueError("Not valid date.")
+    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- backgroundType --------------------------------------------------------------------- #
+
+    if backgroundType == None:
+        backgroundType = 'optimal'
+    elif not (isinstance(backgroundType,str) 
+          and (backgroundType in ['optimal','sudo_real','real'])):
+        raise ValueError("backgroundType is a string that can take values : "
+                        +"'optimal' | 'sudo_real' | 'real'.")            
+    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- windowSize --(for PSD)-------------------------------------------------------------- #        
+
+    if windowSize == None: windowSize = int(16*duration)
+    if not isinstance(windowSize,int):
+        raise ValueError('windowSize needs to be an integral')
+    if windowSize < duration :
+        raise ValueError('windowSize needs to be bigger than the duration')
+
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- destinationFile -------------------------------------------------------------------- #
+
+    if destinationFile == None : 
+        destinationFile = os.getcwd()
+    elif (destinationFile,str): 
+        if not os.path.isdir(destinationFile) : 
+            raise FileNotFoundError('No such file or directory:' +destinationFile)
+    else:
+        raise TypeError("Destination Path has to be a string valid path")
+    if destinationFile[:5]!='/home':
+        destinationFile = os.getcwd()+'/'+destinationFile       
+    if destinationFile[-1] != '/' : destinationFile=destinationFile+'/'
+        
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- externalLagSize -------------------------------------------------------------------- #
+    
+    if externalLagSize==None: externalLagSize=duration*64
+    
+    if externalLagSize%duration!=0 or externalLagSize/duration<=2:
+        raise ValueError("externalLagSize has to be a multiple of duration and at least"
+                         +" three times the duration")
+    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- maxExternalLag --------------------------------------------------------------------- #
+    
+    if maxExternalLag==None: maxExternalLag=ceil(
+        3600/(externalLagSize+windowSize-duration
+             ))*int(externalLagSize+windowSize-duration)
+    
+    if restriction == None: restriction ==0
+    
+    
+    
+#     det_seg_channels = {'H': 'H1_DATA'
+#                    ,'L': 'L1_DATA'
+#                    ,'V': 'V1_DATA'}
+    
+
+    # Feching the segment times tha detectors were active
+    
+    det_segs=[]
+    for d in range(len(detectors)):
+        
+        try:
+            det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
+                                ,'L': 'L1:DMT-ANALYSIS_READY:1'
+                                ,'V': 'V1:ITF_SCIENCE:1'}
+
+            seg_= query_segments(det_seg_channels[detectors[d]]
+                                 ,gps_start, gps_end)
+       
+        except:
+            try:
+                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+                os.system("ligo-proxy-init -k")
+                det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
+                                    ,'L': 'L1:DMT-ANALYSIS_READY:1'
+                                    ,'V': 'V1:ITF_SCIENCE:1'}
+
+                seg_= query_segments(
+                    det_seg_channels_[detectors[d]]
+                    , gps_start, gps_end)
+            
+            except:
+                raise
+        det_segs.append(seg_)
+
+    # Filtering the segments to keep only the coinsident times
+    sim_seg = det_segs[0]['active']
+    for seg in det_segs:
+        sim_seg = sim_seg & seg['active']
+
+
+    # Breaking up segments that are bigger than the maxExternalLag
+    new_sim_seg=[]
+    for seg in sim_seg:
+        segsize=seg[1]-seg[0]
+        if segsize>maxExternalLag:
+            breaks=int(segsize/maxExternalLag)
+            for k in range(breaks):
+                new_sim_seg.append(Segment(seg[0]+k*maxExternalLag,seg[0]
+                                           +(k+1)*maxExternalLag))
+            new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag,seg[1]))
+        else:
+            new_sim_seg.append(seg)
+            
+    print("Number of segments: ",len(new_sim_seg))#list(seg[1]-seg[0] for seg in new_sim_seg),len(new_sim_seg))
+    # Calculating all the external lags for each segment and putting them all together.
+    externalIndeces={}
+    for det in detectors: externalIndeces[det]=[]
+
+    for seg in new_sim_seg:
+        # externalLagSize is plus the windowSize because we need the first 
+        # windowSize seconds in internal lags.
+        ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
+        for key in ind:
+            externalIndeces[key]+=(np.array(ind[key])+seg[0]).tolist()
+
+    # Random indexes to shuffle the externalIndeces as a group
+    randindex=np.arange(len(externalIndeces[detectors[0]]))
+    randindex = np.random.permutation(randindex)
+
+    # Shuffling with the new indeces
+    for det in detectors:
+        externalIndeces[det]=np.array(externalIndeces[det])[randindex]
+
+    chunks = len(externalIndeces[detectors[0]])
+    print("Target Size            : ",size)
+    print("Maximum possible size  : ",chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+        int(int(externalLagSize/duration)%2==0)+1)))
+    print("Maximum external lag   : ",maxExternalLag,"s")
+    print("Number of chunks       : ",chunks)
+    print("Maximum Size of subtest: ",int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+        int(int(externalLagSize/duration)%2==0)+1)))
+
+   
+    if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+        int(int(externalLagSize/duration)%2==0)+1)):
+
+        for det in detectors:
+            externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+                int(int(externalLagSize/duration)%2==0)+1))))]
+            
+        internalLagSize=(int(externalLagSize/duration)-(
+            int(int(externalLagSize/duration)%2==0)+1))
+        
+        size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+                int(int(externalLagSize/duration)%2==0)+1))
+        
+        
+        
+    # If target size is even bigger it cannot be fulfiled in this 
+    # time interval and it needs bigger date difference.
+    else:
+        raise ValueError("The date interval provided cannot fullfil the target size by "
+                         +str(duration*(size-chunks*int(
+                             externalLagSize/duration)*(int(externalLagSize/duration)-(
+                             int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
+    print("Internal lag size      : ",internalLagSize)
+
+
+    answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
+
+    print('Type the name of the temporary directory:')
+    dir_name = '0 0'
+    while not dir_name.isidentifier():
+        dir_name=input()
+        if not dir_name.isidentifier(): print("Not valid Folder name ...")
+
+    print("The current path of the directory is: \n"+destinationFile+dir_name+"\n" )  
+    answer = None
+    while answer not in answers:
+        print('Do you accept the path y/n ?')
+        answer=input()
+        if answer not in answers: print("Not valid answer ...")
+
+    if answer in ['no','n', 'No','NO','N','exit']:
+        print('Exiting procedure ...')
+        return
+
+    elif answer in ['yes','y','YES','Yes','Y']:
+        if os.path.isdir(destinationFile+dir_name):
+            answer = None
+            while answer not in answers:
+                print('Already existing '+dir_name+' directory, do you want to'
+                      +' overwrite it? y/n')
+                answer=input()
+                if answer not in answers: print("Not valid answer ...")
+            if answer in ['yes','y','YES','Yes','Y']:
+                os.system('rm -r '+destinationFile+dir_name)
+            elif answer in ['no','n', 'No','NO','N']:
+                print('Test is cancelled\n')
+                print('Exiting procedure ...')
+                return
+
+        print('Initiating procedure ...')
+        os.system('mkdir '+destinationFile+dir_name)
+
+        error = destinationFile+dir_name+'/condor/error'
+        output = destinationFile+dir_name+'/condor/output'
+        log = destinationFile+dir_name+'/condor/log'
+        submit = destinationFile+dir_name+'/condor/submit'
+
+        dagman = Dagman(name='falsAlarmDagman',
+                submit=submit)
+        job_list=[]
+        
+        target_size=0
+
+        print('Creation of temporary directory complete: '+destinationFile+dir_name)
+        print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
+        print('Internal lags :',str(internalLagSize))
+        for i in range(len(externalIndeces[detectors[0]])):
+            
+            target_size+=size_
+            
+            if target_size>size: size_=size_-(target_size-size)
+            
+            with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
+                f.write('#! /usr/bin/env python3\n')
+                f.write('import sys \n')
+                #This path is used only for me to test it
+                pwd=os.getcwd()
+                if 'vasileios.skliris' in pwd:
+                    f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+
+                f.write('from mly.validators import *\n\n')
+
+                f.write("import time\n\n")
+                f.write("t0=time.time()\n")
+
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"models = "+str(model)+"\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(size_)+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]+int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
+                         +24*" "+",startingPoint = "+str(0)+"\n"
+                         +24*" "+",name = 'test_"+str(i)+"'\n"
+                         +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",restriction ="+str(restriction)+")\n")
+
+
+                f.write(command+'\n\n')
+                f.write("print(time.time()-t0)\n")
+
+            os.system('chmod 777 '+destinationFile+dir_name+'/test_'+str(i)+'.py')
+            job = Job(name='partOfGeneratio_'+str(i)
+                   ,executable=destinationFile+dir_name+'/test_'+str(i)+'.py'
+                   ,submit=submit
+                   ,error=error
+                   ,output=output
+                   ,log=log
+                   ,getenv=True
+                   ,dag=dagman
+                   ,extra_lines=["accounting_group_user=vasileios.skliris"
+                                 ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+
+            job_list.append(job)
+            
+    with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
+        f4.write("#! /usr/bin/env python3\n")
+        pwd=os.getcwd()
+        if 'vasileios.skliris' in pwd:
+            f4.write("import sys \n")
+            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("from mly.validators import *\n")
+        f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
+        
+    os.system('chmod 777 '+destinationFile+dir_name+'/finalise_test.py')
+    final_job = Job(name='finishing'
+               ,executable=destinationFile+dir_name+'/finalise_test.py'
+               ,submit=submit
+               ,error=error
+               ,output=output
+               ,log=log
+               ,getenv=True
+               ,dag=dagman
+               ,extra_lines=["accounting_group_user=vasileios.skliris"
+                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+    
+    final_job.add_parents(job_list)
+
+    print('All set. Initiate dataset generation y/n?')
+    answer4=input()
+
+    if answer4 in ['yes','y','YES','Yes','Y']:
+        print('Creating Job queue')
+        
+        dagman.build_submit()
+
+        return
+    
+    else:
+        print('Data generation canceled')
+        os.system('cd')
+        os.system('rm -r '+destinationFile+dir_name)
+        return
+
+
+    
+    
+def zeroLagSearch(model
+                 ,duration 
+                 ,fs
+                 ,detectors
+                 ,dates=None
+                 ,windowSize = None #(32)            
+                 ,destinationFile = None
+                 ,mapping=None
+                 ,plugins=None
+                 ,restriction=None):
+    
+    # ---------------------------------------------------------------------------------------- #
+    # --- duration --------------------------------------------------------------------------- #
+
+    if not (isinstance(duration,(float,int)) and duration>0 ):
+        raise ValueError('The duration value has to be a possitive float'
+            +' or integer representing seconds.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- fs - sample frequency -------------------------------------------------------------- #
+
+    if not (isinstance(fs,int) and fs>0):
+        raise ValueError('Sample frequency has to be a positive integer.')
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- detectors -------------------------------------------------------------------------- #
+
+    if isinstance(detectors,(str,list)):
+        for d in detectors:
+            if d not in ['H','L','V','K','I']:
+                raise ValueError("detectors have to be a list of strings or a string"+
+                                " with at least one the followings as elements: \n"+
+                                "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                                "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                                "\n'U' if you don't want to specify detector")
+    else:
+        raise ValueError("detectors have to be a list of strings or a string"+
+                        " with at least one the followings as elements: \n"+
+                        "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+                        "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+                        "\n'U' if you don't want to specify detector")
+    if isinstance(detectors,str):
+        detectors = list(detectors)
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- dates ------------------------------------------------------------------------------ #
+    
+    gps_start = to_gps(dates[0])
+    gps_end = to_gps(dates[1])
+    
+    if gps_start > gps_end: raise ValueError("Not valid date.")
+              
+    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- windowSize --(for PSD)-------------------------------------------------------------- #        
+
+    if windowSize == None: windowSize = int(16*duration)
+    if not isinstance(windowSize,int):
+        raise ValueError('windowSize needs to be an integral')
+    if windowSize < duration :
+        raise ValueError('windowSize needs to be bigger than the duration')
+
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- destinationFile -------------------------------------------------------------------- #
+
+    if destinationFile == None : 
+        destinationFile = os.getcwd()
+    elif (destinationFile,str): 
+        if not os.path.isdir(destinationFile) : 
+            raise FileNotFoundError('No such file or directory:' +destinationFile)
+    else:
+        raise TypeError("Destination Path has to be a string valid path")
+    if destinationFile[:5]!='/home':
+        destinationFile = os.getcwd()+'/'+destinationFile       
+    if destinationFile[-1] != '/' : destinationFile=destinationFile+'/'
+
+    
+    det_segs=[]
+    for d in range(len(detectors)):
+        
+        try:
+            det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
+                                ,'L': 'L1:DMT-ANALYSIS_READY:1'
+                                ,'V': 'V1:ITF_SCIENCE:1'}
+
+            seg_= query_segments(det_seg_channels[detectors[d]]
+                                 ,gps_start, gps_end)
+       
+        except:
+            try:
+                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+                os.system("ligo-proxy-init -k")
+                det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
+                                    ,'L': 'L1:DMT-ANALYSIS_READY:1'
+                                    ,'V': 'V1:ITF_SCIENCE:1'}
+
+                seg_= query_segments(
+                    det_seg_channels_[detectors[d]]
+                    , gps_start, gps_end)
+            
+            except:
+                raise
+        det_segs.append(seg_)
+
+    # Filtering the segments to keep only the coinsident times
+    sim_seg = det_segs[0]['active']
+    for seg in det_segs:
+        sim_seg = sim_seg & seg['active']
+
+
+    new_sim_seg=sim_seg
+
+
+    answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
+
+    print('Type the name of the temporary directory:')
+    dir_name = '0 0'
+    while not dir_name.isidentifier():
+        dir_name=input()
+        if not dir_name.isidentifier(): print("Not valid Folder name ...")
+
+    print("The current path of the directory is: \n"+destinationFile+dir_name+"\n" )  
+    answer = None
+    while answer not in answers:
+        print('Do you accept the path y/n ?')
+        answer=input()
+        if answer not in answers: print("Not valid answer ...")
+
+    if answer in ['no','n', 'No','NO','N','exit']:
+        print('Exiting procedure ...')
+        return
+
+    elif answer in ['yes','y','YES','Yes','Y']:
+        if os.path.isdir(destinationFile+dir_name):
+            answer = None
+            while answer not in answers:
+                print('Already existing '+dir_name+' directory, do you want to'
+                      +' overwrite it? y/n')
+                answer=input()
+                if answer not in answers: print("Not valid answer ...")
+            if answer in ['yes','y','YES','Yes','Y']:
+                os.system('rm -r '+destinationFile+dir_name)
+            elif answer in ['no','n', 'No','NO','N']:
+                print('Test is cancelled\n')
+                print('Exiting procedure ...')
+                return
+
+        print('Initiating procedure ...')
+        os.system('mkdir '+destinationFile+dir_name)
+
+        error = destinationFile+dir_name+'/condor/error'
+        output = destinationFile+dir_name+'/condor/output'
+        log = destinationFile+dir_name+'/condor/log'
+        submit = destinationFile+dir_name+'/condor/submit'
+
+        dagman = Dagman(name='falsAlarmDagman',
+                submit=submit)
+        job_list=[]
+        
+        target_size=0
+
+        print('Creation of temporary directory complete: '+destinationFile+dir_name)
+        print('Expected jobs :',str(len(new_sim_seg)))
+              
+        for i in range(len(new_sim_seg)):
+                   
+            _size=int(new_sim_seg[i][1]-new_sim_seg[i][0]-windowSize+duration)
+            with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
+                f.write('#! /usr/bin/env python3\n')
+                f.write('import sys \n')
+                #This path is used only for me to test it
+                pwd=os.getcwd()
+                if 'vasileios.skliris' in pwd:
+                    f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+
+                f.write('from mly.validators import *\n\n')
+
+                f.write("import time\n\n")
+                f.write("t0=time.time()\n")
+
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"models = "+str(model)+"\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         +24*" "+",size = "+str(_size)+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str('real')+"'\n"
+                         +24*" "+",noiseSourceFile = "+str(list([new_sim_seg[i][0],new_sim_seg[i][0]+int(new_sim_seg[i][1]-new_sim_seg[i][0])] for det in detectors))+"\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",timeSlides ="+str(0)+"\n"
+                         +24*" "+",startingPoint = "+str(0)+"\n"
+                         +24*" "+",name = 'test_"+str(i)+"'\n"
+                         +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",restriction ="+str(restriction)+")\n")
+
+
+                f.write(command+'\n\n')
+                f.write("print(time.time()-t0)\n")
+
+            os.system('chmod 777 '+destinationFile+dir_name+'/test_'+str(i)+'.py')
+            job = Job(name='partOfGeneratio_'+str(i)
+                   ,executable=destinationFile+dir_name+'/test_'+str(i)+'.py'
+                   ,submit=submit
+                   ,error=error
+                   ,output=output
+                   ,log=log
+                   ,getenv=True
+                   ,dag=dagman
+                   ,extra_lines=["accounting_group_user=vasileios.skliris"
+                                 ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+
+            job_list.append(job)
+            
+    with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
+        f4.write("#! /usr/bin/env python3\n")
+        pwd=os.getcwd()
+        if 'vasileios.skliris' in pwd:
+            f4.write("import sys \n")
+            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("from mly.validators import *\n")
+        f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
+        
+    os.system('chmod 777 '+destinationFile+dir_name+'/finalise_test.py')
+    final_job = Job(name='finishing'
+               ,executable=destinationFile+dir_name+'/finalise_test.py'
+               ,submit=submit
+               ,error=error
+               ,output=output
+               ,log=log
+               ,getenv=True
+               ,dag=dagman
+               ,extra_lines=["accounting_group_user=vasileios.skliris"
+                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+    
+    final_job.add_parents(job_list)
+
+    print('All set. Initiate dataset generation y/n?')
+    answer4=input()
+
+    if answer4 in ['yes','y','YES','Yes','Y']:
+        print('Creating Job queue')
+        
+        dagman.build_submit()
+
+        return
+    
+    else:
+        print('Data generation canceled')
+        os.system('cd')
+        os.system('rm -r '+destinationFile+dir_name)
+        return
+
