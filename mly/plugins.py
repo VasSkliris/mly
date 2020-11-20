@@ -133,6 +133,7 @@ class PlugIn:
 
 # Default PlugIn objects
 
+known_plug_ins=['snr','psd','correlation']
 
 def correlationFunction(strain,detectors,fs,window=None):
     if window==None:
@@ -168,8 +169,8 @@ def plotcorrerlaion(strain,detectors,fs,data=None):
 
 
 def knownPlugIns(name,**kwargs):
-    if not isinstance(name,str):
-        raise TypeError("Name must be a string.")
+    if not isinstance(name,str) and name in known_plug_ins:
+        raise TypeError("Name must be a string and one of known plugins "+str(known_plug_ins))
     if name=='correlation':
         if 'window' in list(kwargs.keys()):
             w=kwargs['window']
