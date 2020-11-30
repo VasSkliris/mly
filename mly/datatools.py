@@ -669,7 +669,7 @@ class DataSet(DataSetBase):
         print("DataSet with shape "+str(goods.shape)+" is exported")
         return(goods)
     
-    def exportabels(self,*args,reshape=False):
+    def exportLabels(self,*args,reshape=False):
         # Checking the types of labels and how many
         # pods have the specific label.
         labelOccur={}
@@ -1097,15 +1097,15 @@ class DataSet(DataSetBase):
                                 ,frametype=det_frametypes[detectors[d]+'1']
                                 ,verbose=True).astype('float64').resample(fs).value
                             
-                        except RuntimeError:
-                            print('non public data get failed too')
-                            raise
+#                         except RuntimeError:
+#                             print('non public data get failed too')
+#                             raise
                             
                         except:
                             try:
                                 print('opened data failed again')
                                 kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-                                os.system("ligo-proxy-init -k")
+                                #os.system("ligo-proxy-init -k")
                                 
                                 det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
                                                    ,'L1': 'L1:GDS-CALIB_STRAIN'

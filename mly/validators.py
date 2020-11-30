@@ -369,6 +369,9 @@ class Validator:
         if isinstance(restriction,(int,float)):
             result_pd=result_pd[result_pd['total']>=restriction]
         
+        # saving the test size so that it can be retrievable in the finalisation
+        result_pd.testSize= size
+        
         t2=time.time()
         print('Time to generation: '+str(t2-t1))
         if savePath==None:
@@ -1220,6 +1223,7 @@ def finalise_far(path,generation=True,forceMerging=False):
             if counter==0:
                 print('rm '+pyScripts[i])
                 failed_pyScripts.append(pyScripts[i])
+        print('Number of failed scripts: ',len(failed_pyScripts))
                         
     if generation==False: return
     
@@ -1286,15 +1290,26 @@ def finalise_far(path,generation=True,forceMerging=False):
         setSizes=[]
         finalNames=[]
         IDs,new_dat=[],[]
+        totalTestSize=0
         for k in range(len(farTests)):
             if k==0:
                 with open(path+farTests[k],'rb') as obj:
                     finaltest = pickle.load(obj)
+                try:
+                    totalTestSize += finaltest.testSize
+                except:
+                    print('no testSize')
+ 
                 print(k,0)
 
             else:
                 with open(path+farTests[k],'rb') as obj:
                     part_of_test = pickle.load(obj)
+                try:
+                    totalTestSize += part_of_test.testSize
+                except:
+                    print('no testSize')
+
                 finaltest = finaltest.append(part_of_test)
                 print(k)
 
@@ -1308,7 +1323,10 @@ def finalise_far(path,generation=True,forceMerging=False):
             if (('.out' in file) or ('.py' in file)
                 or ('part_of' in file) or ('No' in file) or ('test' in file) or ('.sh' in file) or ('10000' in file)):
                 os.system('rm '+path+file)
-  
+        
+        print('Total Size is :',totalTestSize )
+        print(str(totalTestSize/(365*24*3600))+' years')
+
     
     
 
@@ -1433,46 +1451,81 @@ def online_FAR(model
     
     if restriction == None: restriction ==0
     
-    
-    
-#     det_seg_channels = {'H': 'H1_DATA'
-#                    ,'L': 'L1_DATA'
-#                    ,'V': 'V1_DATA'}
-    
 
     # Feching the segment times tha detectors were active
-    
+    det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
+                   ,'L1': 'L1:DMT-ANALYSIS_READY:1'
+                   ,'V1': 'V1:ITF_SCIENCE:1'}
+
+    cbc_inj_flags={'H1': 'H1:ODC-INJECTION_CBC:2'
+                  ,'L1': 'L1:ODC-INJECTION_CBC:2'}
+
+    burst_inj_flags={'H1': 'H1:ODC-INJECTION_BURST:2'
+                    ,'L1': 'L1:ODC-INJECTION_BURST:2'}
+
+    detchar_inj_flags={'H1': 'H1:ODC-INJECTION_DETCHAR:2'
+                      ,'L1': 'L1:ODC-INJECTION_DETCHAR:2'}
+
+    stoch_inj_flags={'H1': 'H1:ODC-INJECTION_STOCHASTIC:2'
+                    ,'L1': 'L1:ODC-INJECTION_STOCHASTIC:2'}
+
+    trans_inj_flags={'H1': 'H1:ODC-INJECTION_TRANSIENT:2'
+                    ,'L1': 'L1:ODC-INJECTION_TRANSIENT:2'}
+
+    injectionList=[cbc_inj_flags
+                   ,burst_inj_flags
+                   ,detchar_inj_flags
+                   ,stoch_inj_flags
+                   ,trans_inj_flags]
+
+
     det_segs=[]
     for d in range(len(detectors)):
-        
-        try:
-            det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
-                                ,'L': 'L1:DMT-ANALYSIS_READY:1'
-                                ,'V': 'V1:ITF_SCIENCE:1'}
-
-            seg_= query_segments(det_seg_channels[detectors[d]]
-                                 ,gps_start, gps_end)
-       
-        except:
+        main_seg=query_segments(det_flags[detectors[d]+'1'],gps_start, gps_end)['active']
+        for inj in injectionList:
             try:
-                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-                os.system("ligo-proxy-init -k")
-                det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
-                                    ,'L': 'L1:DMT-ANALYSIS_READY:1'
-                                    ,'V': 'V1:ITF_SCIENCE:1'}
-
-                seg_= query_segments(
-                    det_seg_channels_[detectors[d]]
-                    , gps_start, gps_end)
-            
+                main_seg = main_seg & ~query_segments(inj[detectors[d]+'1'], gps_start, gps_end)['acitve']
+            except KeyError:
+                pass
             except:
                 raise
-        det_segs.append(seg_)
 
-    # Filtering the segments to keep only the coinsident times
-    sim_seg = det_segs[0]['active']
-    for seg in det_segs:
-        sim_seg = sim_seg & seg['active']
+        det_segs.append(main_seg)
+
+    sim_seg = det_segs[0]
+    for seg in det_segs[1:]:
+        sim_seg = sim_seg & seg
+#     det_segs=[]
+#     for d in range(len(detectors)):
+        
+#         try:
+#             det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
+#                                 ,'L': 'L1:DMT-ANALYSIS_READY:1'
+#                                 ,'V': 'V1:ITF_SCIENCE:1'}
+
+#             seg_= query_segments(det_seg_channels[detectors[d]]
+#                                  ,gps_start, gps_end)
+       
+#         except:
+#             try:
+#                 kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+#                 os.system("ligo-proxy-init -k")
+#                 det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
+#                                     ,'L': 'L1:DMT-ANALYSIS_READY:1'
+#                                     ,'V': 'V1:ITF_SCIENCE:1'}
+
+#                 seg_= query_segments(
+#                     det_seg_channels_[detectors[d]]
+#                     , gps_start, gps_end)
+            
+#             except:
+#                 raise
+#         det_segs.append(seg_)
+
+#     # Filtering the segments to keep only the coinsident times
+#     sim_seg = det_segs[0]['active']
+#     for seg in det_segs:
+#         sim_seg = sim_seg & seg['active']
 
 
     # Breaking up segments that are bigger than the maxExternalLag
@@ -1485,7 +1538,7 @@ def online_FAR(model
                 new_sim_seg.append(Segment(seg[0]+k*maxExternalLag,seg[0]
                                            +(k+1)*maxExternalLag))
             new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag,seg[1]))
-        else:
+        elif segsize>=windowSize:
             new_sim_seg.append(seg)
             
     print("Number of segments: ",len(new_sim_seg))#list(seg[1]-seg[0] for seg in new_sim_seg),len(new_sim_seg))
@@ -1699,7 +1752,8 @@ def zeroLagSearch(model
                  ,destinationFile = None
                  ,mapping=None
                  ,plugins=None
-                 ,restriction=None):
+                 ,restriction=None
+                 ,slides=None):
     
     # ---------------------------------------------------------------------------------------- #
     # --- duration --------------------------------------------------------------------------- #
@@ -1766,42 +1820,68 @@ def zeroLagSearch(model
     if destinationFile[:5]!='/home':
         destinationFile = os.getcwd()+'/'+destinationFile       
     if destinationFile[-1] != '/' : destinationFile=destinationFile+'/'
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- slides ----------------------------------------------------------------------------- #
 
+    #if slides
     
+    det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
+                   ,'L1': 'L1:DMT-ANALYSIS_READY:1'
+                   ,'V1': 'V1:ITF_SCIENCE:1'}
+
+    cbc_inj_flags={'H1': 'H1:ODC-INJECTION_CBC:2'
+                  ,'L1': 'L1:ODC-INJECTION_CBC:2'}
+
+    burst_inj_flags={'H1': 'H1:ODC-INJECTION_BURST:2'
+                    ,'L1': 'L1:ODC-INJECTION_BURST:2'}
+
+    detchar_inj_flags={'H1': 'H1:ODC-INJECTION_DETCHAR:2'
+                      ,'L1': 'L1:ODC-INJECTION_DETCHAR:2'}
+
+    stoch_inj_flags={'H1': 'H1:ODC-INJECTION_STOCHASTIC:2'
+                    ,'L1': 'L1:ODC-INJECTION_STOCHASTIC:2'}
+
+    trans_inj_flags={'H1': 'H1:ODC-INJECTION_TRANSIENT:2'
+                    ,'L1': 'L1:ODC-INJECTION_TRANSIENT:2'}
+
+    injectionList=[cbc_inj_flags
+                   ,burst_inj_flags
+                   ,detchar_inj_flags
+                   ,stoch_inj_flags
+                   ,trans_inj_flags]
+
+
     det_segs=[]
     for d in range(len(detectors)):
-        
-        try:
-            det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
-                                ,'L': 'L1:DMT-ANALYSIS_READY:1'
-                                ,'V': 'V1:ITF_SCIENCE:1'}
-
-            seg_= query_segments(det_seg_channels[detectors[d]]
-                                 ,gps_start, gps_end)
-       
-        except:
+        main_seg=query_segments(det_flags[detectors[d]+'1'], gps_start,gps_end)['active']
+        for inj in injectionList:
             try:
-                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-                os.system("ligo-proxy-init -k")
-                det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
-                                    ,'L': 'L1:DMT-ANALYSIS_READY:1'
-                                    ,'V': 'V1:ITF_SCIENCE:1'}
-
-                seg_= query_segments(
-                    det_seg_channels_[detectors[d]]
-                    , gps_start, gps_end)
-            
+                main_seg = main_seg & ~query_segments(inj[detectors[d]+'1'], gps_start,gps_end)['active']
+            except KeyError:
+                pass
             except:
                 raise
-        det_segs.append(seg_)
 
-    # Filtering the segments to keep only the coinsident times
-    sim_seg = det_segs[0]['active']
-    for seg in det_segs:
-        sim_seg = sim_seg & seg['active']
+        det_segs.append(main_seg)
 
-
-    new_sim_seg=sim_seg
+    sim_seg = det_segs[0]
+    for seg in det_segs[1:]:
+        sim_seg = sim_seg & seg
+    
+    new_sim_seg=[]
+    maxsegsize=int(16384*duration)
+    for seg in sim_seg:
+        segsize=seg[1]-seg[0]
+        if segsize>maxsegsize:
+            breaks=int(segsize/maxsegsize)
+            for k in range(breaks):
+                new_sim_seg.append(Segment(seg[0]+k*maxsegsize,seg[0]
+                                           +(k+1)*maxsegsize))
+            new_sim_seg.append(Segment(seg[0]+(k+1)*maxsegsize,seg[1]))
+        elif segsize>=windowSize:
+            new_sim_seg.append(seg)
+    
 
 
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
