@@ -7,6 +7,7 @@ from gwpy.timeseries import TimeSeries
 from gwpy.segments import Segment,SegmentList,DataQualityFlag
 from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
+import gwdatafind
 
 from gwpy.time import to_gps
 from gwpy.time import from_gps
@@ -16,6 +17,7 @@ from scipy.stats import pearsonr
 from scipy.special import comb
 from pycondor import Job, Dagman
 from urllib.error import HTTPError
+
 import numpy as npl
 import pickle
 import os
@@ -305,7 +307,7 @@ class DataSet(DataSetBase):
             finalName = 'dataSetNameToken'+str("%04d" %
                 (np.random.randint(0,10000)))+'.'+type_
         else:
-            finalName = (name+'.'+type_)
+            finalName = (name)
         if type_ == 'pkl':
             with open(finalName, 'wb') as output:
                 pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
@@ -403,10 +405,12 @@ class DataSet(DataSetBase):
                     print("Pods with different shapes")
                 if pod.fs != pod0.fs:
                     print("Pods woth different sample frequencies")
-                if all(d in pod0.detectors for d in pod.detectors):
+                if not all(d in pod0.detectors for d in pod.detectors):
                     print("Pods with different detectors")
                 else:
-                    self._dataPods.append(newData.dataPods)
+                    pass
+            self._dataPods += newData.dataPods
+
         else:
             raise TypeError("Appended object is not a DataPod or Dataset")
             
@@ -648,22 +652,17 @@ class DataSet(DataSetBase):
             
         if shape == None:
             shape = goods.shape
+            shape = tuple([None]+list(shape[1:]))
         if isinstance(shape,tuple):
 
             if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
-                print(shapeList)
                 goodsShapeList = [None]+list(goods.shape)[1:]
-                print(goodsShapeList)
                 newIndex = list(shapeList.index(goodsShapeList[i]) for i in range(len(shape)))
-                print(newIndex)
                 goods = np.transpose(goods, newIndex)
             else:
                 raise ValueError("Shape values are not the same as the DataSet shape")
-#             if None in goods.shape: 
-#                 shapeList=list(shape)
-#                 shapeList[0]=len(self)
-#                 shape=tuple(shapeList)
+
         else:
             raise TypeError("Not valid shape.")
         print("DataSet with shape "+str(goods.shape)+" is exported")
@@ -703,7 +702,7 @@ class DataSet(DataSetBase):
         goods=np.asarray(goods)
         # reshaping in case only one label is required
         if (len(args)==1 and reshape==True): goods=goods.reshape((len(goods),1))
-        print("Labels "+str(list(args))+" with shape "+str(goods.shape)+" are unloaded")
+        print("Labels "+str(list(args))+" with shape "+str(goods.shape)+" are exported")
         return goods
    
     def exportGPS(self):
@@ -733,6 +732,7 @@ class DataSet(DataSetBase):
                    ,maxDuration=None
                    ,differentSignals=False   # In case we want to put different injection to every detector.
                    ,plugins=None):
+        
 
         # Integration limits for the calculation of analytical SNR
         # These values are very important for the calculation
@@ -899,58 +899,6 @@ class DataSet(DataSetBase):
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
                 pass
-#                 seg_=Segment(noiseSourceFile[d][0], noiseSourceFile[d][1])
-#                 print(seg_)
-#                 # Open Data Channels
-#                 det_seg_channels = {'H': 'H1_DATA','L': 'L1_DATA','V': 'V1_DATA'}
-#                 # Feching the segment times that detectors were active
-#                 for d in range(len(detectors)):
-#                     print(noiseSourceFile[d])
-#                     print(noiseSourceFile[d][0], noiseSourceFile[d][1])
-                    
-
-#                     try:
-#                         seg_=DataQualityFlag.fetch_open_data(
-#                             det_seg_channels[detectors[d]]
-#                             , noiseSourceFile[d][0]
-#                             , noiseSourceFile[d][1]).active
-                        
-#                     except:
-#                         try:
-#                             print('Trying non open data')
-#                             det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
-#                                                 ,'L': 'L1:DMT-ANALYSIS_READY:1'
-#                                                 ,'V': 'V1:ITF_SCIENCE:1'}
-
-#                             seg_= query_segments(
-#                                 det_seg_channels_[detectors[d]]
-#                                 , noiseSourceFile[d][0]
-#                                 , noiseSourceFile[d][1])
-                            
-#                         except:
-#                             try:
-#                                 kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-#                                 os.system("ligo-proxy-init -k")
-#                                 det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
-#                                                     ,'L': 'L1:DMT-ANALYSIS_READY:1'
-#                                                     ,'V': 'V1:ITF_SCIENCE:1'}
-
-#                                 seg_= query_segments(
-#                                     det_seg_channels_[detectors[d]]
-#                                     , noiseSourceFile[d][0]
-#                                     , noiseSourceFile[d][1])
-#                             except:
-#                                 print('everything failed')
-#                                 raise
-
-
-#                 print(seg_,len(seg_),seg_[0][1]-seg_[0][0],noiseSourceFile[d][1]-noiseSourceFile[d][0])
-#                 if len(seg_)==0: 
-#                     raise ValueError("No active segments during those gps times for "+detectors[d]+" detector.")
-#                 elif len(seg_)>1:
-#                     raise ValueError("There are more than one active segments during those gps times for "+detectors[d]+" detector.")
-#                 elif (len(seg_)==1 and seg_[0][1]-seg_[0][0]!=noiseSourceFile[d][1]-noiseSourceFile[d][0]) : 
-#                     raise ValueError("Only part of the required segment is active.")
 
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
@@ -972,8 +920,8 @@ class DataSet(DataSetBase):
         # --- startingPoint ---------------------------------------------------------------------- #
 
         if startingPoint == None : startingPoint = 0 
-        if not (isinstance(startingPoint, int) and startingPoint >=0) :
-            raise ValueError('lags has to be an integer')        
+        if not (isinstance(startingPoint, (float,int)) and (startingPoint%duration)%(1/fs) ==0) :
+            raise ValueError('Starting point decimal part must always be a multiple of time step')        
 
         # ---------------------------------------------------------------------------------------- #   
         # --- name ------------------------------------------------------------------------------- #
@@ -1002,7 +950,6 @@ class DataSet(DataSetBase):
             plugins = [plugins]
         if isinstance(plugins,list):
             for pl in plugins:
-                print(pl,known_plug_ins)
                 if pl in known_plug_ins:
                     pass
                 elif isinstance(pl,PlugIn):
@@ -1069,20 +1016,47 @@ class DataSet(DataSetBase):
 
 
             elif isinstance(noiseSourceFile[0],list):
+                gett=time.time()
                 for d in range(len(detectors)):
                     
+
                     try:
-                        det_channels_open = {'H1': 'H1_DATA'
-                                            ,'L1': 'L1_DATA'
-                                            ,'V1': 'V1_DATA'}
-                        noise_segDict[detectors[d]] = TimeSeries.fetch_open_data(
-                            det_channels_open[detectors[d]+'1']
-                            ,noiseSourceFile[d][0]
-                            ,noiseSourceFile[d][1]).astype('float64').resample(fs).value
-                        
+                        t0=time.time()
+                        det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
+                                           ,'L1': 'L1:GDS-CALIB_STRAIN'
+                                           ,'V1': 'V1:Hrec_hoft_16384Hz'}
+
+                        det_frametypes = {'H1': 'H1_HOFT_C00'
+                                         ,'L1': 'L1_HOFT_C00'
+                                         ,'V1': 'V1Online'}
+
+
+                        conn=gwdatafind.connect()
+                        urls=conn.find_urls(detectors[d]
+                                           , det_frametypes[detectors[d]+'1']
+                                           , noiseSourceFile[d][0]
+                                           , noiseSourceFile[d][1])
+
+                        noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                                    , det_channels_get[detectors[d]+'1']
+                                                                    , start =noiseSourceFile[d][0]
+                                                                    , end =noiseSourceFile[d][1]).resample(fs).astype('float64').value
+
+#                                 noise_segDict[detectors[d]]=TimeSeries.get(
+#                                     det_channels_get[detectors[d]+'1']
+#                                     ,noiseSourceFile[d][0]
+#                                     ,noiseSourceFile[d][1]
+#                                     ,frametype=det_frametypes[detectors[d]+'1']
+#                                     ,verbose=True).astype('float64').resample(fs).value
+                        t1=time.time()
+                        print("time to get dataz : "+str(t1-t0))
+
                     except:
                         try:
-                            print('opened data failed ')
+                            print('certificate failed')
+                            kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
+                            #os.system("ligo-proxy-init -k")
+                            t0=time.time()
                             det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
                                                ,'L1': 'L1:GDS-CALIB_STRAIN'
                                                ,'V1': 'V1:Hrec_hoft_16384Hz'}
@@ -1090,51 +1064,37 @@ class DataSet(DataSetBase):
                             det_frametypes = {'H1': 'H1_HOFT_C00'
                                              ,'L1': 'L1_HOFT_C00'
                                              ,'V1': 'V1Online'}
-                            noise_segDict[detectors[d]]=TimeSeries.get(
-                                det_channels_get[detectors[d]+'1']
-                                ,noiseSourceFile[d][0]
-                                ,noiseSourceFile[d][1]
-                                ,frametype=det_frametypes[detectors[d]+'1']
-                                ,verbose=True).astype('float64').resample(fs).value
+
+
                             
-#                         except RuntimeError:
-#                             print('non public data get failed too')
-#                             raise
-                            
+
+                            noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                                        , det_channels_get[detectors[d]+'1']
+                                                                        , start =noiseSourceFile[d][0]
+                                                                        , end =noiseSourceFile[d][1]
+                                                                        , resample=fs ).astype('float64').value
+
+#                                 noise_segDict[detectors[d]]=TimeSeries.get(
+#                                     det_channels_get[detectors[d]+'1']
+#                                     ,noiseSourceFile[d][0]
+#                                     ,noiseSourceFile[d][1]
+#                                     ,frametype=det_frametypes[detectors[d]+'1']
+#                                     ,verbose=True).astype('float64').resample(fs).value
+                            t1=time.time()
+                            print("time to get dataz : "+str(t1-t0))
                         except:
-                            try:
-                                print('opened data failed again')
-                                kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-                                #os.system("ligo-proxy-init -k")
-                                
-                                det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
-                                                   ,'L1': 'L1:GDS-CALIB_STRAIN'
-                                                   ,'V1': 'V1:Hrec_hoft_16384Hz'}
+                            print('non public data get failed too')
+                            raise
 
-                                det_frametypes = {'H1': 'H1_HOFT_C00'
-                                                 ,'L1': 'L1_HOFT_C00'
-                                                 ,'V1': 'V1Online'}
-
-                                noise_segDict[detectors[d]]=TimeSeries.get(
-                                    det_channels_get[detectors[d]+'1']
-                                    ,noiseSourceFile[d][0]
-                                    ,noiseSourceFile[d][1]
-                                    ,frametype=det_frametypes[detectors[d]+'1']
-                                    ,verbose=True).astype('float64').resample(fs).value
-                            except:
-                                print('non public data get failed too')
-                                raise
-                            
                     print(len(noise_segDict[detectors[d]])/fs)
                     gps0 = int(noiseSourceFile[d][0])
 
-
-                
+                print(time.time()-gett)
             ind=internalLags(detectors = detectors
                                ,lags = timeSlides
                                ,duration = duration
                                ,fs = fs
-                               ,size = int(len(noise_segDict[detectors[0]])/fs-windowSize+duration)
+                               ,size = int(len(noise_segDict[detectors[0]])/fs-windowSize)
                                ,start_from_sec=startingPoint)
             #print(ind)
 
@@ -1144,7 +1104,8 @@ class DataSet(DataSetBase):
         DATA=DataSet(name = name)
         
         for I in range(size):
-            print(I)
+            t0=time.time()
+
             detKeys = list(injectionFileDict.keys())
             
             if single == True: luckyDet = np.random.choice(detKeys)
@@ -1227,7 +1188,7 @@ class DataSet(DataSetBase):
 
                     noise_seg=noise_segDict[det]
                     # Calling the real noise segments
-                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs]  
+                    noise=noise_seg[int(ind[det][I]):int(ind[det][I])+windowSize*fs]  
                     # Generating the PSD of it
                     p, f = psd(noise, Fs=fs, NFFT=fs) 
                     p, f=p[1::],f[1::]
@@ -1239,13 +1200,13 @@ class DataSet(DataSetBase):
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)                 
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs)
+                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
                     back_dict[det] = back.value
                     
                 elif backgroundType == 'real':
                     noise_seg=noise_segDict[det]
                     # Calling the real noise segments
-                    noise=noise_seg[ind[det][I]:ind[det][I]+windowSize*fs] 
+                    noise=noise_seg[int(ind[det][I]):int(ind[det][I])+windowSize*fs]
                     # Calculatint the psd of FFT=1s
                     p, f = psd(noise, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
@@ -1258,7 +1219,7 @@ class DataSet(DataSetBase):
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs)
+                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
                 if injectionFolder != None:
@@ -1413,9 +1374,19 @@ class DataSet(DataSetBase):
                 pod.addPlugIn(pl)
                 
             DATA.add(pod)
+            #t1=time.time()
+            #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))
+            #sys.stdout.flush()
+            #t0=time.time()
             
-            
+        t0=time.time() 
+
         random.shuffle(DATA.dataPods)
+        
+        t1=time.time()
+        print('Time to shuffle: '+str(t1-t0))
+        
+        print('\n')
         if savePath!=None:
             DATA.save(savePath+'/'+name,'pkl')
         else:
