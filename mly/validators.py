@@ -17,6 +17,8 @@ from gwpy.time import to_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
 
+from gwpy.io.kerberos import kinit
+
 from gwpy.timeseries import TimeSeries
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd
@@ -43,6 +45,7 @@ class Validator:
                        ,savePath = None
                        ,single = False  # Making single detector injections as glitch
                        ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
+                       ,plugins=None
                        ,disposition=None
                        ,maxDuration=None
                        ,differentSignals=False   # In case we want to put different injection to every detector.
@@ -83,28 +86,13 @@ class Validator:
             else:
                 trained_models.append(model) 
 
-        # models[1] becomes the the input inexes of the data 
-        if extras==None:
-            number_of_extras=0
-        else:
-            number_of_extras=len(extras)
-
-        data_inputs_index=[]
-        for index in models[1]:
-            if index==None :
-                data_inputs_index.append([k for k in range(number_of_extras+1)])
-            elif all(j<= number_of_extras for j in index):
-                data_inputs_index.append(index)
-            else:
-                raise TypeError(str(index)+' is not a valid index')
-
-
         # ---------------------------------------------------------------------------------------- #    
         # --- mappings --------------------------------------------------------------------------- #
-
+        # 
         # Mappings are a way to make sure the model has the same translation for the
         # labels as we have. All models trained in mly will have a mapping defined
         # during the data formating in the model training.
+        
 
         if len(trained_models)==1 and isinstance(mapping,dict):
             mapping=[mapping]
@@ -113,12 +101,13 @@ class Validator:
         if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
             pass
         else:
+            
+            
             raise TypeError('Mappings have to be a list of dictionaries for each model.')
 
         columns=[]
         for m in range(len(trained_models)):
             columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
-
 
         # ---------------------------------------------------------------------------------------- #    
         # --- injectionSNR ----------------------------------------------------------------------- #
@@ -183,7 +172,7 @@ class Validator:
                                    ,disposition = disposition
                                    ,maxDuration = maxDuration
                                    ,differentSignals = differentSignals
-                                   ,extras = extras)
+                                   ,plugins=plugins)
 
 
             random.shuffle(DATA.dataPods)
@@ -191,20 +180,17 @@ class Validator:
 
             result[loopname].append(val)
 
+            
             for m in range(len(trained_models)):
                 dataList=[]
                 input_shape=trained_models[m].input_shape
                 if isinstance(input_shape,tuple): input_shape=[input_shape]
-                for i in data_inputs_index[m]:
-                    if i==0:
-                        dataList.append(DATA.unloadData(shape=input_shape[i]))
-                    else:
-                        dataList.append(DATA.unloadData(extras = extras[i-1]
-                                    ,shape=input_shape[i]))
-                print(data_inputs_index[m])
+                for i in range(len(models[1][m])):
+                    dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
+
                 if len(dataList)==1: dataList=dataList[0]
-                scores =  trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
-                
+                scores = trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
+
                 if 'scores'+str(m+1) in list(result.keys()):
                     result['scores'+str(m+1)].append(scores.tolist())
                 else:
@@ -220,8 +206,200 @@ class Validator:
         
         return(result)
 
-    
-    
+#     def accuracy(models
+#                        ,duration
+#                        ,fs
+#                        ,size
+#                        ,detectors 
+#                        ,injectionFolder = None
+#                        ,labels = {'type':'signal'}
+#                        ,backgroundType = None
+#                        ,injectionSNR = None
+#                        ,noiseSourceFile = None  
+#                        ,windowSize = None #(32)            
+#                        ,timeSlides = None #(1)
+#                        ,startingPoint= None #(32)
+#                        ,name = None
+#                        ,savePath = None
+#                        ,single = False  # Making single detector injections as glitch
+#                        ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
+#                        ,disposition=None
+#                        ,maxDuration=None
+#                        ,differentSignals=False   # In case we want to put different injection to every detector.
+#                        ,extras=None
+#                        ,mapping=None):
+
+#         # ---------------------------------------------------------------------------------------- #    
+#         # --- model ------------------------------------------------------------------------------ #
+#         # 
+#         # This first input has a complicated format in the rare case of trying
+#         # to test two models in parallel but with different subset of the data as input.
+#         #
+#         # Case of one model as it was before
+#         if not isinstance(models,list):
+#             models=[[models],[None]]
+#         # Case where all models have all data to use
+#         if isinstance(models,list) and not all(isinstance(m,list) for m in models):
+#             models=[models,len(models)*[None]]
+#         # Case where index is not given for all models.
+#         if len(models[0])!=len(models[1]):
+#             raise ValueError('You have to define input index for all maodels')
+#         # Case somebody doesn't put the right amount of indexes for the data inputs. 
+
+#         if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
+#             raise TypeError('models have to be a list of two sublists. '
+#                             +'First list has the models and the second has the'
+#                             +' indexes of the data each one uses following the order strain, extra1, extra2...'
+#                             +'[model1,model2,model3],[[0,1],[0,2],[2]]')
+
+#         # models[0] becomes the trained models list
+#         trained_models=[]
+#         for model in models[0]:  
+#             if isinstance(model,str):
+#                 if os.path.isfile(model):    
+#                     trained_models.append(load_model(model))
+#                 else:
+#                     raise FileNotFoundError("No model file in "+model)
+#             else:
+#                 trained_models.append(model) 
+
+#         # models[1] becomes the the input inexes of the data 
+#         if extras==None:
+#             number_of_extras=0
+#         else:
+#             number_of_extras=len(extras)
+
+#         data_inputs_index=[]
+#         for index in models[1]:
+#             if index==None :
+#                 data_inputs_index.append([k for k in range(number_of_extras+1)])
+#             elif all(j<= number_of_extras for j in index):
+#                 data_inputs_index.append(index)
+#             else:
+#                 raise TypeError(str(index)+' is not a valid index')
+
+
+#         # ---------------------------------------------------------------------------------------- #    
+#         # --- mappings --------------------------------------------------------------------------- #
+
+#         # Mappings are a way to make sure the model has the same translation for the
+#         # labels as we have. All models trained in mly will have a mapping defined
+#         # during the data formating in the model training.
+
+#         if len(trained_models)==1 and isinstance(mapping,dict):
+#             mapping=[mapping]
+#         elif len(trained_models)!=1 and isinstance(mapping,dict):
+#             mapping=len(trained_models)*[mapping]
+#         if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
+#             pass
+#         else:
+#             raise TypeError('Mappings have to be a list of dictionaries for each model.')
+
+#         columns=[]
+#         for m in range(len(trained_models)):
+#             columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
+
+
+#         # ---------------------------------------------------------------------------------------- #    
+#         # --- injectionSNR ----------------------------------------------------------------------- #
+
+#         if isinstance(injectionSNR,list): 
+#             snrInList=True
+#             snrs=injectionSNR
+#         else:
+#             snrInList=False
+
+#         # ---------------------------------------------------------------------------------------- #    
+#         # --- disposition ------------------------------------------------------------------------ #
+
+#         if isinstance(disposition,list): 
+#             dispositionInList=True
+#             dispositions=disposition
+#         else:
+#             dispositionInList=False
+
+#         # ---------------------------------------------------------------------------------------- #    
+#         result={}            
+#         looper=[]
+#         if snrInList==True and dispositionInList==True:
+#             raise ValueError('You cannot loop through two values. Do seperate tests')
+#         elif snrInList==True and dispositionInList==False:
+#             for snr in snrs:
+#                 looper.append(snr)
+#             result['snrs']=[]
+#             loopname='snrs'
+#         elif snrInList==False and dispositionInList==True:
+#             for j in dispositions:
+#                 looper.append(j)
+#             result['dispostions']=[]
+#             loopname='dispositions'
+#         else:
+#             looper.append(injectionSNR)
+#             result['snrs']=[]
+#             loopname='snrs'
+
+
+#         for val in looper:
+#             if dispositionInList==True:
+
+#                 disposition=val
+#             else: 
+#                 injectionSNR=val
+
+#             DATA=DataSet.generator(duration = duration
+#                                    ,fs = fs
+#                                    ,size = size
+#                                    ,detectors = detectors
+#                                    ,injectionFolder = injectionFolder
+#                                    ,labels = labels
+#                                    ,backgroundType = backgroundType
+#                                    ,injectionSNR = injectionSNR
+#                                    ,noiseSourceFile = noiseSourceFile
+#                                    ,windowSize = windowSize          
+#                                    ,timeSlides = timeSlides
+#                                    ,startingPoint = startingPoint
+#                                    ,single = single
+#                                    ,injectionCrop = injectionCrop
+#                                    ,disposition = disposition
+#                                    ,maxDuration = maxDuration
+#                                    ,differentSignals = differentSignals
+#                                    ,extras = extras)
+
+
+#             random.shuffle(DATA.dataPods)
+
+
+#             result[loopname].append(val)
+
+#             for m in range(len(trained_models)):
+#                 dataList=[]
+#                 input_shape=trained_models[m].input_shape
+#                 if isinstance(input_shape,tuple): input_shape=[input_shape]
+#                 for i in data_inputs_index[m]:
+#                     if i==0:
+#                         dataList.append(DATA.unloadData(shape=input_shape[i]))
+#                     else:
+#                         dataList.append(DATA.unloadData(extras = extras[i-1]
+#                                     ,shape=input_shape[i]))
+#                 print(data_inputs_index[m])
+#                 if len(dataList)==1: dataList=dataList[0]
+#                 scores =  trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
+
+#                 if 'scores'+str(m+1) in list(result.keys()):
+#                     result['scores'+str(m+1)].append(scores.tolist())
+#                 else:
+#                     result['scores'+str(m+1)]=[scores.tolist()]
+
+
+#         if savePath==None:
+#             savePath='./'
+
+#         if name!=None:
+#             with open(savePath+name+'.pkl', 'wb') as output:
+#                 pickle.dump(result, output, pickle.HIGHEST_PROTOCOL)
+
+#         return(result)    
+
     def falseAlarmTest(models
                        ,duration
                        ,fs
@@ -237,6 +415,7 @@ class Validator:
                        ,savePath = None
                        ,plugins=None
                        ,mapping=None
+                       ,strides=None
                        ,restriction=None):    
         
         
@@ -275,27 +454,13 @@ class Validator:
             else:
                 trained_models.append(model) 
 
-        #         models[1] becomes the the input inexes of the data 
-        #         if plugin==None:
-        #             number_of_plugins=0
-        #         else:
-        #             number_of_plugins=len(plugins)
-
-        #         data_inputs=[]
-        #         for pl in models[1]:
-        #             if pl==None :
-        #                 data_inputs.append(['strain']+plugins)
-        #             elif all(pl in  for j in index):
-        #                 data_inputs_index.append(index)
-        #             else:
-        #                 raise TypeError(str(index)+' is not a valid index')
-
         # ---------------------------------------------------------------------------------------- #    
         # --- mappings --------------------------------------------------------------------------- #
         # 
         # Mappings are a way to make sure the model has the same translation for the
         # labels as we have. All models trained in mly will have a mapping defined
         # during the data formating in the model training.
+        
 
         if len(trained_models)==1 and isinstance(mapping,dict):
             mapping=[mapping]
@@ -304,12 +469,22 @@ class Validator:
         if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
             pass
         else:
+            
+            
             raise TypeError('Mappings have to be a list of dictionaries for each model.')
 
         columns=[]
         for m in range(len(trained_models)):
             columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
 
+        # ---------------------------------------------------------------------------------------- #    
+        # --- strides ---------------------------------------------------------------------------- #
+            
+        if strides==None:
+            strides=1
+        elif not (isinstance(strides,int) and strides <= fs and fs%strides==0):
+            raise ValueError('Strides must be a divisible integer of sample frequency')
+        
         # Using a generator for the data to use for testing
         DATA=DataSet.generator(duration=duration
                                ,fs =fs
@@ -324,9 +499,37 @@ class Validator:
                                ,name =name
                                ,plugins=plugins)   
         
-        
         t1=time.time()
-        print('Time to generation: '+str(t1-t0))
+        print('Time to generation: '+str(t1-t0)+' stride 0')
+        t0=time.time()
+
+        for st in range(1,strides):
+            print('stride:',st,st*(duration/strides))
+            DATA_=DataSet.generator(duration=duration
+                       ,fs =fs
+                       ,size=size
+                       ,detectors=detectors
+                       ,backgroundType=backgroundType
+                       ,injectionSNR = 0
+                       ,noiseSourceFile =noiseSourceFile
+                       ,windowSize =windowSize       
+                       ,timeSlides =timeSlides
+                       ,startingPoint=startingPoint+st*(duration/strides)
+                       ,name =name
+                       ,plugins=plugins) 
+            
+            t1=time.time()
+            print('Time to generation: '+str(t1-t0)+' stride '+str(st))
+            t0=time.time()
+            DATA.add(DATA_)
+        
+    
+            t1=time.time()
+            print('Time to merge: '+str(t1-t0)+' stride '+str(st))
+            t0=time.time()
+            
+        t0=time.time()
+        
         result_list=[]
         scores_collection=[]
 
@@ -371,9 +574,9 @@ class Validator:
         
         # saving the test size so that it can be retrievable in the finalisation
         result_pd.testSize= size
-        
-        t2=time.time()
-        print('Time to generation: '+str(t2-t1))
+                
+        t1=time.time()
+        print('Time to inference: '+str(t1-t0))
         if savePath==None:
             savePath=='./'
 
@@ -381,8 +584,6 @@ class Validator:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
         
-        t3=time.time()
-        print('Time to save: '+str(t3-t2))
         return(result_pd)
 
 
@@ -671,7 +872,7 @@ def auto_FAR(model
              ,startingPoint = None
              ,name = None
              ,savePath = None
-             ,extras=None
+             ,plugins=None
              ,mapping=None
              ,maxTestSize=None):
 
@@ -1089,7 +1290,7 @@ def auto_FAR(model
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
                          +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
-                         +24*" "+",extras ="+str(extras)+"\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
                          +24*" "+",mapping ="+str(mapping)+")\n")
                                                 
 
@@ -1110,7 +1311,7 @@ def auto_FAR(model
                          +24*" "+",startingPoint = "+str(d['start_point'][i])+"\n"
                          +24*" "+",name = '"+str(d['name'][i])+"'\n"
                          +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
-                         +24*" "+",extras ="+str(extras)+"\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
                          +24*" "+",mapping ="+str(mapping)+")\n")
 
                                                 
@@ -1348,6 +1549,7 @@ def online_FAR(model
              ,plugins=None
              ,externalLagSize=None
              ,maxExternalLag=None
+             ,strides=None
              ,restriction=None):
     
     # ---------------------------------------------------------------------------------------- #
@@ -1448,7 +1650,17 @@ def online_FAR(model
     if maxExternalLag==None: maxExternalLag=ceil(
         3600/(externalLagSize+windowSize-duration
              ))*int(externalLagSize+windowSize-duration)
-    
+    # ---------------------------------------------------------------------------------------- #    
+    # --- strides ---------------------------------------------------------------------------- #
+            
+    if strides==None:
+        strides=1
+    elif not (isinstance(strides,int) and strides <= fs and fs%strides==0):
+        raise ValueError('Strides must be a divisible integer of sample frequency')
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- restriction ------------------------------------------------------------------------ #
+            
     if restriction == None: restriction ==0
     
 
@@ -1495,38 +1707,6 @@ def online_FAR(model
     sim_seg = det_segs[0]
     for seg in det_segs[1:]:
         sim_seg = sim_seg & seg
-#     det_segs=[]
-#     for d in range(len(detectors)):
-        
-#         try:
-#             det_seg_channels = {'H': 'H1:DMT-ANALYSIS_READY:1'
-#                                 ,'L': 'L1:DMT-ANALYSIS_READY:1'
-#                                 ,'V': 'V1:ITF_SCIENCE:1'}
-
-#             seg_= query_segments(det_seg_channels[detectors[d]]
-#                                  ,gps_start, gps_end)
-       
-#         except:
-#             try:
-#                 kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-#                 os.system("ligo-proxy-init -k")
-#                 det_seg_channels_ = {'H': 'H1:DMT-ANALYSIS_READY:1'
-#                                     ,'L': 'L1:DMT-ANALYSIS_READY:1'
-#                                     ,'V': 'V1:ITF_SCIENCE:1'}
-
-#                 seg_= query_segments(
-#                     det_seg_channels_[detectors[d]]
-#                     , gps_start, gps_end)
-            
-#             except:
-#                 raise
-#         det_segs.append(seg_)
-
-#     # Filtering the segments to keep only the coinsident times
-#     sim_seg = det_segs[0]['active']
-#     for seg in det_segs:
-#         sim_seg = sim_seg & seg['active']
-
 
     # Breaking up segments that are bigger than the maxExternalLag
     new_sim_seg=[]
@@ -1681,6 +1861,7 @@ def online_FAR(model
                          +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
                          +24*" "+",plugins ="+str(plugins)+"\n"
                          +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",strides ="+str(strides)+"\n"
                          +24*" "+",restriction ="+str(restriction)+")\n")
 
 
@@ -1753,7 +1934,8 @@ def zeroLagSearch(model
                  ,mapping=None
                  ,plugins=None
                  ,restriction=None
-                 ,slides=None):
+                 ,strides=None
+                 ,destinationFileName=None):
     
     # ---------------------------------------------------------------------------------------- #
     # --- duration --------------------------------------------------------------------------- #
@@ -1822,9 +2004,20 @@ def zeroLagSearch(model
     if destinationFile[-1] != '/' : destinationFile=destinationFile+'/'
         
     # ---------------------------------------------------------------------------------------- #    
-    # --- slides ----------------------------------------------------------------------------- #
-
-    #if slides
+    # --- strides ---------------------------------------------------------------------------- #
+            
+    if strides==None:
+        strides=1
+    elif not (isinstance(strides,int) and strides <= fs and fs%strides==0):
+        raise ValueError('Strides must be a divisible integer of sample frequency')
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- restriction ------------------------------------------------------------------------ #
+            
+    if restriction == None: restriction ==0
+        
+        
+        
     
     det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
                    ,'L1': 'L1:DMT-ANALYSIS_READY:1'
@@ -1859,7 +2052,7 @@ def zeroLagSearch(model
             try:
                 main_seg = main_seg & ~query_segments(inj[detectors[d]+'1'], gps_start,gps_end)['active']
             except KeyError:
-                pass
+                 pass
             except:
                 raise
 
@@ -1870,28 +2063,55 @@ def zeroLagSearch(model
         sim_seg = sim_seg & seg
     
     new_sim_seg=[]
-    maxsegsize=int(16384*duration)
+    maxsegsize=int(16384*duration/strides)
+
     for seg in sim_seg:
         segsize=seg[1]-seg[0]
+        print('     ',segsize,int(segsize/maxsegsize))
+        
+
+#         if segsize>maxsegsize:
+#             breaks=int(segsize/maxsegsize)
+#             new_sim_seg.append(Segment(seg[0],seg[0]+maxsegsize))
+#             for k in range(1,breaks+1):
+#                 new_sim_seg.append(Segment(seg[0]+k*maxsegsize-windowSize+duration,seg[0]
+#                                            +(k+1)*maxsegsize))
+#             if seg[1]-(seg[0]+(k+1)*maxsegsize-windowSize+duration)>windowSize+duration:
+#                 new_sim_seg.append(Segment(seg[0]+(k+1)*maxsegsize-windowSize+duration,seg[1]))
+
+#         elif segsize>=windowSize+duration:
+#             new_sim_seg.append(seg)
         if segsize>maxsegsize:
             breaks=int(segsize/maxsegsize)
-            for k in range(breaks):
-                new_sim_seg.append(Segment(seg[0]+k*maxsegsize,seg[0]
-                                           +(k+1)*maxsegsize))
-            new_sim_seg.append(Segment(seg[0]+(k+1)*maxsegsize,seg[1]))
-        elif segsize>=windowSize:
+            new_sim_seg.append(Segment(seg[0],seg[0]+maxsegsize+windowSize-duration))
+            print(0,new_sim_seg[-1][1]-new_sim_seg[-1][0])
+
+            for k in range(1,breaks):
+                new_sim_seg.append(Segment(seg[0]+k*maxsegsize
+                                          ,seg[0]+(k+1)*maxsegsize+windowSize-duration))
+                print(1,new_sim_seg[-1][1]-new_sim_seg[-1][0])
+            if breaks ==1: k =1
+            if seg[1]-(seg[0]+(k+1)*maxsegsize)>windowSize:
+                new_sim_seg.append(Segment(seg[0]+(k+1)*maxsegsize,seg[1]))
+                print(2,new_sim_seg[-1][1]-new_sim_seg[-1][0])
+
+        elif segsize>=windowSize+duration:
             new_sim_seg.append(seg)
-    
+            print(3,new_sim_seg[-1][1]-new_sim_seg[-1][0])
+
 
 
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
-
-    print('Type the name of the temporary directory:')
-    dir_name = '0 0'
-    while not dir_name.isidentifier():
-        dir_name=input()
-        if not dir_name.isidentifier(): print("Not valid Folder name ...")
-
+    
+    if destinationFileName == None:
+        print('Type the name of the temporary directory:')
+        dir_name = '0 0'
+        while not dir_name.isidentifier():
+            dir_name=input()
+            if not dir_name.isidentifier(): print("Not valid Folder name ...")
+    else: 
+        dir_name=destinationFileName
+        
     print("The current path of the directory is: \n"+destinationFile+dir_name+"\n" )  
     answer = None
     while answer not in answers:
@@ -1917,7 +2137,7 @@ def zeroLagSearch(model
                 print('Test is cancelled\n')
                 print('Exiting procedure ...')
                 return
-
+    
         print('Initiating procedure ...')
         os.system('mkdir '+destinationFile+dir_name)
 
@@ -1937,7 +2157,7 @@ def zeroLagSearch(model
               
         for i in range(len(new_sim_seg)):
                    
-            _size=int(new_sim_seg[i][1]-new_sim_seg[i][0]-windowSize+duration)
+            _size=int(new_sim_seg[i][1]-new_sim_seg[i][0]-windowSize)# I removed duration when I introduced strides
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
@@ -1966,6 +2186,7 @@ def zeroLagSearch(model
                          +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
                          +24*" "+",plugins ="+str(plugins)+"\n"
                          +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",strides ="+str(strides)+"\n"
                          +24*" "+",restriction ="+str(restriction)+")\n")
 
 
@@ -2008,20 +2229,26 @@ def zeroLagSearch(model
                              ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
     
     final_job.add_parents(job_list)
-
-    print('All set. Initiate dataset generation y/n?')
-    answer4=input()
-
-    if answer4 in ['yes','y','YES','Yes','Y']:
-        print('Creating Job queue')
-        
-        dagman.build_submit()
-
-        return
     
+    if destinationFileName == None:
+
+        print('All set. Initiate dataset generation y/n?')
+        answer4=input()
+
+        if answer4 in ['yes','y','YES','Yes','Y']:
+            print('Creating Job queue')
+
+            dagman.build_submit()
+
+            return
+
+        else:
+            print('Data generation canceled')
+            os.system('cd')
+            os.system('rm -r '+destinationFile+dir_name)
+            return
+        
     else:
-        print('Data generation canceled')
-        os.system('cd')
-        os.system('rm -r '+destinationFile+dir_name)
+        dagman.build_submit()
         return
 

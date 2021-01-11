@@ -648,7 +648,7 @@ class DataSet(DataSetBase):
                 goods.append(pod.__getattribute__(plugin))
             goods=np.array(goods)
         else:
-            raise ValueError('PlugIn '+str(extras)+' not present in DataPod')
+            raise ValueError('PlugIn '+str(plugin)+' not present in DataPod')
             
         if shape == None:
             shape = goods.shape
