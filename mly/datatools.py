@@ -727,7 +727,8 @@ class DataSet(DataSetBase):
                    ,savePath = None
                    ,single = False  # Making single detector injections as glitch
                    ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration
-                
+                   ,frames=None
+                   ,channels=None
                    ,disposition=None
                    ,maxDuration=None
                    ,differentSignals=False   # In case we want to put different injection to every detector.
@@ -956,6 +957,16 @@ class DataSet(DataSetBase):
                     pass
                 else:
                     raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
+        
+        if frames==None:
+            frames = {'H': 'H1_HOFT_C02'
+                     ,'L': 'L1_HOFT_C02'
+                     ,'V': 'V1Online'}
+                    
+        if channels==None:
+            channels = {'H': 'H1:DCS-CALIB_STRAIN_C02'
+                       ,'L': 'L1:DCS-CALIB_STRAIN_C02'
+                       ,'V': 'V1:Hrec_hoft_16384Hz'}
 
             
         ### disposition
@@ -1016,80 +1027,26 @@ class DataSet(DataSetBase):
 
 
             elif isinstance(noiseSourceFile[0],list):
-                gett=time.time()
                 for d in range(len(detectors)):
                     
+                    t0=time.time()
+                    conn=gwdatafind.connect()
+                    urls=conn.find_urls(detectors[d]
+                                       , frames[detectors[d]]
+                                       , noiseSourceFile[d][0]
+                                       , noiseSourceFile[d][1])
 
-                    try:
-                        t0=time.time()
-                        det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
-                                           ,'L1': 'L1:GDS-CALIB_STRAIN'
-                                           ,'V1': 'V1:Hrec_hoft_16384Hz'}
+                    noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                                , channels[detectors[d]]
+                                                                , start =noiseSourceFile[d][0]
+                                                                , end =noiseSourceFile[d][1]
+                                                               ).resample(fs).astype('float64').value
+                    
+                    print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
 
-                        det_frametypes = {'H1': 'H1_HOFT_C00'
-                                         ,'L1': 'L1_HOFT_C00'
-                                         ,'V1': 'V1Online'}
-
-
-                        conn=gwdatafind.connect()
-                        urls=conn.find_urls(detectors[d]
-                                           , det_frametypes[detectors[d]+'1']
-                                           , noiseSourceFile[d][0]
-                                           , noiseSourceFile[d][1])
-
-                        noise_segDict[detectors[d]]=TimeSeries.read(urls
-                                                                    , det_channels_get[detectors[d]+'1']
-                                                                    , start =noiseSourceFile[d][0]
-                                                                    , end =noiseSourceFile[d][1]).resample(fs).astype('float64').value
-
-#                                 noise_segDict[detectors[d]]=TimeSeries.get(
-#                                     det_channels_get[detectors[d]+'1']
-#                                     ,noiseSourceFile[d][0]
-#                                     ,noiseSourceFile[d][1]
-#                                     ,frametype=det_frametypes[detectors[d]+'1']
-#                                     ,verbose=True).astype('float64').resample(fs).value
-                        t1=time.time()
-                        print("time to get dataz : "+str(t1-t0))
-
-                    except:
-                        try:
-                            print('certificate failed')
-                            kinit(keytab= '/home/vasileios.skliris/vasileios.skliris.keytab')
-                            #os.system("ligo-proxy-init -k")
-                            t0=time.time()
-                            det_channels_get = {'H1': 'H1:GDS-CALIB_STRAIN'
-                                               ,'L1': 'L1:GDS-CALIB_STRAIN'
-                                               ,'V1': 'V1:Hrec_hoft_16384Hz'}
-
-                            det_frametypes = {'H1': 'H1_HOFT_C00'
-                                             ,'L1': 'L1_HOFT_C00'
-                                             ,'V1': 'V1Online'}
-
-
-                            
-
-                            noise_segDict[detectors[d]]=TimeSeries.read(urls
-                                                                        , det_channels_get[detectors[d]+'1']
-                                                                        , start =noiseSourceFile[d][0]
-                                                                        , end =noiseSourceFile[d][1]
-                                                                        , resample=fs ).astype('float64').value
-
-#                                 noise_segDict[detectors[d]]=TimeSeries.get(
-#                                     det_channels_get[detectors[d]+'1']
-#                                     ,noiseSourceFile[d][0]
-#                                     ,noiseSourceFile[d][1]
-#                                     ,frametype=det_frametypes[detectors[d]+'1']
-#                                     ,verbose=True).astype('float64').resample(fs).value
-                            t1=time.time()
-                            print("time to get dataz : "+str(t1-t0))
-                        except:
-                            print('non public data get failed too')
-                            raise
-
-                    print(len(noise_segDict[detectors[d]])/fs)
+                    #print(len(noise_segDict[detectors[d]])/fs)
                     gps0 = int(noiseSourceFile[d][0])
 
-                print(time.time()-gett)
             ind=internalLags(detectors = detectors
                                ,lags = timeSlides
                                ,duration = duration
@@ -1379,13 +1336,8 @@ class DataSet(DataSetBase):
             #sys.stdout.flush()
             #t0=time.time()
             
-        t0=time.time() 
-
         random.shuffle(DATA.dataPods)
-        
-        t1=time.time()
-        print('Time to shuffle: '+str(t1-t0))
-        
+                
         print('\n')
         if savePath!=None:
             DATA.save(savePath+'/'+name,'pkl')
