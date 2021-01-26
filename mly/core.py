@@ -104,44 +104,46 @@ class DataPodBase:
                  , detectors = None   # Detectors coresponding to data
                  , duration = None    # Duration of the data
                  , metadata = None):  # Any other useful information 
-        
+        self.strain=strain
+        self.detectors=detectors
+        self.gps=gps
         self.pluginDict={}  #
         
-        # -------------------------------------------------------------------- #
-        # -- strain check ---------------------------------------------------- #
+#         # -------------------------------------------------------------------- #
+#         # -- strain check ---------------------------------------------------- #
         
-        # # Checking the type of input for strain:
-        # ---> This is the type would want.
-        if (isinstance(strain,np.ndarray)): 
-            pass
-        # ---> If it is a list we just make it a numpy.ndarray.
-        elif (isinstance(strain,list)): 
-            strain = np.array(strain)      
-        # ---> If it is a TimeSeries we take the value only.   
-        elif (isinstance(strain,TimeSeries)): 
-            strain = strain.value      
-        else:
-            raise TypeError("strain type can be only one of the following:/n"+
-                           "list \nnumpy.ndarray\ngwpy.timeseries.TimeSeries")
+#         # # Checking the type of input for strain:
+#         # ---> This is the type would want.
+#         if (isinstance(strain,np.ndarray)): 
+#             pass
+#         # ---> If it is a list we just make it a numpy.ndarray.
+#         elif (isinstance(strain,list)): 
+#             strain = np.array(strain)      
+#         # ---> If it is a TimeSeries we take the value only.   
+#         elif (isinstance(strain,TimeSeries)): 
+#             strain = strain.value      
+#         else:
+#             raise TypeError("strain type can be only one of the following:/n"+
+#                            "list \nnumpy.ndarray\ngwpy.timeseries.TimeSeries")
             
-        # # Strain has to have clear fixed dimentions.
-        # ---> If all elements have the same len with the first we are fine.
-        if (isinstance(strain[0],np.ndarray) 
-            and not all(len(x)==len(strain[0]) for x in strain)):
-            raise IndexError("Some detector strain have different size that "+
-                             "the others")
+#         # # Strain has to have clear fixed dimentions.
+#         # ---> If all elements have the same len with the first we are fine.
+#         if (isinstance(strain[0],np.ndarray) 
+#             and not all(len(x)==len(strain[0]) for x in strain)):
+#             raise IndexError("Some detector strain have different size that "+
+#                              "the others")
             
-        # # Strain has to be free from infs and nans
-        # ---> If there is an inf or nan in the strain an erros is raised.
-        if not np.isfinite(strain).all():
-            raise ValueError("There is nan or inf value in the strain")
-        if all(np.isreal(x) for x in strain.flatten()):
-            # # For one dimentional data, we need to specify the shape differently.   
-            if len(strain.shape) == 1:
-                strain= strain.reshape(1,-1)
-            self._strain = strain
-        else:
-            raise TypeError("strain values can only be int or float")
+#         # # Strain has to be free from infs and nans
+#         # ---> If there is an inf or nan in the strain an erros is raised.
+#         if not np.isfinite(strain).all():
+#             raise ValueError("There is nan or inf value in the strain")
+#         if all(np.isreal(x) for x in strain.flatten()):
+#             # # For one dimentional data, we need to specify the shape differently.   
+#             if len(strain.shape) == 1:
+#                 strain= strain.reshape(1,-1)
+#             self._strain = strain
+#         else:
+#             raise TypeError("strain values can only be int or float")
  
             
         # -------------------------------------------------------------------- #
@@ -177,74 +179,74 @@ class DataPodBase:
             raise TypeError("labels must be a dictionary")
             
             
-        # -------------------------------------------------------------------- #
-        # --- detectors check ------------------------------------------------ #
+#         # -------------------------------------------------------------------- #
+#         # --- detectors check ------------------------------------------------ #
         
-        # # Detectors is an optional parameter.
-        # ---> If not given it will be assumed from the smallest dimention.
-        # ---> This can create problems for dimentions > 1D.
-        if detectors == None: 
-            d=np.min(self._strain.shape)
-            detectors = d*['U']
-        # # If detectors is used, it has to be a list.
-        # ---> If it is not an error is raised.
-        if not isinstance(detectors,(list,str)): raise TypeError(
-            "detectors have to be a list of strings"+
-            " with at least one the followings as elements: \n"+
-            "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-            "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
-            "\n'U' if you don't want to specify detector")
+#         # # Detectors is an optional parameter.
+#         # ---> If not given it will be assumed from the smallest dimention.
+#         # ---> This can create problems for dimentions > 1D.
+#         if detectors == None: 
+#             d=np.min(self._strain.shape)
+#             detectors = d*['U']
+#         # # If detectors is used, it has to be a list.
+#         # ---> If it is not an error is raised.
+#         if not isinstance(detectors,(list,str)): raise TypeError(
+#             "detectors have to be a list of strings"+
+#             " with at least one the followings as elements: \n"+
+#             "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+#             "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
+#             "\n'U' if you don't want to specify detector")
             
-        # # Moreover it has to be a list containing specific detector initials.
-        # ---> If elements of detectors aren't in detector it gives an error. 
-        detectorOptions = ['H','L','V','K','I','U']
-        if isinstance(detectors,list):
-            for det in detectors:
-                if det not in detectorOptions: 
-                    raise ValueError(
-                        "detectors have to be a list of strings"+
-                        " with at least one the followings as elements: \n"+
-                        "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
-                        "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India"+
-                        " (INDIGO) \n"+
-                        "\n'U' if you don't want to specify detector")
+#         # # Moreover it has to be a list containing specific detector initials.
+#         # ---> If elements of detectors aren't in detector it gives an error. 
+#         detectorOptions = ['H','L','V','K','I','U']
+#         if isinstance(detectors,list):
+#             for det in detectors:
+#                 if det not in detectorOptions: 
+#                     raise ValueError(
+#                         "detectors have to be a list of strings"+
+#                         " with at least one the followings as elements: \n"+
+#                         "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
+#                         "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India"+
+#                         " (INDIGO) \n"+
+#                         "\n'U' if you don't want to specify detector")
         
-        # # The number of detectors must be shown at the first dimention.
-        if (self._strain.shape[0] == len(detectors)):
-            self._detectors = detectors
-        # ---> If it is not in the first dimention maybe needs transpose.
-        elif (self._strain.shape[0] != len(detectors)):
-            # ---> If the number of detectors is present at some dimention.
-            if ((len(detectors) in self._strain.shape) 
-                and self._strain.shape.count(len(detectors))==1):
-                # --- Then we traspose the strain.
-                newShape = list(self._strain.shape)
-                newShape.pop(newShape.index(len(detectors)))
-                newShape.insert(0,len(detectors))
-                ind = [list(self._strain.shape).index(i) for i in newShape]
-                self._strain = np.transpose(self._strain, ind)
-                print("Needed shape change of the strain occured")
-                self._detectors = detectors
-            # ---> If not, an error occures.
-            else:
-                raise IndexError("detectors must be as many as the strain")
+#         # # The number of detectors must be shown at the first dimention.
+#         if (self._strain.shape[0] == len(detectors)):
+#             self._detectors = detectors
+#         # ---> If it is not in the first dimention maybe needs transpose.
+#         elif (self._strain.shape[0] != len(detectors)):
+#             # ---> If the number of detectors is present at some dimention.
+#             if ((len(detectors) in self._strain.shape) 
+#                 and self._strain.shape.count(len(detectors))==1):
+#                 # --- Then we traspose the strain.
+#                 newShape = list(self._strain.shape)
+#                 newShape.pop(newShape.index(len(detectors)))
+#                 newShape.insert(0,len(detectors))
+#                 ind = [list(self._strain.shape).index(i) for i in newShape]
+#                 self._strain = np.transpose(self._strain, ind)
+#                 print("Needed shape change of the strain occured")
+#                 self._detectors = detectors
+#             # ---> If not, an error occures.
+#             else:
+#                 raise IndexError("detectors must be as many as the strain")
                          
                           
-        # -------------------------------------------------------------------- #
-        #--- gps check ------------------------------------------------------- #
+#         # -------------------------------------------------------------------- #
+#         #--- gps check ------------------------------------------------------- #
   
-        # # GPS is optional or a list of positive numbers.
-        # ---> If not defined, a list of zeros is defined equal to detectors.
-        if gps == None:
-            self._gps = len(self._detectors)*[0.0]  
-        # ---> If it is a list, it has to include positive numbers.
-        elif (isinstance(gps,list) and len(gps)==len(self._detectors)):
-            if all((isinstance(_,(float,int)) and _ >=0) for _ in gps):
-                self._gps = gps
-        # ---> If not an error is raised.
-        else:
-            raise TypeError("gps has to be a list of positive numbers"
-                            +" with number of elements equal to detectors")
+#         # # GPS is optional or a list of positive numbers.
+#         # ---> If not defined, a list of zeros is defined equal to detectors.
+#         if gps == None:
+#             self._gps = len(self._detectors)*[0.0]  
+#         # ---> If it is a list, it has to include positive numbers.
+#         elif (isinstance(gps,list) and len(gps)==len(self._detectors)):
+#             if all((isinstance(_,(float,int)) and _ >=0) for _ in gps):
+#                 self._gps = gps
+#         # ---> If not an error is raised.
+#         else:
+#             raise TypeError("gps has to be a list of positive numbers"
+#                             +" with number of elements equal to detectors")
                           
                           
         # -------------------------------------------------------------------- #
@@ -290,11 +292,41 @@ class DataPodBase:
     def strain(self):
         return self._strain                 
     @strain.setter
-    def strain(self,whatever):
-        raise AttributeError("It is not encouraged to change the strain by "+
-                            "hand. If you really want to change them, use"+
-                            " ._strain instead. Strain did not change")
+    def strain(self,strain):
+        
+        # # Checking the type of input for strain:
+        # ---> This is the type would want.
+        if (isinstance(strain,np.ndarray)): 
+            pass
+        # ---> If it is a list we just make it a numpy.ndarray.
+        elif (isinstance(strain,list)): 
+            strain = np.array(strain)      
+        # ---> If it is a TimeSeries we take the value only.   
+        elif (isinstance(strain,TimeSeries)): 
+            strain = strain.value      
+        else:
+            raise TypeError("strain type can be only one of the following:/n"+
+                           "list \nnumpy.ndarray\ngwpy.timeseries.TimeSeries")
 
+        # # Strain has to have clear fixed dimentions.
+        # ---> If all elements have the same len with the first we are fine.
+        if (isinstance(strain[0],np.ndarray) 
+            and not all(len(x)==len(strain[0]) for x in strain)):
+            raise IndexError("Some detector strain have different size that "+
+                             "the others")
+
+        # # Strain has to be free from infs and nans
+        # ---> If there is an inf or nan in the strain an erros is raised.
+        if not np.isfinite(strain).all():
+            raise ValueError("There is nan or inf value in the strain")
+        if all(np.isreal(x) for x in strain.flatten()):
+            # # For one dimentional data, we need to specify the shape differently.   
+            if len(strain.shape) == 1:
+                strain= strain.reshape(1,-1)
+            self._strain = strain
+        else:
+            raise TypeError("strain values can only be int or float")
+            
     @property
     def fs(self):
         return self._fs
@@ -331,10 +363,20 @@ class DataPodBase:
     def detectors(self):
         return self._detectors
     @detectors.setter
-    def detectors(self,newDetectors):
+    def detectors(self,detectors):
+        
+        
+        # # Detectors is an optional parameter.
+        # ---> If not given it will be assumed from the smallest dimention.
+        # ---> This can create problems for dimentions > 1D.
+        if detectors == None: 
+            d=np.min(self._strain.shape)
+            detectors = d*['U']
+        if isinstance(detectors,str):
+            detectors=[detectors]
         # # If detectors is used, it has to be a list.
         # ---> If it is not an error is raised.
-        if not isinstance(newDetectors,list): raise TypeError(
+        if not isinstance(detectors,list): raise TypeError(
             "detectors have to be a list of strings"+
             " with at least one the followings as elements: \n"+
             "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
@@ -344,8 +386,8 @@ class DataPodBase:
         # # Moreover it has to be a list containing specific detector initials.
         # ---> If elements of detectors aren't in detector it gives an error. 
         detectorOptions = ['H','L','V','K','I','U']
-        if isinstance(newDetectors,list):
-            for det in newDetectors:
+        if isinstance(detectors,list):
+            for det in detectors:
                 if det not in detectorOptions: 
                     raise ValueError(
                         "detectors have to be a list of strings"+
@@ -356,21 +398,21 @@ class DataPodBase:
                         "\n'U' if you don't want to specify detector")
         
         # # The number of detectors must be shown at the first dimention.
-        if (self._strain.shape[0] == len(newDetectors)):
-            self._detectors = newDetectors
+        if (self.strain.shape[0] == len(detectors)):
+            self._detectors = detectors
         # ---> If it is not in the first dimention maybe needs transpose.
-        elif (self._strain.shape[0] != len(newDetectors)):
+        elif (self.strain.shape[0] != len(detectors)):
             # ---> If the number of detectors is present at some dimention.
-            if ((len(newDetectors) in self._strain.shape) 
-                and self._strain.shape.count(len(newDetectors))==1):
+            if ((len(detectors) in self.strain.shape) 
+                and self.strain.shape.count(len(detectors))==1):
                 # --- Then we traspose the strain.
-                newShape = list(self._strain.shape)
-                newShape.pop(newShape.index(len(newDetectors)))
-                newShape.insert(0,len(newDetectors))
-                ind = [list(self._strain.shape).index(i) for i in newShape]
-                self._strain = np.transpose(self._strain, ind)
+                newShape = list(self.strain.shape)
+                newShape.pop(newShape.index(len(detectors)))
+                newShape.insert(0,len(detectors))
+                ind = [list(self.strain.shape).index(i) for i in newShape]
+                self.strain = np.transpose(self.strain, ind)
                 print("Needed shape change of the strain occured")
-                self._detectors = newDetectors
+                self._detectors = detectors
             # ---> If not, an error occures.
             else:
                 raise IndexError("detectors must be as many as the strain")
@@ -379,12 +421,12 @@ class DataPodBase:
     def gps(self):
         return self._gps  
     @gps.setter
-    def gps(self,newgps):
+    def gps(self,gps):
         # # GPS is optional or a list of positive numbers. 
         # ---> If it is a list, it has to include positive numbers.
-        if (isinstance(newgps,list) and len(newgps)==len(self._detectors)):
-            if all((isinstance(_,(float,int)) and _ >=0) for _ in newgps):
-                self._gps = newgps
+        if ((isinstance(gps,list) and len(gps)==len(self._detectors)) and
+            all((isinstance(_,(float,int)) and _ >=0) for _ in gps)):
+                self._gps = gps
         # ---> If not an error is raised.
         else:
             raise TypeError("gps has to be a list of positive numbers"
