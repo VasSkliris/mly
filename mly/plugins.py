@@ -81,12 +81,14 @@ class PlugIn:
         return self._genFunction               
     @genFunction.setter
     def genFunction(self,function):
-        if callable(function):
-            self._genFunction=function
-        else:
-            def token():
-                return function
-            self._genFunction=token
+        self._genFunction=function
+
+#         if callable(function):
+#             self._genFunction=function
+#         else:
+#             def token():
+#                 return function
+#             self._genFunction=token
 
     @property
     def plotFunction(self):
@@ -98,9 +100,7 @@ class PlugIn:
         elif callable(function):
             self._plotFunction=function
         else:
-            def token():
-                return function
-            self._plotFunction=token  
+            raise TypeError('plotFunction must be a callable object')
             
     @property
     def attributes(self):
@@ -130,6 +130,7 @@ class PlugIn:
         if not all(isinstance(at,str) for at in plotattributes):
             raise TypeError("Attributes can only be strings")
         self._plotAttributes=plotattributes
+    
 
 # Default PlugIn objects
 
@@ -204,3 +205,5 @@ def plotpsd(detectors,fs,data=None):
     plt.legend()
     
     return ax
+
+    
