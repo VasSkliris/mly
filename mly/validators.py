@@ -13,7 +13,7 @@ from gwpy.io.kerberos import kinit
 from .simulateddetectornoise import * 
 from .tools import dirlist,  fromCategorical, correlate,internalLags,externalLags
 from .datatools import DataPod, DataSet
-from gwpy.time import to_gps
+from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
 
@@ -490,6 +490,7 @@ class Validator:
                                ,fs =fs
                                ,size=size
                                ,detectors=detectors
+                               ,labels=labels
                                ,backgroundType=backgroundType
                                ,injectionSNR = 0
                                ,noiseSourceFile =noiseSourceFile
@@ -498,7 +499,6 @@ class Validator:
                                ,startingPoint=startingPoint
                                ,name =name
                                ,plugins=plugins)   
-        
         t1=time.time()
         print('Time to generation: '+str(t1-t0)+' stride 0')
         t0=time.time()
@@ -509,6 +509,7 @@ class Validator:
                        ,fs =fs
                        ,size=size
                        ,detectors=detectors
+                       ,labels=labels
                        ,backgroundType=backgroundType
                        ,injectionSNR = 0
                        ,noiseSourceFile =noiseSourceFile
@@ -528,6 +529,10 @@ class Validator:
             print('Time to merge: '+str(t1-t0)+' stride '+str(st))
             t0=time.time()
             
+#         for pod in DATA.dataPods:
+#             pod.plot('strain')
+#             plt.title(str(from_gps(pod.gps[0])))
+#             pod.plot('correlation')
         t0=time.time()
         
         result_list=[]
@@ -555,13 +560,13 @@ class Validator:
             scores_collection=np.array(scores_collection)
         scores_collection=np.transpose(scores_collection)
 
-        print(scores_collection.shape,np.array(gps_times).shape)
+        #print(scores_collection.shape,np.array(gps_times).shape)
         result=np.hstack((scores_collection,np.array(gps_times)))
 
         result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
                                  +list('GPS'+str(det) for det in detectors))
 
-        for m in range(len(trained_models)):
+        for m in range(len(trained_models
             if m==0: 
                 result_pd['total']=result_pd['scores'+str(m+1)]
             else:
@@ -584,7 +589,7 @@ class Validator:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
         
-        return(result_pd)
+        return(result)
 
 
     def glitchTest(models
