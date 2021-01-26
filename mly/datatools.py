@@ -9,6 +9,7 @@ from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
 import gwdatafind
 
+
 from gwpy.time import to_gps
 from gwpy.time import from_gps
 import matplotlib.pyplot as plt
@@ -200,7 +201,10 @@ class DataPod(DataPodBase):
                     plugAttributes.append(self.__getattribute__(at))
                 else:
                     raise AttributeError(at+" is not part of DataPod instance")
-            self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes,**plugin.kwargs))
+            if callable(plugin.genFunction):
+                self.__setattr__(plugin.name,plugin.genFunction(*plugAttributes,**plugin.kwargs))
+            else:
+                self.__setattr__(plugin.name,plugin.genFunction)
 
             self.pluginDict[plugin.name]=plugin
             
@@ -307,7 +311,7 @@ class DataSet(DataSetBase):
             finalName = 'dataSetNameToken'+str("%04d" %
                 (np.random.randint(0,10000)))+'.'+type_
         else:
-            finalName = (name)
+            finalName = name
         if type_ == 'pkl':
             with open(finalName, 'wb') as output:
                 pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
@@ -976,7 +980,7 @@ class DataSet(DataSetBase):
         if isinstance(disposition,(int,float)) and 0<=disposition<duration:
             disposition_=disposition
             maxDuration_ = duration-disposition_
-        # If you want random shiftings you can define a tuple or list of those random shiftings.
+        # If you want random shiftings you can define a tuple or list of those random2*[[eventgps-windowSize/2,eventgps+windowSize/2]] shiftings.
         # This will adjust also
         elif (isinstance(disposition,(list,tuple))):
             if not(len(disposition)==2 
@@ -1023,7 +1027,7 @@ class DataSet(DataSetBase):
                 for det in detectors:
                     noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
                                                            +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-                    gps0 = int(noiseSourceFile[1].split('_')[1])
+                    gps0 = float(noiseSourceFile[1].split('_')[1])
 
 
             elif isinstance(noiseSourceFile[0],list):
@@ -1045,7 +1049,8 @@ class DataSet(DataSetBase):
                     print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
 
                     #print(len(noise_segDict[detectors[d]])/fs)
-                    gps0 = int(noiseSourceFile[d][0])
+
+                    gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
 
             ind=internalLags(detectors = detectors
                                ,lags = timeSlides
@@ -1293,7 +1298,7 @@ class DataSet(DataSetBase):
                 # Bandpassing 
                 strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(1,0.5,asd=asd_dict[det])
+                strain=strain.whiten(1,0.5)#,asd=asd_dict[det])
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
@@ -1322,9 +1327,9 @@ class DataSet(DataSetBase):
 
             pod = DataPod(strain = podstrain
                                ,fs = fs
-                               ,gps = gps_list
                                ,labels =  labels
                                ,detectors = detKeys
+                               ,gps = gps_list
                                ,duration = duration)
             
             for pl in plugInToApply:
