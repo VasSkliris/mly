@@ -566,7 +566,7 @@ class Validator:
         result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
                                  +list('GPS'+str(det) for det in detectors))
 
-        for m in range(len(trained_models
+        for m in range(len(trained_models)):
             if m==0: 
                 result_pd['total']=result_pd['scores'+str(m+1)]
             else:
@@ -589,7 +589,7 @@ class Validator:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
         
-        return(result)
+        return(result_pd)
 
 
     def glitchTest(models

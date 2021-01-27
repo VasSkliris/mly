@@ -1056,9 +1056,10 @@ class DataSet(DataSetBase):
                                ,lags = timeSlides
                                ,duration = duration
                                ,fs = fs
-                               ,size = int(len(noise_segDict[detectors[0]])/fs-windowSize)
+                               ,size = int(len(noise_segDict[detectors[0]])/fs-(windowSize-duration))
                                ,start_from_sec=startingPoint)
-            #print(ind)
+            #print(len(ind['H']),len(ind['L']))
+            #print(len(noise_segDict['H']),len(noise_segDict['L']))
 
 
 
