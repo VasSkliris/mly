@@ -373,11 +373,11 @@ class DataPodBase:
             d=np.min(self._strain.shape)
             detectors = d*['U']
         if isinstance(detectors,str):
-            detectors=[detectors]
+            detectors=list(d for d in detectors)
         # # If detectors is used, it has to be a list.
         # ---> If it is not an error is raised.
-        if not isinstance(detectors,list): raise TypeError(
-            "detectors have to be a list of strings"+
+        if not isinstance(detectors,list): raise TypeError("Given type:"+str(type(detectors))+
+            ". Detectors have to be a list of strings"+
             " with at least one the followings as elements: \n"+
             "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
             "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India (INDIGO) \n"+
@@ -389,8 +389,8 @@ class DataPodBase:
         if isinstance(detectors,list):
             for det in detectors:
                 if det not in detectorOptions: 
-                    raise ValueError(
-                        "detectors have to be a list of strings"+
+                    raise ValueError("Given value:"+str(detectors)+
+                        ". Detectors have to be a list of strings"+
                         " with at least one the followings as elements: \n"+
                         "'H' for LIGO Hanford \n'L' for LIGO Livingston\n"+
                         "'V' for Virgo \n'K' for KAGRA \n'I' for LIGO India"+
@@ -424,7 +424,9 @@ class DataPodBase:
     def gps(self,gps):
         # # GPS is optional or a list of positive numbers. 
         # ---> If it is a list, it has to include positive numbers.
-        if ((isinstance(gps,list) and len(gps)==len(self._detectors)) and
+        if gps==None:
+            gps=[0]*len(self.detectors)
+        if ((isinstance(gps,list) and len(gps)==len(self.detectors)) and
             all((isinstance(_,(float,int)) and _ >=0) for _ in gps)):
                 self._gps = gps
         # ---> If not an error is raised.
