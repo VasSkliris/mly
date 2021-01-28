@@ -1382,7 +1382,7 @@ def auto_gen(duration
              ,disposition=None
              ,maxDuration=None
              ,differentSignals=False
-             ,extras=None): 
+             ,plugins=None): 
 
 
 
@@ -1897,7 +1897,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",extras = "+str(extras)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+")\n")
 
             else:
                 f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
@@ -1919,7 +1919,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",extras = "+str(extras)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+")\n")
 
             
             f.write(comand+'\n\n')
