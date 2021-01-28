@@ -1296,7 +1296,7 @@ class DataSet(DataSetBase):
                 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64') 
-                # Bandpassing 
+                # Bandpassing
                 strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
                 strain=strain.whiten(1,0.5)#,asd=asd_dict[det])
