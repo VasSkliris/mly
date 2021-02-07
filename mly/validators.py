@@ -45,11 +45,10 @@ class Validator:
                        ,savePath = None
                        ,single = False  # Making single detector injections as glitch
                        ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
-                       ,plugins=None
                        ,disposition=None
                        ,maxDuration=None
                        ,differentSignals=False   # In case we want to put different injection to every detector.
-                       ,extras=None
+                       ,plugins=None
                        ,mapping=None):
 
         # ---------------------------------------------------------------------------------------- #    
@@ -101,7 +100,6 @@ class Validator:
         if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
             pass
         else:
-            
             
             raise TypeError('Mappings have to be a list of dictionaries for each model.')
 
@@ -186,6 +184,8 @@ class Validator:
                 input_shape=trained_models[m].input_shape
                 if isinstance(input_shape,tuple): input_shape=[input_shape]
                 for i in range(len(models[1][m])):
+                    print(input_shape[i],models[1][m][i])
+                    print(DATA[0].__getattribute__(models[1][m][i]).shape)
                     dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
                 if len(dataList)==1: dataList=dataList[0]
@@ -196,7 +196,6 @@ class Validator:
                 else:
                     result['scores'+str(m+1)]=[scores.tolist()]
 
-
         if savePath==None:
             savePath='./'
 
@@ -206,199 +205,7 @@ class Validator:
         
         return(result)
 
-#     def accuracy(models
-#                        ,duration
-#                        ,fs
-#                        ,size
-#                        ,detectors 
-#                        ,injectionFolder = None
-#                        ,labels = {'type':'signal'}
-#                        ,backgroundType = None
-#                        ,injectionSNR = None
-#                        ,noiseSourceFile = None  
-#                        ,windowSize = None #(32)            
-#                        ,timeSlides = None #(1)
-#                        ,startingPoint= None #(32)
-#                        ,name = None
-#                        ,savePath = None
-#                        ,single = False  # Making single detector injections as glitch
-#                        ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
-#                        ,disposition=None
-#                        ,maxDuration=None
-#                        ,differentSignals=False   # In case we want to put different injection to every detector.
-#                        ,extras=None
-#                        ,mapping=None):
-
-#         # ---------------------------------------------------------------------------------------- #    
-#         # --- model ------------------------------------------------------------------------------ #
-#         # 
-#         # This first input has a complicated format in the rare case of trying
-#         # to test two models in parallel but with different subset of the data as input.
-#         #
-#         # Case of one model as it was before
-#         if not isinstance(models,list):
-#             models=[[models],[None]]
-#         # Case where all models have all data to use
-#         if isinstance(models,list) and not all(isinstance(m,list) for m in models):
-#             models=[models,len(models)*[None]]
-#         # Case where index is not given for all models.
-#         if len(models[0])!=len(models[1]):
-#             raise ValueError('You have to define input index for all maodels')
-#         # Case somebody doesn't put the right amount of indexes for the data inputs. 
-
-#         if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
-#             raise TypeError('models have to be a list of two sublists. '
-#                             +'First list has the models and the second has the'
-#                             +' indexes of the data each one uses following the order strain, extra1, extra2...'
-#                             +'[model1,model2,model3],[[0,1],[0,2],[2]]')
-
-#         # models[0] becomes the trained models list
-#         trained_models=[]
-#         for model in models[0]:  
-#             if isinstance(model,str):
-#                 if os.path.isfile(model):    
-#                     trained_models.append(load_model(model))
-#                 else:
-#                     raise FileNotFoundError("No model file in "+model)
-#             else:
-#                 trained_models.append(model) 
-
-#         # models[1] becomes the the input inexes of the data 
-#         if extras==None:
-#             number_of_extras=0
-#         else:
-#             number_of_extras=len(extras)
-
-#         data_inputs_index=[]
-#         for index in models[1]:
-#             if index==None :
-#                 data_inputs_index.append([k for k in range(number_of_extras+1)])
-#             elif all(j<= number_of_extras for j in index):
-#                 data_inputs_index.append(index)
-#             else:
-#                 raise TypeError(str(index)+' is not a valid index')
-
-
-#         # ---------------------------------------------------------------------------------------- #    
-#         # --- mappings --------------------------------------------------------------------------- #
-
-#         # Mappings are a way to make sure the model has the same translation for the
-#         # labels as we have. All models trained in mly will have a mapping defined
-#         # during the data formating in the model training.
-
-#         if len(trained_models)==1 and isinstance(mapping,dict):
-#             mapping=[mapping]
-#         elif len(trained_models)!=1 and isinstance(mapping,dict):
-#             mapping=len(trained_models)*[mapping]
-#         if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
-#             pass
-#         else:
-#             raise TypeError('Mappings have to be a list of dictionaries for each model.')
-
-#         columns=[]
-#         for m in range(len(trained_models)):
-#             columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
-
-
-#         # ---------------------------------------------------------------------------------------- #    
-#         # --- injectionSNR ----------------------------------------------------------------------- #
-
-#         if isinstance(injectionSNR,list): 
-#             snrInList=True
-#             snrs=injectionSNR
-#         else:
-#             snrInList=False
-
-#         # ---------------------------------------------------------------------------------------- #    
-#         # --- disposition ------------------------------------------------------------------------ #
-
-#         if isinstance(disposition,list): 
-#             dispositionInList=True
-#             dispositions=disposition
-#         else:
-#             dispositionInList=False
-
-#         # ---------------------------------------------------------------------------------------- #    
-#         result={}            
-#         looper=[]
-#         if snrInList==True and dispositionInList==True:
-#             raise ValueError('You cannot loop through two values. Do seperate tests')
-#         elif snrInList==True and dispositionInList==False:
-#             for snr in snrs:
-#                 looper.append(snr)
-#             result['snrs']=[]
-#             loopname='snrs'
-#         elif snrInList==False and dispositionInList==True:
-#             for j in dispositions:
-#                 looper.append(j)
-#             result['dispostions']=[]
-#             loopname='dispositions'
-#         else:
-#             looper.append(injectionSNR)
-#             result['snrs']=[]
-#             loopname='snrs'
-
-
-#         for val in looper:
-#             if dispositionInList==True:
-
-#                 disposition=val
-#             else: 
-#                 injectionSNR=val
-
-#             DATA=DataSet.generator(duration = duration
-#                                    ,fs = fs
-#                                    ,size = size
-#                                    ,detectors = detectors
-#                                    ,injectionFolder = injectionFolder
-#                                    ,labels = labels
-#                                    ,backgroundType = backgroundType
-#                                    ,injectionSNR = injectionSNR
-#                                    ,noiseSourceFile = noiseSourceFile
-#                                    ,windowSize = windowSize          
-#                                    ,timeSlides = timeSlides
-#                                    ,startingPoint = startingPoint
-#                                    ,single = single
-#                                    ,injectionCrop = injectionCrop
-#                                    ,disposition = disposition
-#                                    ,maxDuration = maxDuration
-#                                    ,differentSignals = differentSignals
-#                                    ,extras = extras)
-
-
-#             random.shuffle(DATA.dataPods)
-
-
-#             result[loopname].append(val)
-
-#             for m in range(len(trained_models)):
-#                 dataList=[]
-#                 input_shape=trained_models[m].input_shape
-#                 if isinstance(input_shape,tuple): input_shape=[input_shape]
-#                 for i in data_inputs_index[m]:
-#                     if i==0:
-#                         dataList.append(DATA.unloadData(shape=input_shape[i]))
-#                     else:
-#                         dataList.append(DATA.unloadData(extras = extras[i-1]
-#                                     ,shape=input_shape[i]))
-#                 print(data_inputs_index[m])
-#                 if len(dataList)==1: dataList=dataList[0]
-#                 scores =  trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
-
-#                 if 'scores'+str(m+1) in list(result.keys()):
-#                     result['scores'+str(m+1)].append(scores.tolist())
-#                 else:
-#                     result['scores'+str(m+1)]=[scores.tolist()]
-
-
-#         if savePath==None:
-#             savePath='./'
-
-#         if name!=None:
-#             with open(savePath+name+'.pkl', 'wb') as output:
-#                 pickle.dump(result, output, pickle.HIGHEST_PROTOCOL)
-
-#         return(result)    
+  
 
     def falseAlarmTest(models
                        ,duration
