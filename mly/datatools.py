@@ -313,6 +313,8 @@ class DataSet(DataSetBase):
         else:
             finalName = name
         if type_ == 'pkl':
+            if finalName[-4:]!='.pkl':
+                finalName+='.pkl'
             with open(finalName, 'wb') as output:
                 pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
         else:
@@ -1028,7 +1030,15 @@ class DataSet(DataSetBase):
                     noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
                                                            +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
                     gps0 = float(noiseSourceFile[1].split('_')[1])
-
+                    print('its a string!')
+                    
+                ind=internalLags(detectors = detectors
+                                   ,lags = timeSlides
+                                   ,duration = duration
+                                   ,fs = fs
+                                   ,size = int(len(noise_segDict[detectors[0]])/fs
+                                               -startingPoint-(windowSize-duration))
+                                   ,start_from_sec=startingPoint)
 
             elif isinstance(noiseSourceFile[0],list):
                 for d in range(len(detectors)):
@@ -1052,14 +1062,15 @@ class DataSet(DataSetBase):
 
                     gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
 
-            ind=internalLags(detectors = detectors
-                               ,lags = timeSlides
-                               ,duration = duration
-                               ,fs = fs
-                               ,size = int(len(noise_segDict[detectors[0]])/fs-(windowSize-duration))
-                               ,start_from_sec=startingPoint)
-            #print(len(ind['H']),len(ind['L']))
-            #print(len(noise_segDict['H']),len(noise_segDict['L']))
+                ind=internalLags(detectors = detectors
+                                   ,lags = timeSlides
+                                   ,duration = duration
+                                   ,fs = fs
+                                   ,size = int(len(noise_segDict[detectors[0]])/fs-(windowSize-duration))
+                                   ,start_from_sec=startingPoint)
+            
+            print(len(ind['H']),len(ind['L']))
+            print(len(noise_segDict['H'])/fs,len(noise_segDict['L'])/fs)
 
 
 
@@ -1180,6 +1191,7 @@ class DataSet(DataSetBase):
                     back=TimeSeries(noise,sample_rate=fs)
                     back_dict[det] = back
                     # Calculating the ASD so tha we can use it for whitening later
+                    print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
                     gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
