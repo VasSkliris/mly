@@ -1299,7 +1299,7 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(1,0.5)#,asd=asd_dict[det])
+                strain=strain.whiten(1,0.5,asd=asd_dict[det])
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())

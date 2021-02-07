@@ -1668,117 +1668,120 @@ def online_FAR(model
             
     if restriction == None: restriction ==0
     
-
-    # Feching the segment times tha detectors were active
-    det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
-                   ,'L1': 'L1:DMT-ANALYSIS_READY:1'
-                   ,'V1': 'V1:ITF_SCIENCE:1'}
-
-    cbc_inj_flags={'H1': 'H1:ODC-INJECTION_CBC:2'
-                  ,'L1': 'L1:ODC-INJECTION_CBC:2'}
-
-    burst_inj_flags={'H1': 'H1:ODC-INJECTION_BURST:2'
-                    ,'L1': 'L1:ODC-INJECTION_BURST:2'}
-
-    detchar_inj_flags={'H1': 'H1:ODC-INJECTION_DETCHAR:2'
-                      ,'L1': 'L1:ODC-INJECTION_DETCHAR:2'}
-
-    stoch_inj_flags={'H1': 'H1:ODC-INJECTION_STOCHASTIC:2'
-                    ,'L1': 'L1:ODC-INJECTION_STOCHASTIC:2'}
-
-    trans_inj_flags={'H1': 'H1:ODC-INJECTION_TRANSIENT:2'
-                    ,'L1': 'L1:ODC-INJECTION_TRANSIENT:2'}
-
-    injectionList=[cbc_inj_flags
-                   ,burst_inj_flags
-                   ,detchar_inj_flags
-                   ,stoch_inj_flags
-                   ,trans_inj_flags]
-
-
-    det_segs=[]
-    for d in range(len(detectors)):
-        main_seg=query_segments(det_flags[detectors[d]+'1'],gps_start, gps_end)['active']
-        for inj in injectionList:
-            try:
-                main_seg = main_seg & ~query_segments(inj[detectors[d]+'1'], gps_start, gps_end)['acitve']
-            except KeyError:
-                pass
-            except:
-                raise
-
-        det_segs.append(main_seg)
-
-    sim_seg = det_segs[0]
-    for seg in det_segs[1:]:
-        sim_seg = sim_seg & seg
-
-    # Breaking up segments that are bigger than the maxExternalLag
-    new_sim_seg=[]
-    for seg in sim_seg:
-        segsize=seg[1]-seg[0]
-        if segsize>maxExternalLag:
-            breaks=int(segsize/maxExternalLag)
-            for k in range(breaks):
-                new_sim_seg.append(Segment(seg[0]+k*maxExternalLag,seg[0]
-                                           +(k+1)*maxExternalLag))
-            new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag,seg[1]))
-        elif segsize>=windowSize:
-            new_sim_seg.append(seg)
-            
-    print("Number of segments: ",len(new_sim_seg))#list(seg[1]-seg[0] for seg in new_sim_seg),len(new_sim_seg))
-    # Calculating all the external lags for each segment and putting them all together.
-    externalIndeces={}
-    for det in detectors: externalIndeces[det]=[]
-
-    for seg in new_sim_seg:
-        # externalLagSize is plus the windowSize because we need the first 
-        # windowSize seconds in internal lags.
-        ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
-        for key in ind:
-            externalIndeces[key]+=(np.array(ind[key])+seg[0]).tolist()
-
-    # Random indexes to shuffle the externalIndeces as a group
-    randindex=np.arange(len(externalIndeces[detectors[0]]))
-    randindex = np.random.permutation(randindex)
-
-    # Shuffling with the new indeces
-    for det in detectors:
-        externalIndeces[det]=np.array(externalIndeces[det])[randindex]
-
-    chunks = len(externalIndeces[detectors[0]])
-    print("Target Size            : ",size)
-    print("Maximum possible size  : ",chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-        int(int(externalLagSize/duration)%2==0)+1)))
-    print("Maximum external lag   : ",maxExternalLag,"s")
-    print("Number of chunks       : ",chunks)
-    print("Maximum Size of subtest: ",int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-        int(int(externalLagSize/duration)%2==0)+1)))
-
-   
-    if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-        int(int(externalLagSize/duration)%2==0)+1)):
-
-        for det in detectors:
-            externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-                int(int(externalLagSize/duration)%2==0)+1))))]
-            
-        internalLagSize=(int(externalLagSize/duration)-(
-            int(int(externalLagSize/duration)%2==0)+1))
-        
-        size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-                int(int(externalLagSize/duration)%2==0)+1))
-        
-        
-        
-    # If target size is even bigger it cannot be fulfiled in this 
-    # time interval and it needs bigger date difference.
+    if backgroundType == 'optimal':
+        pass
     else:
-        raise ValueError("The date interval provided cannot fullfil the target size by "
-                         +str(duration*(size-chunks*int(
-                             externalLagSize/duration)*(int(externalLagSize/duration)-(
-                             int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
-    print("Internal lag size      : ",internalLagSize)
+
+        # Feching the segment times tha detectors were active
+        det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
+                       ,'L1': 'L1:DMT-ANALYSIS_READY:1'
+                       ,'V1': 'V1:ITF_SCIENCE:1'}
+
+        cbc_inj_flags={'H1': 'H1:ODC-INJECTION_CBC:2'
+                      ,'L1': 'L1:ODC-INJECTION_CBC:2'}
+
+        burst_inj_flags={'H1': 'H1:ODC-INJECTION_BURST:2'
+                        ,'L1': 'L1:ODC-INJECTION_BURST:2'}
+
+        detchar_inj_flags={'H1': 'H1:ODC-INJECTION_DETCHAR:2'
+                          ,'L1': 'L1:ODC-INJECTION_DETCHAR:2'}
+
+        stoch_inj_flags={'H1': 'H1:ODC-INJECTION_STOCHASTIC:2'
+                        ,'L1': 'L1:ODC-INJECTION_STOCHASTIC:2'}
+
+        trans_inj_flags={'H1': 'H1:ODC-INJECTION_TRANSIENT:2'
+                        ,'L1': 'L1:ODC-INJECTION_TRANSIENT:2'}
+
+        injectionList=[cbc_inj_flags
+                       ,burst_inj_flags
+                       ,detchar_inj_flags
+                       ,stoch_inj_flags
+                       ,trans_inj_flags]
+
+
+        det_segs=[]
+        for d in range(len(detectors)):
+            main_seg=query_segments(det_flags[detectors[d]+'1'],gps_start, gps_end)['active']
+            for inj in injectionList:
+                try:
+                    main_seg = main_seg & ~query_segments(inj[detectors[d]+'1'], gps_start, gps_end)['acitve']
+                except KeyError:
+                    pass
+                except:
+                    raise
+
+            det_segs.append(main_seg)
+
+        sim_seg = det_segs[0]
+        for seg in det_segs[1:]:
+            sim_seg = sim_seg & seg
+
+        # Breaking up segments that are bigger than the maxExternalLag
+        new_sim_seg=[]
+        for seg in sim_seg:
+            segsize=seg[1]-seg[0]
+            if segsize>maxExternalLag:
+                breaks=int(segsize/maxExternalLag)
+                for k in range(breaks):
+                    new_sim_seg.append(Segment(seg[0]+k*maxExternalLag,seg[0]
+                                               +(k+1)*maxExternalLag))
+                new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag,seg[1]))
+            elif segsize>=windowSize:
+                new_sim_seg.append(seg)
+
+        print("Number of segments: ",len(new_sim_seg))#list(seg[1]-seg[0] for seg in new_sim_seg),len(new_sim_seg))
+        # Calculating all the external lags for each segment and putting them all together.
+        externalIndeces={}
+        for det in detectors: externalIndeces[det]=[]
+
+        for seg in new_sim_seg:
+            # externalLagSize is plus the windowSize because we need the first 
+            # windowSize seconds in internal lags.
+            ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
+            for key in ind:
+                externalIndeces[key]+=(np.array(ind[key])+seg[0]).tolist()
+
+        # Random indexes to shuffle the externalIndeces as a group
+        randindex=np.arange(len(externalIndeces[detectors[0]]))
+        randindex = np.random.permutation(randindex)
+
+        # Shuffling with the new indeces
+        for det in detectors:
+            externalIndeces[det]=np.array(externalIndeces[det])[randindex]
+
+        chunks = len(externalIndeces[detectors[0]])
+        print("Target Size            : ",size)
+        print("Maximum possible size  : ",chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+            int(int(externalLagSize/duration)%2==0)+1)))
+        print("Maximum external lag   : ",maxExternalLag,"s")
+        print("Number of chunks       : ",chunks)
+        print("Maximum Size of subtest: ",int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+            int(int(externalLagSize/duration)%2==0)+1)))
+
+
+        if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+            int(int(externalLagSize/duration)%2==0)+1)):
+
+            for det in detectors:
+                externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+                    int(int(externalLagSize/duration)%2==0)+1))))]
+
+            internalLagSize=(int(externalLagSize/duration)-(
+                int(int(externalLagSize/duration)%2==0)+1))
+
+            size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+                    int(int(externalLagSize/duration)%2==0)+1))
+
+
+
+        # If target size is even bigger it cannot be fulfiled in this 
+        # time interval and it needs bigger date difference.
+        else:
+            raise ValueError("The date interval provided cannot fullfil the target size by "
+                             +str(duration*(size-chunks*int(
+                                 externalLagSize/duration)*(int(externalLagSize/duration)-(
+                                 int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
+        print("Internal lag size      : ",internalLagSize)
 
 
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
@@ -1827,12 +1830,20 @@ def online_FAR(model
                 submit=submit)
         job_list=[]
         
+        if backgroundType == 'optimal':
+            size_=10000
+            looper=range(int(size/size_)+int(size%size_!=0))
+            print('Creation of temporary directory complete: '+destinationFile+dir_name)
+            print('Expected jobs :',str(int(size/size_)+int(size%size_!=0)))
+        else:
+            print('Creation of temporary directory complete: '+destinationFile+dir_name)
+            print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
+            print('Internal lags :',str(internalLagSize))
+            looper=range(len(externalIndeces[detectors[0]]))
+        
         target_size=0
 
-        print('Creation of temporary directory complete: '+destinationFile+dir_name)
-        print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
-        print('Internal lags :',str(internalLagSize))
-        for i in range(len(externalIndeces[detectors[0]])):
+        for i in looper:
             
             target_size+=size_
             
@@ -1850,24 +1861,41 @@ def online_FAR(model
 
                 f.write("import time\n\n")
                 f.write("t0=time.time()\n")
-
-                command=( "TEST = Validator.falseAlarmTest(\n"
-                         +24*" "+"models = "+str(model)+"\n"
-                         +24*" "+",duration = "+str(duration)+"\n"
-                         +24*" "+",fs = "+str(fs)+"\n"
-                         +24*" "+",size = "+str(size_)+"\n"
-                         +24*" "+",detectors = "+str(detectors)+"\n"
-                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                         +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]+int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
-                         +24*" "+",windowSize ="+str(windowSize)+"\n"
-                         +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
-                         +24*" "+",startingPoint = "+str(0)+"\n"
-                         +24*" "+",name = 'test_"+str(i)+"'\n"
-                         +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
-                         +24*" "+",plugins ="+str(plugins)+"\n"
-                         +24*" "+",mapping ="+str(mapping)+"\n"
-                         +24*" "+",strides ="+str(strides)+"\n"
-                         +24*" "+",restriction ="+str(restriction)+")\n")
+                  
+                if backgroundType == 'optimal':
+                    command=( "TEST = Validator.falseAlarmTest(\n"
+                             +24*" "+"models = "+str(model)+"\n"
+                             +24*" "+",duration = "+str(duration)+"\n"
+                             +24*" "+",fs = "+str(fs)+"\n"
+                             +24*" "+",size = "+str(size_)+"\n"
+                             +24*" "+",detectors = "+str(detectors)+"\n"
+                             +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                             +24*" "+",windowSize ="+str(windowSize)+"\n"
+                             +24*" "+",name = 'test_"+str(i)+"'\n"
+                             +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
+                             +24*" "+",plugins ="+str(plugins)+"\n"
+                             +24*" "+",mapping ="+str(mapping)+"\n"
+                             +24*" "+",strides ="+str(strides)+"\n"
+                             +24*" "+",restriction ="+str(restriction)+")\n")
+                else:
+                    command=( "TEST = Validator.falseAlarmTest(\n"
+                             +24*" "+"models = "+str(model)+"\n"
+                             +24*" "+",duration = "+str(duration)+"\n"
+                             +24*" "+",fs = "+str(fs)+"\n"
+                             +24*" "+",size = "+str(size_)+"\n"
+                             +24*" "+",detectors = "+str(detectors)+"\n"
+                             +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                             +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]
+                                                                     +int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
+                             +24*" "+",windowSize ="+str(windowSize)+"\n"
+                             +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
+                             +24*" "+",startingPoint = "+str(0)+"\n"
+                             +24*" "+",name = 'test_"+str(i)+"'\n"
+                             +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
+                             +24*" "+",plugins ="+str(plugins)+"\n"
+                             +24*" "+",mapping ="+str(mapping)+"\n"
+                             +24*" "+",strides ="+str(strides)+"\n"
+                             +24*" "+",restriction ="+str(restriction)+")\n")
 
 
                 f.write(command+'\n\n')
