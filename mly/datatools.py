@@ -733,7 +733,7 @@ class DataSet(DataSetBase):
                    ,savePath = None
                    ,single = False  # Making single detector injections as glitch
                    ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration
-                   ,frames=None
+                   ,frames=None 
                    ,channels=None
                    ,disposition=None
                    ,maxDuration=None
@@ -915,7 +915,7 @@ class DataSet(DataSetBase):
             raise ValueError('windowSize needs to be an integral')
         if windowSize < duration :
             raise ValueError('windowSize needs to be bigger than the duration')
-
+        
         # ---------------------------------------------------------------------------------------- #   
         # --- timeSlides ------------------------------------------------------------------------- #
 
@@ -1017,7 +1017,13 @@ class DataSet(DataSetBase):
             if injectionFolder == None:
                 injectionFileDict[det] = None
             else:
-                injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
+                if len(dirlist(injectionFolder))==len(detectors):
+                    injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
+                    injFormat='txt'
+                else:
+                    injectionFileDict[det] = dirlist(injectionFolder)
+                    injFormat='pod'
+
 
         if backgroundType == 'optimal':
             magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
@@ -1030,7 +1036,6 @@ class DataSet(DataSetBase):
                     noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
                                                            +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
                     gps0 = float(noiseSourceFile[1].split('_')[1])
-                    print('its a string!')
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1094,14 +1099,26 @@ class DataSet(DataSetBase):
                         for det in detectors: 
                             index_sample=np.random.randint(0,
                                                       len(injectionFileDict[detKeys[0]]))
-                            sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                       +det+'/'+injectionFileDict[det][index_sample])
+                            if injFormat=='txt':
+                                sampling_strain=np.loadtxt(injectionFolder+'/'
+                                                           +det+'/'+injectionFileDict[det][index_sample])
+                            else:
+                                s_pod=DataPod.load(injectionFolder+
+                                                             '/'+injectionFileDict[det][index_sample])
+                                sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                                
                             while (len(sampling_strain)/fs > maxDuration_ 
                                    or index_sample in list(index_selection.values())):
                                 index_sample=np.random.randint(0,
                                                           len(injectionFileDict[detKeys[0]]))
-                                sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                           +det+'/'+injectionFileDict[det][index_sample])
+                                
+                                if injFormat=='txt':
+                                    sampling_strain=np.loadtxt(injectionFolder+'/'
+                                                    +det+'/'+injectionFileDict[det][index_sample])
+                                else:
+                                    s_pod=DataPod.load(injectionFolder+
+                                                                 '/'+injectionFileDict[det][index_sample])
+                                    sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                             
                             index_selection[det]=index_sample
                     else:
@@ -1115,13 +1132,27 @@ class DataSet(DataSetBase):
                 else:
                     if maxDuration_ != duration:
                         index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
-                        sampling_strain=np.loadtxt(injectionFolder+'/'
+                        
+                        if injFormat=='txt':
+                            sampling_strain=np.loadtxt(injectionFolder+'/'
                                                    +det+'/'+injectionFileDict[det][index_sample])
+                        else:
+                            s_pod=DataPod.load(injectionFolder+
+                                                             '/'+injectionFileDict[det][index_sample])
+                            sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                            
                         while (len(sampling_strain)/fs > maxDuration_
                                or index_sample in list(index_selection.values())):
                             index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
-                            sampling_strain=np.loadtxt(injectionFolder+'/'
+
+                            if injFormat=='txt':
+                                sampling_strain=np.loadtxt(injectionFolder+'/'
                                                        +det+'/'+injectionFileDict[det][index_sample])
+                            else:
+                                s_pod=DataPod.load(injectionFolder+
+                                                                 '/'+injectionFileDict[det][index_sample])
+                                sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+
                         for det in detectors: index_selection[det]=index_sample
                     else:
                         index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
@@ -1191,7 +1222,7 @@ class DataSet(DataSetBase):
                     back=TimeSeries(noise,sample_rate=fs)
                     back_dict[det] = back
                     # Calculating the ASD so tha we can use it for whitening later
-                    print(det,back,len(back),type(back))
+                    #print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
                     gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
@@ -1200,7 +1231,13 @@ class DataSet(DataSetBase):
                 if injectionFolder != None:
                     # Calling the templates generated with PyCBC
                     # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
-                    inj = np.loadtxt(injectionFolder+'/'+det+'/'+injectionFileDict[det][index_selection[det]])
+                    if injFormat=='txt':
+                        inj = np.loadtxt(injectionFolder+'/'
+                                         +det+'/'+injectionFileDict[det][index_selection[det]])
+                    else:
+                        inj_pod=DataPod.load(injectionFolder+'/'+injectionFileDict[det][index_selection[det]])
+                        inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
+                            
 
                     # Saving the length of the injection
                     inj_len = len(inj)/fs
@@ -1307,7 +1344,7 @@ class DataSet(DataSetBase):
                 inj_cal=np.real(np.fft.ifft(fft_cal*fs))
                 
                 # Joining calibrated injection and background noise
-                strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64') 
+                strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
                 # Bandpassing
                 strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
@@ -1337,6 +1374,8 @@ class DataSet(DataSetBase):
                 
             if 'correlation' in plugins:
                 plugInToApply.append(knownPlugIns('correlation'))
+                
+                    
 
             pod = DataPod(strain = podstrain
                                ,fs = fs
@@ -1348,6 +1387,11 @@ class DataSet(DataSetBase):
             for pl in plugInToApply:
                 pod.addPlugIn(pl)
                 
+            if injFormat=='pod':
+                for plkey in list(inj_pod.pluginDict.keys()):
+                    if not (plkey in list(pod.pluginDict.keys())):
+                        pod.addPlugIn(inj_pod.pluginDict[plkey])
+                        
             DATA.add(pod)
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))

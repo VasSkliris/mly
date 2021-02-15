@@ -1,7 +1,6 @@
-import sys
-sys.path.append("/home/vasileios.skliris/mly/")
-from mly.datatools import DataPod
-from mly.tools import *
+from .datatools import DataPod
+from .tools import *
+from .plugins import *
 import pylab
 import os
 
@@ -21,7 +20,7 @@ def projectWave(sourceWaveform
                 ,declination=None
                 ,rightAscension=None
                 ,polarisationAngle=None
-                ,time=10000000
+                ,time=0
                 ,padCrop=1
                 ,outputFormat=None
                 ,destinationFile=None
@@ -33,24 +32,24 @@ def projectWave(sourceWaveform
     # Case where input is normaly a tuple or list o numpy array with the two polarisations 
     if isinstance(sourceWaveform,(list,tuple,np.ndarray)) and len(sourceWaveform)==2:
         h=sourceWaveform
-        if outputFormat == None: 
-            outputFormat='txt'
-
     # Case where input is a path to a file
     elif isinstance(sourceWaveform,str):
         # Case where source file is a txt file
         if sourceWaveform[-4:]=='.txt':
             h=np.loadtxt(sourceWaveform)
-            if outputFormat == None: outputFormat='txt'
         # Case where source file is a DataPod (pickle) file
         elif sourceWaveform[-4:]=='.pkl':
             h=DataPod.load(sourceWaveform).strain
             if outputFormat == None: 
-                outputFormat='DataPod'
                 extraPlugins=sourceWaveform.pluginDict
         else:
             raise TypeError("File format is not supported")
             
+    if outputFormat == None: 
+        outputFormat='TXT'
+    if isinstance(destinationFile,str) and destinationFile[-1]!="/":
+        destinationFile=destinationFile+"/"
+    
     # Making the polarisation data into TimeSeries objects
     hp=TimeSeries(h[0],delta_t=1./fs,epoch=time)         
     hc=TimeSeries(h[1],delta_t=1./fs,epoch=time)      
@@ -66,7 +65,7 @@ def projectWave(sourceWaveform
     if rightAscension==None:
         rightAscension = 2*np.pi*np.random.rand()
     if not (0<= rightAscension <= 2*np.pi):
-        raise ValueError("Right Ascension must be in [0,π]")  
+        raise ValueError("Right Ascension must be in [0,2π]")  
         
     # Checking the declination input
     if declination==None:
@@ -84,7 +83,7 @@ def projectWave(sourceWaveform
     if polarisationAngle==None:
         polarisationAngle = 2*np.pi*np.random.rand()
     if not (0<= polarisationAngle <= 2*np.pi):
-        raise ValueError("Polarisation Angle must be in [0,π]")
+        raise ValueError("Polarisation Angle must be in [0,2π]")
     polarisationAngle = 2*np.pi*np.random.rand()
     
     
@@ -113,9 +112,10 @@ def projectWave(sourceWaveform
         
     # There is a one pixel inconsistency sometimes and we make sure all signals have the same length
     if not all(len(signal_dict[det])==len(signal_dict[detectors[0]]) for det in detectors):
-        maxlen=max(list(len(signal_dict[det])for det in detectors))
-        if len(signal_dict[det])<maxlen: 
-            signal_dict[det]=np.hstack((signal_dict[det],np.zeros(maxlen-len(signal_dict[det]))))
+        maxlen=max(list(len(signal_dict[det]) for det in detectors))
+        for det in detectors:
+            if len(signal_dict[det])<maxlen: 
+                signal_dict[det]=np.hstack((signal_dict[det],np.zeros(maxlen-len(signal_dict[det]))))
               
     # Shifting the signals acording to shift_dict
     for det in detectors:    
@@ -124,31 +124,54 @@ def projectWave(sourceWaveform
         # edge effects. Eventually we might want to crop after we finish. Avoid if not necessary 
     
     # # # OUTPUT FORMAT - SAVING 
-    
-    outputDict={}
-    if outputFormat=='txt':
-        for key in signal_dict.keys(): outputDict[key[0]]=signal_dict[key]
-    elif outputFormat in ['DataPod']:
-        for key in signal_dict.keys():
-            # Creating the dataPod for each detector
-            pod=DataPod([signal_dict[key]],detectors=key[0],fs=fs)
-            # Adding any plugin info from the source file is any
-            for pl in extraPlugins.values() : pod.addPlugIn(pl)
-            outputDict[key[0]]=pod
-
     if saveName == None:
         if not isinstance(sourceWaveform,str):
             name='projectedGW'
         else:
             name=sourceWaveform.split('/')[-1].split('.')[0]
-           
-    if destinationFile == None:
-        return(outputDict)
-    elif isinstance(destinationFile,str):
-        for det in detectors:
-            if outputFormat=='txt':
+        
+    if outputFormat.upper()=='TXT':
+        outputDict={}
+        for key in signal_dict.keys(): outputDict[key[0]]=signal_dict[key]
+            
+        if isinstance(destinationFile,str):
+            for det in detectors:
                 np.savetxt(destinationFile+det[0]+'/'+name+'.txt',outputDict[det[0]])
-            elif outputFormat in ['DataPod']:
-                outputDict[det[0]].save(destinationFile+det[0]+'/'+name+'.pkl')
+                
+        return(outputDict)
+
+    elif outputFormat.upper() == 'DATAPOD':
+        strainList=[]        
+        # Creating the strain for each detector
+        for key in signal_dict.keys():
+            strainList.append(signal_dict[key].tolist())
+            
+        # Creating the dataPod
+#         print(np.asarray(strainList).shape)
+#         print(np.asarray(strainList))
+#         print(np.isfinite(np.asarray(strainList)).all())
+          
+        pod=DataPod(np.asarray(strainList),detectors=list(d[0] for d in detectors),fs=fs)
+        # Adding any plugin info from the source file is any
+        
+        
+        for pl in extraPlugins.values() : pod.addPlugIn(pl)
+        RA=PlugIn('RA',rightAscension)
+        DEC=PlugIn('declination',declination)
+        PANG=PlugIn('polarisationAngle',polarisationAngle)
+        TIME=PlugIn('time',time)
+        
+        pod.addPlugIn(RA)
+        pod.addPlugIn(DEC)
+        pod.addPlugIn(PANG)
+        pod.addPlugIn(TIME)
+
+           
+        if isinstance(destinationFile,str):
+            pod.save(destinationFile+name+'.pkl')
+        
+        return(pod)
+    else:
+        raise TypeError("outputFormat can only be txt or DataPod.")
                 
 
