@@ -964,17 +964,36 @@ class DataSet(DataSetBase):
                 else:
                     raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
         
-        if frames==None:
+        if frames==None or (isinstance(frames,str) and frames.upper()=='C02'):
             frames = {'H': 'H1_HOFT_C02'
                      ,'L': 'L1_HOFT_C02'
                      ,'V': 'V1Online'}
+        elif (isinstance(frames,str) and frames.upper()=='C01'):
+            frames = {'H': 'H1_HOFT_C01'
+                     ,'L': 'L1_HOFT_C01'
+                     ,'V': 'V1Online'}
+        elif (isinstance(frames,str) and frames.upper()=='C00'):
+            frames = {'H': 'H1_HOFT_C00'
+                     ,'L': 'L1_HOFT_C00'
+                     ,'V': 'V1Online'}
+        else:
+              raise ValueError("Frame type "+str(frames)+" is not valid")
                     
-        if channels==None:
+        if channels==None or (isinstance(channels,str) and channels.upper()=='C02'):
             channels = {'H': 'H1:DCS-CALIB_STRAIN_C02'
                        ,'L': 'L1:DCS-CALIB_STRAIN_C02'
                        ,'V': 'V1:Hrec_hoft_16384Hz'}
-
-            
+        elif (isinstance(channels,str) and channels.upper()=='C01'):
+            channels = {'H': 'H1:DCS-CALIB_STRAIN_C01'
+                       ,'L': 'L1:DCS-CALIB_STRAIN_C01'
+                       ,'V': 'V1:Hrec_hoft_16384Hz'}
+        elif (isinstance(channels,str) and channels.upper()=='C00'):
+            channels = {'H': 'H1:GDS-CALIB_STRAIN'
+                       ,'L': 'L1:GDS-CALIB_STRAIN'
+                       ,'V': 'V1:Hrec_hoft_16384Hz'}
+        else:
+              raise ValueError("Channels "+str(channels)+" are not valid")
+        print(frames,channels)
         ### disposition
         # If you want no shiftings disposition will be zero
         if disposition == None: disposition=0
@@ -1017,7 +1036,7 @@ class DataSet(DataSetBase):
             if injectionFolder == None:
                 injectionFileDict[det] = None
             else:
-                if len(dirlist(injectionFolder))==len(detectors):
+                if det in dirlist(injectionFolder):
                     injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
                     injFormat='txt'
                 else:
@@ -1059,8 +1078,9 @@ class DataSet(DataSetBase):
                                                                 , channels[detectors[d]]
                                                                 , start =noiseSourceFile[d][0]
                                                                 , end =noiseSourceFile[d][1]
-                                                               ).resample(fs).astype('float64').value
-                    
+                                                               ).resample(fs).astype('float64').value#[fs:-fs].value
+                    # Added [fs:fs] because there was and edge effect
+                    # This also
                     print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
 
                     #print(len(noise_segDict[detectors[d]])/fs)
@@ -1348,7 +1368,7 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(1,0.5,asd=asd_dict[det])
+                strain=strain.whiten(1,0.5)#,asd=asd_dict[det])
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
@@ -1387,11 +1407,11 @@ class DataSet(DataSetBase):
             for pl in plugInToApply:
                 pod.addPlugIn(pl)
                 
-            if injFormat=='pod':
+            if injectionFolder!=None and injFormat=='pod':
                 for plkey in list(inj_pod.pluginDict.keys()):
                     if not (plkey in list(pod.pluginDict.keys())):
                         pod.addPlugIn(inj_pod.pluginDict[plkey])
-                        
+            
             DATA.add(pod)
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))

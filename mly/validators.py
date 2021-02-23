@@ -45,6 +45,8 @@ class Validator:
                        ,savePath = None
                        ,single = False  # Making single detector injections as glitch
                        ,injectionCrop = 0  # Allows to crop part of the injection when you move the injection arroud, 0 is no 1 is maximum means 100% cropping allowed. The cropping will be a random displacement from zero to parto of duration.
+                       ,frames=None 
+                       ,channels=None
                        ,disposition=None
                        ,maxDuration=None
                        ,differentSignals=False   # In case we want to put different injection to every detector.
@@ -167,6 +169,8 @@ class Validator:
                                    ,startingPoint = startingPoint
                                    ,single = single
                                    ,injectionCrop = injectionCrop
+                                   ,frames=frames
+                                   ,channels=frames
                                    ,disposition = disposition
                                    ,maxDuration = maxDuration
                                    ,differentSignals = differentSignals
@@ -223,7 +227,9 @@ class Validator:
                        ,plugins=None
                        ,mapping=None
                        ,strides=None
-                       ,restriction=None):    
+                       ,restriction=None
+                       ,frames=None 
+                       ,channels=None):    
         
         
         t0=time.time()
@@ -304,8 +310,11 @@ class Validator:
                                ,windowSize =windowSize       
                                ,timeSlides =timeSlides
                                ,startingPoint=startingPoint
+                               ,frames=frames
+                               ,channels=channels
                                ,name =name
-                               ,plugins=plugins)   
+                               ,plugins=plugins
+                                    )   
         t1=time.time()
         print('Time to generation: '+str(t1-t0)+' stride 0')
         t0=time.time()
@@ -323,6 +332,8 @@ class Validator:
                        ,windowSize =windowSize       
                        ,timeSlides =timeSlides
                        ,startingPoint=startingPoint+st*(duration/strides)
+                       ,frames=frames
+                       ,channels=channels
                        ,name =name
                        ,plugins=plugins) 
             
@@ -1362,7 +1373,9 @@ def online_FAR(model
              ,externalLagSize=None
              ,maxExternalLag=None
              ,strides=None
-             ,restriction=None):
+             ,restriction=None
+             ,frames=None 
+             ,channels=None):
     
     # ---------------------------------------------------------------------------------------- #
     # --- duration --------------------------------------------------------------------------- #
@@ -1702,7 +1715,9 @@ def online_FAR(model
                              +24*" "+",plugins ="+str(plugins)+"\n"
                              +24*" "+",mapping ="+str(mapping)+"\n"
                              +24*" "+",strides ="+str(strides)+"\n"
-                             +24*" "+",restriction ="+str(restriction)+")\n")
+                             +24*" "+",restriction ="+str(restriction)+"\n"
+                             +24*" "+",frames ="+str(frames)+"\n"
+                             +24*" "+",channels ="+str(channels)+")\n")
 
 
                 f.write(command+'\n\n')
@@ -1775,7 +1790,9 @@ def zeroLagSearch(model
                  ,plugins=None
                  ,restriction=None
                  ,strides=None
-                 ,destinationFileName=None):
+                 ,destinationFileName=None
+                 ,frames=None 
+                 ,channels=None):
     
     # ---------------------------------------------------------------------------------------- #
     # --- duration --------------------------------------------------------------------------- #
@@ -2027,7 +2044,9 @@ def zeroLagSearch(model
                          +24*" "+",plugins ="+str(plugins)+"\n"
                          +24*" "+",mapping ="+str(mapping)+"\n"
                          +24*" "+",strides ="+str(strides)+"\n"
-                         +24*" "+",restriction ="+str(restriction)+")\n")
+                         +24*" "+",restriction ="+str(restriction)+"\n"
+                         +24*" "+",frames ="+str(frames)+"\n"
+                         +24*" "+",channels ="+str(channels)+")\n")
 
 
                 f.write(command+'\n\n')
