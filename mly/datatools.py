@@ -959,7 +959,7 @@ class DataSet(DataSetBase):
             for pl in plugins:
                 if pl in known_plug_ins:
                     pass
-                elif isinstance(pl,PlugIn):
+                elif isinstance(pl,str) and ('knownPlugIns' in pl):
                     pass
                 else:
                     raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
@@ -1392,8 +1392,9 @@ class DataSet(DataSetBase):
                                             ,plotFunction=plotpsd
                                             ,plotAttributes=['detectors','fs']))
                 
-            if 'correlation' in plugins:
-                plugInToApply.append(knownPlugIns('correlation'))
+            for pl in plugins:
+                if 'correlation' in pl:
+                    plugInToApply.append(knownPlugIns(pl))
                 
                     
 
@@ -1640,7 +1641,7 @@ def auto_gen(duration
     if savePath[-1] == '/' : savePath=savePath[:-1]
     
     # ---------------------------------------------------------------------------------------- #    
-               
+    
     # The number of sets to be generated.
     num_of_sets = len(injectionSNR)
 

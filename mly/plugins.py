@@ -134,7 +134,7 @@ class PlugIn:
 
 # Default PlugIn objects
 
-known_plug_ins=['snr','psd','correlation']
+known_plug_ins=['snr','psd','correlation','correlation_12','correlation_30']
 
 def correlationFunction(strain,detectors,fs,window=None):
     if window==None:
@@ -170,13 +170,23 @@ def plotcorrerlaion(strain,detectors,fs,data=None):
 
 
 def knownPlugIns(name,**kwargs):
-    if not isinstance(name,str) and name in known_plug_ins:
+    if name not in known_plug_ins:
         raise TypeError("Name must be a string and one of known plugins "+str(known_plug_ins))
     if name=='correlation':
         if 'window' in list(kwargs.keys()):
             w=kwargs['window']
         else:
             w=None
+        plugin=PlugIn(name='correlation'
+                      ,genFunction=correlationFunction
+                      ,attributes=['strain','detectors','fs']
+                      ,plotAttributes=['strain','detectors','fs']
+                      ,plotFunction=plotcorrerlaion
+                      ,window=w)
+        
+    elif 'correlation'==name.split('_')[0] and isinstance(int(name.split('_')[-1]),int):
+        
+        w=int(name.split('_')[-1])
         plugin=PlugIn(name='correlation'
                       ,genFunction=correlationFunction
                       ,attributes=['strain','detectors','fs']
