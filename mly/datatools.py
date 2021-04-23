@@ -499,11 +499,12 @@ class DataSet(DataSetBase):
                 set_=elements[i]
             else:
                 raise TypeError("element is not what expected")
-                
             if sizes == None:
                 datasets += set_._dataPods
             else:
                 datasets += set_._dataPods[:sizes[i]]
+            del set_
+
         random.shuffle(datasets)
         finalSet = DataSet(datasets)
         
