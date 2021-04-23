@@ -367,7 +367,6 @@ class Validator:
 
             if len(dataList)==1: dataList=dataList[0]
             scores = 1.0 - trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
-
             scores_collection.append(scores.tolist())
 
         gps_times=DATA.exportGPS()
@@ -1374,7 +1373,8 @@ def online_FAR(model
              ,maxExternalLag=None
              ,strides=None
              ,restriction=None
-             ,frames=None 
+             ,frames=None
+             ,finalDirectory=None
              ,channels=None):
     
     # ---------------------------------------------------------------------------------------- #
@@ -1418,14 +1418,6 @@ def online_FAR(model
         raise ValuError("size must be a possitive integer.")
         
     # ---------------------------------------------------------------------------------------- #    
-    # --- dates ------------------------------------------------------------------------------ #
-    
-    gps_start = to_gps(dates[0])
-    gps_end = to_gps(dates[1])
-    
-    if gps_start > gps_end: raise ValueError("Not valid date.")
-    
-    # ---------------------------------------------------------------------------------------- #    
     # --- backgroundType --------------------------------------------------------------------- #
 
     if backgroundType == None:
@@ -1433,7 +1425,18 @@ def online_FAR(model
     elif not (isinstance(backgroundType,str) 
           and (backgroundType in ['optimal','sudo_real','real'])):
         raise ValueError("backgroundType is a string that can take values : "
-                        +"'optimal' | 'sudo_real' | 'real'.")            
+                        +"'optimal' | 'sudo_real' | 'real'.")          
+        
+    # ---------------------------------------------------------------------------------------- #    
+    # --- dates ------------------------------------------------------------------------------ #
+    
+    if backgroundType != 'optimal':
+        gps_start = to_gps(dates[0])
+        gps_end = to_gps(dates[1])
+
+        if gps_start > gps_end: raise ValueError("Not valid date.")
+
+         
     
     # ---------------------------------------------------------------------------------------- #    
     # --- windowSize --(for PSD)-------------------------------------------------------------- #        
@@ -1607,7 +1610,11 @@ def online_FAR(model
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
 
     print('Type the name of the temporary directory:')
-    dir_name = '0 0'
+    if finalDirectory==None:
+        dir_name = '0 0'
+    else:
+        dir_name = finalDirectory
+
     while not dir_name.isidentifier():
         dir_name=input()
         if not dir_name.isidentifier(): print("Not valid Folder name ...")
@@ -1616,7 +1623,10 @@ def online_FAR(model
     answer = None
     while answer not in answers:
         print('Do you accept the path y/n ?')
-        answer=input()
+        if finalDirectory==None:
+            answer=input()
+        else:
+            answer='y'
         if answer not in answers: print("Not valid answer ...")
 
     if answer in ['no','n', 'No','NO','N','exit']:
@@ -1629,7 +1639,10 @@ def online_FAR(model
             while answer not in answers:
                 print('Already existing '+dir_name+' directory, do you want to'
                       +' overwrite it? y/n')
-                answer=input()
+                if finalDirectory==None:
+                    answer=input()
+                else:
+                    answer='y'
                 if answer not in answers: print("Not valid answer ...")
             if answer in ['yes','y','YES','Yes','Y']:
                 os.system('rm -r '+destinationFile+dir_name)
@@ -1706,7 +1719,7 @@ def online_FAR(model
                              +24*" "+",detectors = "+str(detectors)+"\n"
                              +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                              +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]
-                                                                     +int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
+                                                          +int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
                              +24*" "+",windowSize ="+str(windowSize)+"\n"
                              +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
                              +24*" "+",startingPoint = "+str(0)+"\n"
@@ -1761,7 +1774,10 @@ def online_FAR(model
     final_job.add_parents(job_list)
 
     print('All set. Initiate dataset generation y/n?')
-    answer4=input()
+    if finalDirectory==None:
+        answer4=input()
+    else:
+        answer4='y'
 
     if answer4 in ['yes','y','YES','Yes','Y']:
         print('Creating Job queue')
