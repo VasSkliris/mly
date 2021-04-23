@@ -911,7 +911,7 @@ class DataSet(DataSetBase):
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-        if windowSize == None: windowSize = duration*8
+        if windowSize == None: windowSize = duration*16
         if not isinstance(windowSize,int):
             raise ValueError('windowSize needs to be an integral')
         if windowSize < duration :
@@ -1095,8 +1095,8 @@ class DataSet(DataSetBase):
                                    ,size = int(len(noise_segDict[detectors[0]])/fs-(windowSize-duration))
                                    ,start_from_sec=startingPoint)
             
-            print(len(ind['H']),len(ind['L']))
-            print(len(noise_segDict['H'])/fs,len(noise_segDict['L'])/fs)
+#             print(len(ind['H']),len(ind['L']))
+#             print(len(noise_segDict['H'])/fs,len(noise_segDict['L'])/fs)
 
 
 
@@ -1602,7 +1602,7 @@ def auto_gen(duration
     # ---------------------------------------------------------------------------------------- #    
     # --- windowSize --(for PSD)-------------------------------------------------------------- #        
 
-    if windowSize == None: windowSize = duration*8
+    if windowSize == None: windowSize = duration*16
     if not isinstance(windowSize,int):
         raise ValueError('windowSize needs to be an integral')
     if windowSize < duration :
