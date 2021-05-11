@@ -10,8 +10,8 @@ from math import ceil
 from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
 
-from .simulateddetectornoise import * 
-from .tools import dirlist,  fromCategorical, correlate,internalLags,externalLags
+from .simulateddetectornoise import *
+from .tools import dirlist,  fromCategorical, correlate,internalLags,externalLags,circularTimeSlides
 from .datatools import DataPod, DataSet
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
@@ -51,7 +51,8 @@ class Validator:
                        ,maxDuration=None
                        ,differentSignals=False   # In case we want to put different injection to every detector.
                        ,plugins=None
-                       ,mapping=None):
+                       ,mapping=None
+                       ,**kwargs):
 
         # ---------------------------------------------------------------------------------------- #    
         # --- model ------------------------------------------------------------------------------ #
@@ -174,7 +175,8 @@ class Validator:
                                    ,disposition = disposition
                                    ,maxDuration = maxDuration
                                    ,differentSignals = differentSignals
-                                   ,plugins=plugins)
+                                   ,plugins=plugins
+                                   ,**kwargs)
 
 
             random.shuffle(DATA.dataPods)
@@ -229,7 +231,8 @@ class Validator:
                        ,strides=None
                        ,restriction=None
                        ,frames=None 
-                       ,channels=None):    
+                       ,channels=None
+                       ,**kwargs):    
         
         
         t0=time.time()
@@ -314,7 +317,7 @@ class Validator:
                                ,channels=channels
                                ,name =name
                                ,plugins=plugins
-                                    )   
+                               ,**kwargs)   
         t1=time.time()
         print('Time to generation: '+str(t1-t0)+' stride 0')
         t0=time.time()
@@ -335,7 +338,8 @@ class Validator:
                        ,frames=frames
                        ,channels=channels
                        ,name =name
-                       ,plugins=plugins) 
+                       ,plugins=plugins
+                       ,**kwargs)
             
             t1=time.time()
             print('Time to generation: '+str(t1-t0)+' stride '+str(st))
@@ -696,7 +700,8 @@ def auto_FAR(model
              ,savePath = None
              ,plugins=None
              ,mapping=None
-             ,maxTestSize=None):
+             ,maxTestSize=None
+             ,**kwargs)  ):
 
     
 #     # ---------------------------------------------------------------------------------------- #    
@@ -1084,7 +1089,11 @@ def auto_FAR(model
     job_list=[]
     
     print('Creation of temporary directory complete: '+path+dir_name)
-
+    
+    kwstr=""
+    for k in kwargs:
+        kwstr+=(","+k+"="+str(kw[k]))   
+        
     for i in range(len(d['size'])):
 
         with open(path+dir_name+'/test_'+d['name'][i]+'.py','w+') as f:
@@ -1113,7 +1122,7 @@ def auto_FAR(model
                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
                          +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
                          +24*" "+",plugins ="+str(plugins)+"\n"
-                         +24*" "+",mapping ="+str(mapping)+")\n")
+                         +24*" "+",mapping ="+str(mapping)+kwstr+")\n")
                                                 
 
                 
@@ -1134,7 +1143,7 @@ def auto_FAR(model
                          +24*" "+",name = '"+str(d['name'][i])+"'\n"
                          +24*" "+",savePath ='"+savePath+dir_name+"/'\n"
                          +24*" "+",plugins ="+str(plugins)+"\n"
-                         +24*" "+",mapping ="+str(mapping)+")\n")
+                         +24*" "+",mapping ="+str(mapping)+kwstr+")\n")
 
                                                 
             f.write(command+'\n\n')
@@ -1475,9 +1484,15 @@ def online_FAR(model
     # ---------------------------------------------------------------------------------------- #    
     # --- maxExternalLag --------------------------------------------------------------------- #
     
-    if maxExternalLag==None: maxExternalLag=ceil(
-        3600/(externalLagSize+windowSize-duration
-             ))*int(externalLagSize+windowSize-duration)
+    if maxExternalLag==None: maxExternalLag=3600
+    # We want the max external lag without the window correction to 
+    # be a multiple of the externalLagSize
+    if (maxExternalLag-windowSize+duration)%externalLagSize != 0:
+        maxExternalLag=maxExternalLag+externalLagSize-(
+            (maxExternalLag-windowSize+duration)%externalLagSize)
+            
+    print('MaxExternalLag:',maxExternalLag
+                           ,(maxExternalLag-windowSize+duration)%externalLagSize)
     # ---------------------------------------------------------------------------------------- #    
     # --- strides ---------------------------------------------------------------------------- #
             
@@ -1492,7 +1507,7 @@ def online_FAR(model
     if restriction == None: restriction ==0
     
     if backgroundType == 'optimal':
-        pass
+        sizeList=[10000]*(int(size/10000)+int(size%10000!=0))
     else:
 
         # Feching the segment times tha detectors were active
@@ -1548,63 +1563,112 @@ def online_FAR(model
                 for k in range(breaks):
                     new_sim_seg.append(Segment(seg[0]+k*maxExternalLag,seg[0]
                                                +(k+1)*maxExternalLag))
-                new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag,seg[1]))
-            elif segsize>=windowSize:
-                new_sim_seg.append(seg)
+                # The remaining segment without window correction must also be
+                # a multiple of externalLagSize
+                remnant_size=seg[1]-(seg[0]+(k+1)*maxExternalLag)
+                if remnant_size>=externalLagSize+windowSize-duration:
+                    remnant_size=remnant_size-(remnant_size-windowSize+duration)%externalLagSize
+                    new_sim_seg.append(Segment(seg[0]+(k+1)*maxExternalLag
+                                              ,seg[0]+(k+1)*maxExternalLag+remnant_size))
+            elif segsize>=externalLagSize+windowSize-duration:
+                # These smaller segments without window correction must also be
+                # a multiple of externalLagSize
+                remnant_size=segsize-(segsize-windowSize+duration)%externalLagSize
+                new_sim_seg.append(Segment(seg[0]
+                                          ,seg[0]+remnant_size))               
+                
+                
+        #print('NEW SIM SEG: ',list(seg[1]-seg[0] for seg in new_sim_seg))
+        #print('NEW SIM SEG SIZE VERIFICATION: ',list((seg[1]-seg[0]-windowSize+duration)%externalLagSize for seg in new_sim_seg))
 
         print("Number of segments: ",len(new_sim_seg))#list(seg[1]-seg[0] for seg in new_sim_seg),len(new_sim_seg))
         # Calculating all the external lags for each segment and putting them all together.
         externalIndeces={}
         for det in detectors: externalIndeces[det]=[]
-
+        
+        utilised_segs=0
         for seg in new_sim_seg:
             # externalLagSize is plus the windowSize because we need the first 
             # windowSize seconds in internal lags.
-            ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
+            #ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
+            ind=internalLags(detectors,externalLagSize,seg[1]-seg[0]-windowSize+duration,includeZeroLag=False)
             for key in ind:
                 externalIndeces[key]+=(np.array(ind[key])+seg[0]).tolist()
+            
+            blocks=len(externalIndeces[detectors[0]])
+            #print((seg[1]-seg[0]),((seg[1]-seg[0])-(windowSize-duration))%externalLagSize)
+            
+        # # Random indexes to shuffle the externalIndeces as a group
+        # randindex=np.arange(len(externalIndeces[detectors[0]]))
+        # randindex = np.random.permutation(randindex) - stoped that because I want to use at least once everything
 
-        # Random indexes to shuffle the externalIndeces as a group
-        randindex=np.arange(len(externalIndeces[detectors[0]]))
-        randindex = np.random.permutation(randindex)
+        # # Shuffling with the new indeces
+        # for det in detectors:
+        #     externalIndeces[det]=np.array(externalIndeces[det])[randindex]
 
-        # Shuffling with the new indeces
-        for det in detectors:
-            externalIndeces[det]=np.array(externalIndeces[det])[randindex]
 
-        chunks = len(externalIndeces[detectors[0]])
+        maximumPossibleSize=len(externalIndeces[detectors[0]])*len(circularTimeSlides(
+                    detectors,int(externalLagSize/duration)))*int(externalLagSize/duration)
+        
+        if size>maximumPossibleSize:
+            raise ValueError("Size is bigger than max possible size")
+        
         print("Target Size            : ",size)
-        print("Maximum possible size  : ",chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-            int(int(externalLagSize/duration)%2==0)+1)))
+        print("Maximum possible size  : ",str(maximumPossibleSize))#+" = "+str(int(maximumPossibleSize/3600/24))+" days")
         print("Maximum external lag   : ",maxExternalLag,"s")
-        print("Number of chunks       : ",chunks)
-        print("Maximum Size of subtest: ",int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-            int(int(externalLagSize/duration)%2==0)+1)))
+        print("Number of blocks       : ",blocks)
+
+        
+        internalLagSize=int(size/(len(externalIndeces[detectors[0]])*int(externalLagSize/duration)))+1
+        sizeList=[ceil(size/blocks)]*blocks
+        
+
+#         if size<=len(externalIndeces[detectors[0]])*int(externalLagSize/duration):
+#             utilised_blocks=ceil(size/externalLagSize)
+#             internalLagSize=0
+#             sizeList=[externalLagSize]*utilised_blocks
+            
+#         elif size>len(externalIndeces[detectors[0]])*int(externalLagSize/duration) and size <= maximumPossibleSize:
+#             utilised_blocks=blocks
+#             internalLagSize=int(size/(len(externalIndeces[detectors[0]])*int(externalLagSize/duration)))
+#             sizeList=[externalLagSize*(internalLagSize+1)]*utilised_blocks
+#                       size/utilised_blocks
+#         else:
+#             raise ValueError("External lag size not big enough for desire test number")
+            
+            
+        
+
+        print("Utilised time slides   : ", internalLagSize)
+        print("Current block size.    : ", sizeList[0])
+        print("Maximum block size     : "
+              , len(circularTimeSlides(detectors,int(externalLagSize/duration)))*externalLagSize)
+                    
+            
+            
+#         if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+#             int(int(externalLagSize/duration)%2==0)+1)):
+
+#             for det in detectors:
+#                 externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+#                     int(int(externalLagSize/duration)%2==0)+1))))]
+
+#             internalLagSize=(int(externalLagSize/duration)-(
+#                 int(int(externalLagSize/duration)%2==0)+1))
+
+#             size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
+#                     int(int(externalLagSize/duration)%2==0)+1))
 
 
-        if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-            int(int(externalLagSize/duration)%2==0)+1)):
 
-            for det in detectors:
-                externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-                    int(int(externalLagSize/duration)%2==0)+1))))]
-
-            internalLagSize=(int(externalLagSize/duration)-(
-                int(int(externalLagSize/duration)%2==0)+1))
-
-            size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-                    int(int(externalLagSize/duration)%2==0)+1))
-
-
-
-        # If target size is even bigger it cannot be fulfiled in this 
-        # time interval and it needs bigger date difference.
-        else:
-            raise ValueError("The date interval provided cannot fullfil the target size by "
-                             +str(duration*(size-chunks*int(
-                                 externalLagSize/duration)*(int(externalLagSize/duration)-(
-                                 int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
-        print("Internal lag size      : ",internalLagSize)
+#         # If target size is even bigger it cannot be fulfiled in this 
+#         # time interval and it needs bigger date difference.
+#         else:
+#             raise ValueError("The date interval provided cannot fullfil the target size by "
+#                              +str(duration*(size-chunks*int(
+#                                  externalLagSize/duration)*(int(externalLagSize/duration)-(
+#                                  int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
+#         print("Internal lag size      : ",internalLagSize)
 
 
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
@@ -1664,23 +1728,28 @@ def online_FAR(model
         job_list=[]
         
         if backgroundType == 'optimal':
-            size_=10000
-            looper=range(int(size/size_)+int(size%size_!=0))
             print('Creation of temporary directory complete: '+destinationFile+dir_name)
-            print('Expected jobs :',str(int(size/size_)+int(size%size_!=0)))
+            print('Expected jobs :',str(int(size/10000)+int(size%10000!=0)))
+            #size_=10000
+            #looper=range(int(size/size_)+int(size%size_!=0))
+            #print('Creation of temporary directory complete: '+destinationFile+dir_name)
+            #print('Expected jobs :',str(int(size/size_)+int(size%size_!=0)))
         else:
             print('Creation of temporary directory complete: '+destinationFile+dir_name)
-            print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
+            #print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
+            print('Expected jobs :',len(sizeList))
             print('Internal lags :',str(internalLagSize))
-            looper=range(len(externalIndeces[detectors[0]]))
+            #looper=range(len(sizeList)
         
         target_size=0
 
-        for i in looper:
+        #for i in looper:
+        for i in range(len(sizeList)):
             
-            target_size+=size_
-            
-            if target_size>size: size_=size_-(target_size-size)
+            #target_size+=size_
+            #if target_size>size: size_=size_-(target_size-size)
+            target_size+=sizeList[i]
+            if target_size>size: sizeList[i]=sizeList[i]-(target_size-size)
             
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
@@ -1700,7 +1769,8 @@ def online_FAR(model
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
-                             +24*" "+",size = "+str(size_)+"\n"
+                             #+24*" "+",size = "+str(size_)+"\n"
+                             +24*" "+",size = "+str(sizeList[i])+"\n"
                              +24*" "+",detectors = "+str(detectors)+"\n"
                              +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                              +24*" "+",windowSize ="+str(windowSize)+"\n"
@@ -1715,7 +1785,8 @@ def online_FAR(model
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
-                             +24*" "+",size = "+str(size_)+"\n"
+                             #+24*" "+",size = "+str(size_)+"\n"
+                             +24*" "+",size = "+str(sizeList[i])+"\n"
                              +24*" "+",detectors = "+str(detectors)+"\n"
                              +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                              +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]

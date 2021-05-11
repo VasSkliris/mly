@@ -739,7 +739,8 @@ class DataSet(DataSetBase):
                    ,disposition=None
                    ,maxDuration=None
                    ,differentSignals=False   # In case we want to put different injection to every detector.
-                   ,plugins=None):
+                   ,plugins=None
+                   ,**kwargs):
         
 
         # Integration limits for the calculation of analytical SNR
@@ -964,6 +965,8 @@ class DataSet(DataSetBase):
                     pass
                 else:
                     raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
+                    
+        # --- fames ---
         
         if frames==None or (isinstance(frames,str) and frames.upper()=='C02'):
             frames = {'H': 'H1_HOFT_C02'
@@ -995,7 +998,11 @@ class DataSet(DataSetBase):
         else:
               raise ValueError("Channels "+str(channels)+" are not valid")
         print(frames,channels)
-        ### disposition
+        
+        
+        # --- disposition
+        
+        
         # If you want no shiftings disposition will be zero
         if disposition == None: disposition=0
         # If you want shiftings disposition has to adjust the maximum length of an injection
@@ -1018,7 +1025,7 @@ class DataSet(DataSetBase):
             raise TypeError('Disposition can be a number or a range'
                             +' of two nubers (start,end) that always is less than duration')
             
-        # max Duration
+        # --- max Duration
         
         if maxDuration == None: 
             maxDuration=duration
@@ -1044,7 +1051,28 @@ class DataSet(DataSetBase):
                     injectionFileDict[det] = dirlist(injectionFolder)
                     injFormat='pod'
 
-
+        # --- PSDm PSDc
+        if 'PSDm' in kwargs: 
+            PSDm=kwargs['PSDm']
+        else:
+            PSDm=None
+            
+        if 'PSDc' in kwargs: 
+            PSDc=kwargs['PSDc']
+        else:
+            PSDc=None
+            
+        if PSDm==None: 
+            PSDm={}
+            for det in detectors:
+                PSDm[det]=1
+        if PSDc==None: 
+            PSDc={}
+            for det in detectors:
+                PSDc[det]=0
+                
+        # ---------------
+        
         if backgroundType == 'optimal':
             magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
             param = magic[fs]
@@ -1081,11 +1109,16 @@ class DataSet(DataSetBase):
                                                                 , end =noiseSourceFile[d][1]
                                                                ).resample(fs).astype('float64').value#[fs:-fs].value
                     # Added [fs:fs] because there was and edge effect
-                    # This also
+                    
                     print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
-
-                    #print(len(noise_segDict[detectors[d]])/fs)
-
+                    
+                    if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
+                        raise ValueError("Detector "+detectors[d]+" is full of zeros")
+                    elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
+                        print("WARNING : "+str(
+                            len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
+                              +" zeros were replased with the average of the array")
+                        
                     gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
 
                 ind=internalLags(detectors = detectors
@@ -1104,6 +1137,8 @@ class DataSet(DataSetBase):
         DATA=DataSet(name = name)
         
         for I in range(size):
+                                  
+                                 
             t0=time.time()
 
             detKeys = list(injectionFileDict.keys())
@@ -1199,7 +1234,7 @@ class DataSet(DataSetBase):
                 if backgroundType == 'optimal':
 
                     # Creation of the artificial noise.
-                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
+                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
                     PSD_dict[det]=PSD
                     back_dict[det] = X
                     # Making the noise a TimeSeries
@@ -1219,7 +1254,7 @@ class DataSet(DataSetBase):
                     p, f = psd(noise, Fs=fs, NFFT=fs) 
                     p, f=p[1::],f[1::]
                     # Feeding the PSD to generate the sudo-real noise.            
-                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
+                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
                     PSD_dict[det]=PSD
                     # Making the noise a TimeSeries
                     back=TimeSeries(X,sample_rate=fs)
@@ -1347,8 +1382,23 @@ class DataSet(DataSetBase):
                 else:
                     SNR0_dict[det] = 0.01 # avoiding future division with zero
                     inj_fft_0_dict[det] = np.zeros(windowSize*fs)
-
-
+            
+            
+#             print(
+#                 list(
+#                     len(np.where(
+#                         noise_segDict[det][int(ind[det][I]):int(ind[det][I])+windowSize*fs]
+#                     )[0]
+#                        )
+#                     for det in detKeys
+#                 )
+#             )
+            if (backgroundType=='real' 
+                and any(len(np.where(noise_segDict[det][
+                    int(ind[det][I]):int(ind[det][I])+windowSize*fs]==0)[0])==windowSize*fs for det in detKeys)):
+                print(I,"skipped")
+                continue
+            
             # Calculation of combined SNR    
             SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
 
@@ -1366,10 +1416,16 @@ class DataSet(DataSetBase):
                 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
+                #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
+                #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
+                #print(strain.value.tolist())
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
                 strain=strain.whiten(4,2,fduration=4,highpass=20)#,asd=asd_dict[det])
+                #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
+                #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
+
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
@@ -1428,10 +1484,6 @@ class DataSet(DataSetBase):
         else:
             return(DATA)
 
-        
-        
-        
-        
            
         
         
@@ -1460,7 +1512,8 @@ def auto_gen(duration
              ,disposition=None
              ,maxDuration=None
              ,differentSignals=False
-             ,plugins=None): 
+             ,plugins=None
+             ,**kwargs): 
 
 
 
@@ -1936,7 +1989,10 @@ def auto_gen(duration
     
     print('Creation of directory complete: '+path+dir_name)
     #os.system('cd '+path+dir_name)
-                
+    
+    kwstr=""
+    for k in kwargs:
+        kwstr+=(","+k+"="+str(kw[k]))           
 
     for i in range(len(d['size'])):
 
@@ -1960,6 +2016,7 @@ def auto_gen(duration
             
             if injectionFolder!=None and injectionFolder[0]!="'":
                 injectionFolder = "'"+injectionFolder+"'"
+
             if backgroundType == 'optimal':
                 comand=( "SET = DataSet.generator(\n"
                          +24*" "+"duration = "+str(duration)+"\n"
@@ -1975,7 +2032,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",plugins = "+str(plugins)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+kwstr+")\n")
 
             else:
                 f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
@@ -1997,7 +2054,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",plugins = "+str(plugins)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+kwstr+")\n")
 
             
             f.write(comand+'\n\n')

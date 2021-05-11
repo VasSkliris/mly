@@ -90,7 +90,7 @@ import numpy as np
 # c) Simulated noise following a psd that could be anything                   DET=[PSD] size: T*fs/2
 
 
-def simulateddetectornoise(DET,T,fs,fmin,fmax):#,seed):
+def simulateddetectornoise(DET,T,fs,fmin,fmax,PSDm=1,PSDc=0):#,seed):
     
     #DET: Can be a string vector, a PSD vector of size T*fs/2 or
     #     it can be a size two array with frequencies and values of a PSD (sudodetectornoize)
@@ -179,7 +179,7 @@ def simulateddetectornoise(DET,T,fs,fmin,fmax):#,seed):
 
     f_w=np.array(f_w)
 
-    PSD=PSD_int(f_w)/2
+    PSD=((PSDm*np.sqrt(PSD_int(f_w))+PSDc)**2)/2
 
     PSD_frondtail=[]
     if len(k_m)>0:

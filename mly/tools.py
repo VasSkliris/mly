@@ -39,10 +39,106 @@ def dirlist(filename,exclude=None):
     fn_clean.sort()
     return fn_clean
 
+def lcm(*args):
+    
+    if len(args)==0: return 1
+
+    greater=max(args)
+    maxsearch=1
+    for arg in args: maxsearch*=arg
+    while(greater <=maxsearch):
+        
+        if all(greater % int(val) ==0 for val in args):
+            return greater
+            break
+        
+        greater+=1
+
+def circularTimeSlides(detectors,Nstep):
+    
+    # Based on:
+    # $Id: circulartimeslides.m 5956 2021-03-30 11:52:17Z patrick.sutton@LIGO.ORG $
+    
+    # ---- Reset Nstep to be 1 + X where X is the largest multiple of the lowest
+    #      common multiple of 1:(Ndet-1) such that (X+1) <= (original NStep).
+    #  
+    # ---- Example: If we have 3 detectors the lowest common multiple of 1:Ndet-1
+    #               is the lowest common multiple of [1,2] whic is 2. Them we look for the 
+    #               largest multiple of two [2,4,6,...] X such that orginal Nstep is equal or
+    #               bigger than X+1. If we have a segment with 128 seconds and we look 
+    #               for 1s intervals then original Nstep=128, so the multiple we look for is
+    #               X=126, so X+1=127 < 128.
+    #               If we have 4 detectors the lowest common multiple is 6. Then the largest
+    #               multiple of 6 that is smaller than 128 is 126 (21*6).
+    
+    if not(isinstance(detectors,int)) and len(detectors)>=1:
+        detectors=len(detectors)
+
+    if not ((isinstance(detectors,int) and detectors>=1)):
+        raise TypeError('Number of detectors must be a natural number >= 1.')
+    Ndet = detectors
+
+    if not(isinstance(Nstep,int) or Nstep>1):
+        raise ValueError('Input Nstep must be a natural number.')
+
+
+    # ---- Calculation depends on number of detectors.
+    if Ndet==1:
+        c = 0;
+    else:
+
+        LCM = lcm(*tuple(range(1,Ndet)))
+
+        Nstep = int((Nstep-1)/LCM)*LCM+1
+
+        # ---- Circular time steps.
+        stepArray=np.arange(0,Nstep)
+        detArray=np.arange(0,Ndet)
+        c = np.mod(np.dot(stepArray.reshape(len(stepArray),1),detArray.reshape(1,len(detArray))),Nstep);
+    return c
+
+
+def internalLags(detectors             # The initials of the detectors you are going 
+                 ,duration             # The duration of the instances you use
+                 ,size                 # Size in seconds of the available segment
+                 ,fs=None              # Sample frequency
+                 ,start_from_sec=None  # The first second in the segment
+                 ,lags=None            # Time slides multiples returned
+                 ,includeZeroLag=True):# Includes zero lag by defult !!!    
+    
+    '''This function generates all the possible shifts in for the given 
+       segment and then creates all the indeces for the shifted segments.
+    '''
+    if fs==None: fs=1
+    if start_from_sec==None: start_from_sec=0
+    if lags==None: lags=int(size/duration)
+        
+    # The following function creates all the possible shifts for the available
+    # detectors, size and duration
+    C=circularTimeSlides(detectors,int(size/duration))
+    # Removing the zero lag
+    if includeZeroLag==False:
+        C=C[1:]  
+    C=C[:lags+1]
+    # Creation of indeces
+    IND={}
+    # The indeces are returned in a dictionary format for each detector
+    for d in detectors:
+        IND[d]=[]
+    
+    # Creation of indeces for all available lags.
+    for lag in C:
+        for i in range(len(detectors)):
+            IND[detectors[i]]+=np.roll(  # The same array is generated all the time and
+                                     start_from_sec*fs  # the starting second is addedd
+                                     +np.arange(0,int(size/duration)*duration*fs,duration*fs)
+                                     ,lag[i]).tolist() # and the shift from the circular lags is applied
+            
+    return(IND)
 
 
 
-def internalLags(detectors
+def old_internalLags(detectors
                    ,duration
                    ,size
                    ,lags=None
@@ -100,7 +196,8 @@ def externalLags(detectors
     size=int(size/duration)
     ind=internalLags(detectors
                        ,duration
-                       ,size)
+                       ,size
+                       ,includeZeroLag=False)
     return(ind)
 
 
