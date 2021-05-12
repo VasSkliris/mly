@@ -1513,6 +1513,7 @@ def auto_gen(duration
              ,maxDuration=None
              ,differentSignals=False
              ,plugins=None
+             ,finalDirectory=None
              ,**kwargs): 
 
 
@@ -1931,7 +1932,11 @@ def auto_gen(duration
         
         
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
-    answer = None
+    if finalDirectory==None:
+        answer=None
+    else:
+        answer='y'
+        
     while answer not in answers:
         print('Should we proceed to the generation of the following'
               +' data y/n ? \n \n')
@@ -1942,15 +1947,22 @@ def auto_gen(duration
         print('Exiting procedure ...')
         return
     elif answer in ['yes','y','YES','Yes','Y']:
-        print('Type the name of the dataset directory:')
-        dir_name = '0 0'
+        if finalDirectory==None:
+            print('Type the name of the temporary directory:')
+            dir_name = '0 0'
+        else:
+            dir_name = finalDirectory
+        
         while not dir_name.isidentifier():
             dir_name=input()
             if not dir_name.isidentifier(): print("Not valid Folder name ...")
         
     path = savePath+'/'
     print("The current path of the directory is: \n"+path+dir_name+"\n" )  
-    answer = None
+    if finalDirectory==None:
+        answer=None
+    else:
+        answer='y'
     while answer not in answers:
         print('Do you accept the path y/n ?')
         answer=input()
@@ -1992,7 +2004,7 @@ def auto_gen(duration
     
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kw[k]))           
+        kwstr+=(","+k+"="+str(kwargs[k]))           
 
     for i in range(len(d['size'])):
 
@@ -2113,8 +2125,12 @@ def auto_gen(duration
     
     final_job.add_parents(job_list)
     
-    print('All set. Initiate dataset generation y/n?')
-    answer4=input()
+    if finalDirectory==None:
+        print('All set. Initiate dataset generation y/n?')
+        answer4=input()
+    else:
+        answer4='y'
+
 
     if answer4 in ['yes','y','YES','Yes','Y']:
         print('Creating Job queue')
