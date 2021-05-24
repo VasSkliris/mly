@@ -1,0 +1,80 @@
+# include templates from gitlab-ci-templates
+# for docs see https://computing.docs.ligo.org/gitlab-ci-templates
+include:
+  - project: computing/gitlab-ci-templates
+    file: python.yml
+
+stages:
+  # build the project
+  - build
+  # test the project
+  - test
+  # quality check the code
+  - lint
+
+# -- build ------------------
+#
+# Generate distributions of
+# this project using setuptools
+#
+
+build:
+  extends:
+    # https://computing.docs.ligo.org/gitlab-ci-templates/python/#.python:build
+    - .python:build
+  stage: build
+  needs: []
+
+# -- test -------------------
+#
+# Run the test suite of this
+# package over all supported
+# Python versions
+#
+
+# test template (templates start with '.')
+.test:
+  extends:
+    # https://computing.docs.ligo.org/gitlab-ci-templates/python/#.python:pytest
+    - .python:pytest
+  stage: test
+  needs: [build]
+  variables:
+    # we're installing from the tarball, so we don't need the git repo
+    GIT_STRATEGY: none
+    # use the tarball we got from 'build'
+    INSTALL_TARGET: "mly-*.tar.*"
+    # point pytest at the installed package
+    PYTEST_OPTIONS: "--pyargs mly"
+
+# actually run the tests for each python version we support
+test:3.6:
+  extends: [.test]
+  image: python:3.6
+
+test:3.7:
+  extends: [.test]
+  image: python:3.7
+
+test:3.8:
+  extends: [.test]
+  image: python:3.8
+
+test:3.9:
+  extends: [.test]
+  image: python:3.9
+
+# -- lint -------------------
+#
+# Check the code for style
+# issues with flake8
+#
+
+lint:
+  extends:
+    # https://computing.docs.ligo.org/gitlab-ci-templates/python/#.python:flake8
+    - .python:flake8
+  stage: lint
+  needs: []
+  # allow this job to fail until the lint is cleaned up:
+  allow_failure: true
