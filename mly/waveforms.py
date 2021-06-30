@@ -255,6 +255,7 @@ def csg(frequency
         ,phase=None   
         ,fs=None
         ,sigma=None
+        ,ellipticity=None
         ,amplitude=None):
     
     """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a 
@@ -285,7 +286,9 @@ def csg(frequency
         The standar deviation of the gaussian envelope. If not specified the default
         is 5. This scales along with duration, so don't use smaller numbers to avoid
         edge cut effects.
-
+    
+    ellipticity: int/float
+        The ellipticity of the system. It will modify the cross polarisation.
     amplitude: int/float , optional
         The maximum amplitude of the singal. If not specied 
         the default is 1.
@@ -317,15 +320,21 @@ def csg(frequency
     
     if sigma == None: sigma = 5
     if not (sigma > 0):
-        rais
+        raise ValueError('Sigma must be positive')
+        
+    if ellipticity==None:
+        ellipticity=0
+    if not (isinstance(ellipticity,(float,int)) and 0<=ellipticity<=1):
+        raise ValueError('Elliptisity must be a numeber in the interval [0,1]')
+        
     if amplitude == None:
         amplitude = 1
     elif not (isinstance(amplitude,(int,float))):
-        raise ValueError('amplitude must be a number,')
+        raise ValueError('amplitude must be a number')
          
     t=np.arange(0,duration,1/fs)
     hp=np.sin(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
-    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
+    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)*np.sqrt(1-ellipticity**2)
     
     return(hp,hc)
 

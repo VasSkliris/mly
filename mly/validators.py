@@ -178,8 +178,11 @@ class Validator:
                                    ,plugins=plugins
                                    ,**kwargs)
 
-
-            random.shuffle(DATA.dataPods)
+            
+            if 'stackDetectorDict' in kwargs:
+                DATA.stackDetector(**kwargs['stackDetectorDict'])
+                
+            #random.shuffle(DATA.dataPods)
 
 
             result[loopname].append(val)
@@ -356,7 +359,11 @@ class Validator:
 #             plt.title(str(from_gps(pod.gps[0])))
 #             pod.plot('correlation')
         t0=time.time()
-        
+    
+        if 'stackDetectorDict' in kwargs:
+            DATA.stackDetector(**kwargs['stackDetectorDict'])
+        print(DATA[0].detectors)
+                
         result_list=[]
         scores_collection=[]
 
@@ -385,7 +392,7 @@ class Validator:
         result=np.hstack((scores_collection,np.array(gps_times)))
 
         result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
-                                 +list('GPS'+str(det) for det in detectors))
+                                 +list('GPS'+str(det) for det in DATA[0].detectors))
 
         for m in range(len(trained_models)):
             if m==0: 
@@ -701,7 +708,7 @@ def auto_FAR(model
              ,plugins=None
              ,mapping=None
              ,maxTestSize=None
-             ,**kwargs)  ):
+             ,**kwargs):
 
     
 #     # ---------------------------------------------------------------------------------------- #    
@@ -1384,7 +1391,8 @@ def online_FAR(model
              ,restriction=None
              ,frames=None
              ,finalDirectory=None
-             ,channels=None):
+             ,channels=None
+             ,**kwargs):
     
     # ---------------------------------------------------------------------------------------- #
     # --- duration --------------------------------------------------------------------------- #
@@ -1743,9 +1751,11 @@ def online_FAR(model
         
         target_size=0
 
-        #for i in looper:
+        kwstr=""
+        for k in kwargs:
+            kwstr+=(","+k+"="+str(kwargs[k]))        
+
         for i in range(len(sizeList)):
-            
             #target_size+=size_
             #if target_size>size: size_=size_-(target_size-size)
             target_size+=sizeList[i]
@@ -1779,7 +1789,7 @@ def online_FAR(model
                              +24*" "+",plugins ="+str(plugins)+"\n"
                              +24*" "+",mapping ="+str(mapping)+"\n"
                              +24*" "+",strides ="+str(strides)+"\n"
-                             +24*" "+",restriction ="+str(restriction)+")\n")
+                             +24*" "+",restriction ="+str(restriction)+kwstr+")\n")
                 else:
                     command=( "TEST = Validator.falseAlarmTest(\n"
                              +24*" "+"models = "+str(model)+"\n"
@@ -1800,8 +1810,8 @@ def online_FAR(model
                              +24*" "+",mapping ="+str(mapping)+"\n"
                              +24*" "+",strides ="+str(strides)+"\n"
                              +24*" "+",restriction ="+str(restriction)+"\n"
-                             +24*" "+",frames ="+str(frames)+"\n"
-                             +24*" "+",channels ="+str(channels)+")\n")
+                             +24*" "+",frames ='"+str(frames)+"'\n"
+                             +24*" "+",channels ='"+str(channels)+"'"+kwstr+")\n")
 
 
                 f.write(command+'\n\n')

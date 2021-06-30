@@ -52,7 +52,9 @@ def projectWave(sourceWaveform
     
     # Making the polarisation data into TimeSeries objects
     hp=TimeSeries(h[0],delta_t=1./fs,epoch=time)         
-    hc=TimeSeries(h[1],delta_t=1./fs,epoch=time)      
+    hc=TimeSeries(h[1],delta_t=1./fs,epoch=time) 
+    
+    hrss=np.sqrt(np.sum(h[0]**2+h[1]**2)/fs)
     
     # Checking the detectors input
     if not all(d in ['H1','L1','V1'] for d in detectors):
@@ -100,8 +102,8 @@ def projectWave(sourceWaveform
                                                          ,rightAscension
                                                          ,declination
                                                          ,time)
-        # Changing the time delaY to pixel delay
-        shift_dict[det]=int(dt*fs) 
+        shift_dict[det]=dt
+        
         # Projecting the waveforms to the detectors
         signal = np.array(detector_dict[det].project_wave(hp, hc
                                                          ,rightAscension
@@ -119,7 +121,7 @@ def projectWave(sourceWaveform
               
     # Shifting the signals acording to shift_dict
     for det in detectors:    
-        signal_dict[det]=np.roll(signal_dict[det],shift_dict[det])[padCrop:-padCrop]
+        signal_dict[det]=timeDelayShift(signal_dict[det],shift_dict[det],fs)[padCrop:-padCrop]
         # padCrop: Due to shifting the project_wave function pads with zeros to avoid
         # edge effects. Eventually we might want to crop after we finish. Avoid if not necessary 
     
@@ -146,11 +148,11 @@ def projectWave(sourceWaveform
         for key in signal_dict.keys():
             strainList.append(signal_dict[key].tolist())
             
-        # Creating the dataPod
+#         # Creating the dataPod
 #         print(np.asarray(strainList).shape)
 #         print(np.asarray(strainList))
 #         print(np.isfinite(np.asarray(strainList)).all())
-          
+
         pod=DataPod(np.asarray(strainList),detectors=list(d[0] for d in detectors),fs=fs)
         # Adding any plugin info from the source file is any
         
@@ -160,11 +162,14 @@ def projectWave(sourceWaveform
         DEC=PlugIn('declination',declination)
         PANG=PlugIn('polarisationAngle',polarisationAngle)
         TIME=PlugIn('time',time)
+        HRSS=PlugIn('hrss',hrss)
+
         
         pod.addPlugIn(RA)
         pod.addPlugIn(DEC)
         pod.addPlugIn(PANG)
         pod.addPlugIn(TIME)
+        pod.addPlugIn(HRSS)
 
            
         if isinstance(destinationFile,str):
@@ -173,5 +178,27 @@ def projectWave(sourceWaveform
         return(pod)
     else:
         raise TypeError("outputFormat can only be txt or DataPod.")
-                
+          
+            
+            
 
+
+def timeDelayShift(strain  # the array to shift
+                   ,shift  # in seconds
+                   ,fs):    # sample frequency 
+
+    # ---- Number of samples.
+    N = len(strain)
+
+    # ---- FFT the original timeseries.
+    strainFFT = np.fft.fft(strain) 
+    # ---- Compute the phase correction. The trickiest part is knowing the ordering
+    #      of frequencies from the fft() method. Check your documentation to be
+    #      sure. In matlab it is as follows: [zero, positive frequencies to Nyquist,
+    #      negative frequencies from first bin above -Nyquist to last bin below
+    #      zero.]
+    freq=np.fft.fftfreq( N ,d=1/fs)
+    phaseFactor = np.exp(-1j*2*np.pi*freq*shift) 
+    y = np.fft.ifft(phaseFactor * strainFFT)
+
+    return np.real(y)

@@ -849,12 +849,12 @@ class DataSet(DataSetBase):
         # --- injectionSNR ----------------------------------------------------------------------- #
         if injectionFolder == None :
             injectionSNR = 0
-        elif (injectionFolder != None and injectionSNR == None ):
-            raise ValueError("If you want to use an injection for generation of"+
-                             "data, you have to specify the SNR you want.")
-        elif injectionFolder != None and (not (isinstance(injectionSNR,(int,float)) 
-                                          and injectionSNR >= 0)):
-            raise ValueError("injectionSNR has to be a positive number")
+#         elif (injectionFolder != None and injectionSNR == None ):
+#             raise ValueError("If you want to use an injection for generation of"+
+#                              "data, you have to specify the SNR you want.")
+#         elif injectionFolder != None and (not (isinstance(injectionSNR,(int,float)) 
+#                                           and injectionSNR >= 0)):
+#             raise ValueError("injectionSNR has to be a positive number")
 
 
         # ---------------------------------------------------------------------------------------- #   
@@ -997,7 +997,7 @@ class DataSet(DataSetBase):
                        ,'V': 'V1:Hrec_hoft_16384Hz'}
         else:
               raise ValueError("Channels "+str(channels)+" are not valid")
-        print(frames,channels)
+        #print(frames,channels)
         
         
         # --- disposition
@@ -1070,8 +1070,21 @@ class DataSet(DataSetBase):
             PSDc={}
             for det in detectors:
                 PSDc[det]=0
-                
-        # ---------------
+        # ------------------------------
+        # --- injectionHRSS ------------
+        
+        if 'injectionHRSS' in kwargs:
+            injectionHRSS = kwargs['injectionHRSS']
+        else: 
+            injectionHRSS=None
+            
+        if injectionFolder == None :
+            injectionHRSS = None
+
+            
+        # ------------------------------
+
+        
         
         if backgroundType == 'optimal':
             magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
@@ -1293,7 +1306,13 @@ class DataSet(DataSetBase):
                     else:
                         inj_pod=DataPod.load(injectionFolder+'/'+injectionFileDict[det][index_selection[det]])
                         inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
-                            
+                                    
+                        if injectionHRSS!=None:
+                            if 'hrss' in inj_pod.pluginDict.keys():
+                                hrss0=inj_pod.hrss
+                            else:
+                                raise AttributeError("There is no hrss in the injection pod")
+
 
                     # Saving the length of the injection
                     inj_len = len(inj)/fs
@@ -1367,7 +1386,7 @@ class DataSet(DataSetBase):
                     inj_fft_0_dict[det] = inj_fft_0
                     
                     # we get rid of the DC value and everything above fs/2.
-                    inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) 
+                    inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) ### abs is not needed here
                     
                     SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
                                   *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
@@ -1411,7 +1430,10 @@ class DataSet(DataSetBase):
             plugInToApply=[]
 
             for det in detectors:
-                fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
+                if injectionHRSS!=None:
+                    fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]         
+                else:
+                    fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
                 inj_cal=np.real(np.fft.ifft(fft_cal*fs))
                 
                 # Joining calibrated injection and background noise
@@ -1454,22 +1476,29 @@ class DataSet(DataSetBase):
                     plugInToApply.append(knownPlugIns(pl))
                 
                     
-
+                                  
             pod = DataPod(strain = podstrain
                                ,fs = fs
                                ,labels =  labels
                                ,detectors = detKeys
                                ,gps = gps_list
                                ,duration = duration)
-            
-            for pl in plugInToApply:
-                pod.addPlugIn(pl)
                 
             if injectionFolder!=None and injFormat=='pod':
                 for plkey in list(inj_pod.pluginDict.keys()):
                     if not (plkey in list(pod.pluginDict.keys())):
                         pod.addPlugIn(inj_pod.pluginDict[plkey])
-            
+                        
+            if 'hrss' in plugins: 
+                if 'hrss' in inj_pod.pluginDict.keys():
+                    plugInToApply.append(PlugIn('hrss'
+                                            ,genFunction=inj_pod.hrss*(injectionHRSS/hrss0)))
+                else:
+                    print("Warning: Unable to calculate hrss, There was no hrss in the injection pod.")
+
+            for pl in plugInToApply:
+                pod.addPlugIn(pl)
+                
             DATA.add(pod)
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))
@@ -1483,11 +1512,32 @@ class DataSet(DataSetBase):
             DATA.save(savePath+'/'+name,'pkl')
         else:
             return(DATA)
-
-           
         
-        
+    def stackDetector(self,**kwargs):
+        kwargs['size']=len(self)
+        if 'duration' not in kwargs: kwargs['duration']=self[0].duration
+        if 'fs' not in kwargs: kwargs['fs']=self[0].fs   
+        if 'detectors' not in kwargs: 
+            raise ValueError("You need to at least specify a detector")
 
+        if 'plugins' not in kwargs: kwargs['plugins']=[]
+        if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
+        if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
+            kwargs['plugins'].append('snr')
+
+
+        newSet=DataSet.generator(**kwargs)
+
+        for i in range(len(self)):
+            self[i].strain=np.vstack((self[i].strain,newSet[i].strain))
+            self[i].detectors+=newSet[i].detectors
+            self[i].gps+=newSet[i].gps
+            if 'psd' in kwargs['plugins']: self[i].psd+=newSet[i].psd
+            if 'snr' in kwargs['plugins']:
+                for d in newSet[i].detectors:
+                    self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
+            if 'correlation' in self[i].pluginDict:
+                self[i].addPlugIn(self[i].pluginDict['correlation'])   
 
 import string
 
