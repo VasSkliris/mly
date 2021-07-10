@@ -469,7 +469,8 @@ def WNB(duration
             If not specified it is set to False.
         sidePad: int/bool(optional)
             An option to pad with sidePad number of zeros each side of the injection. It is suggested
-            to have zeropaded injections for the timeshifts to represent 32 ms. If not specified or 
+            to have zeropaded injections for the timeshifts to represent 32 ms, to make it easier
+            for the projectwave function. If not specified or 
             False it is set to 0. If set True it is set to ceil(fs/32). WARNING: Using sidePad will 
             make the injection length bigger than the duration
             

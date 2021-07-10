@@ -1248,6 +1248,11 @@ class DataSet(DataSetBase):
 
                     # Creation of the artificial noise.
                     PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    # Calculatint the psd of FFT=1s
+                    p, f = psd(X, Fs=fs,NFFT=fs)
+                    # Interpolate so that has t*fs values
+                    psd_int=interp1d(f,p)                                     
+                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
                     PSD_dict[det]=PSD
                     back_dict[det] = X
                     # Making the noise a TimeSeries
@@ -1268,7 +1273,12 @@ class DataSet(DataSetBase):
                     p, f=p[1::],f[1::]
                     # Feeding the PSD to generate the sudo-real noise.            
                     PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    p, f = psd(X, Fs=fs,NFFT=fs)
+                    # Interpolate so that has t*fs values
+                    psd_int=interp1d(f,p)                                     
+                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
                     PSD_dict[det]=PSD
+                    back_dict[det] = X
                     # Making the noise a TimeSeries
                     back=TimeSeries(X,sample_rate=fs)
                     # Calculating the ASD so tha we can use it for whitening later
@@ -1312,6 +1322,9 @@ class DataSet(DataSetBase):
                                 hrss0=inj_pod.hrss
                             else:
                                 raise AttributeError("There is no hrss in the injection pod")
+                        else:
+                            if 'hrss' in inj_pod.pluginDict.keys():
+                                hrss0=inj_pod.hrss
 
 
                     # Saving the length of the injection
@@ -1382,16 +1395,19 @@ class DataSet(DataSetBase):
                     
 
                     # Calculating the one sided fft of the template,
-                    inj_fft_0=np.fft.fft(inj)
+                    # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+                    inj_fft_0=(1/fs)*np.fft.fft(inj)
                     inj_fft_0_dict[det] = inj_fft_0
                     
-                    # we get rid of the DC value and everything above fs/2.
-                    inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) ### abs is not needed here
-                    
-                    SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
-                                  *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
-                                        
+                    # Getting rid of negative frequencies and DC
+                    inj_fft_0N= inj_fft_0[1:int(windowSize*fs/2)+1]
+
+
+                    SNR0_dict[det]=np.sqrt((1/windowSize #(fs/N=fs/fs*windowSize 
+                                           )*4*np.sum( # 2 from PSD, S=1/2 S1(one sided) and 2 from integral symetry
+                        np.abs(inj_fft_0N*inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                                   /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
+
                     if single == True:
                         if det != luckyDet:
                             SNR0_dict[det] = 0.01 # Making single detector injections as glitch
@@ -1433,8 +1449,9 @@ class DataSet(DataSetBase):
                 if injectionHRSS!=None:
                     fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]         
                 else:
-                    fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
-                inj_cal=np.real(np.fft.ifft(fft_cal*fs))
+                    fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
+                # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+                inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
                 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
@@ -1455,10 +1472,11 @@ class DataSet(DataSetBase):
                 if 'snr' in plugins:
                     # Adding snr value as plugin.
                     # Calculating the new SNR which will be slightly different that the desired one.    
-                    inj_fft_N=np.abs(fft_cal[1:int(windowSize*fs/2)+1]) 
-                    SNR_new.append(np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_N
-                                *inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+                    inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
+                    SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
+                                           )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
+                        np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
                     
                     plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
 
@@ -1491,8 +1509,13 @@ class DataSet(DataSetBase):
                         
             if 'hrss' in plugins: 
                 if 'hrss' in inj_pod.pluginDict.keys():
-                    plugInToApply.append(PlugIn('hrss'
-                                            ,genFunction=inj_pod.hrss*(injectionHRSS/hrss0)))
+                    if injectionHRSS!=None:
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss*(injectionHRSS/hrss0)))
+                    else:
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
+                        
                 else:
                     print("Warning: Unable to calculate hrss, There was no hrss in the injection pod.")
 

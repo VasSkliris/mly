@@ -84,7 +84,7 @@ def circularTimeSlides(detectors,Nstep):
 
     # ---- Calculation depends on number of detectors.
     if Ndet==1:
-        c = 0;
+        c = [[0]];
     else:
 
         LCM = lcm(*tuple(range(1,Ndet)))
