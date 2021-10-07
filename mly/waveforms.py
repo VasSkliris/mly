@@ -258,14 +258,7 @@ def csg(frequency
         ,ellipticity=None
         ,amplitude=None):
     
-    """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a 
-    gaussian envelope to make the transition from 0 to maximum amplitude smooth. The signal 
-    follows the following formula:
-    
-    ..math:: hp=A\cos(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
-    ..math:: hc=A\sin(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
-
-    
+    """
     Parameters
     ----------
 

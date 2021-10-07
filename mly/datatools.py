@@ -1080,10 +1080,11 @@ class DataSet(DataSetBase):
             
         if injectionFolder == None :
             injectionHRSS = None
-
-            
         # ------------------------------
-
+        if 'ignoreDetector' in kwargs: 
+            ignoreDetector=kwargs['ignoreDetector']
+        else:
+            ignoreDetector=None
         
         
         if backgroundType == 'optimal':
@@ -1115,7 +1116,6 @@ class DataSet(DataSetBase):
                                        , frames[detectors[d]]
                                        , noiseSourceFile[d][0]
                                        , noiseSourceFile[d][1])
-
                     noise_segDict[detectors[d]]=TimeSeries.read(urls
                                                                 , channels[detectors[d]]
                                                                 , start =noiseSourceFile[d][0]
@@ -1451,8 +1451,12 @@ class DataSet(DataSetBase):
                 else:
                     fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
                 # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
-                inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
-                
+                if ignoreDetector ==None:
+                    inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
+                elif ignoreDetector==det:
+                    inj_cal=0.0001*np.real(np.fft.ifft(fs*fft_cal)) 
+                else:
+                    inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
@@ -1770,6 +1774,19 @@ def auto_gen(duration
     
     # ---------------------------------------------------------------------------------------- #    
     
+    # Accounting group options
+    if 'accounting_group_user' in kwargs:
+        accounting_group_user=kwargs['accounting_group_user']
+    else:
+        accounting_group_user=os.environ['LOGNAME']
+        
+    if 'accounting_group' in kwargs:
+        accounting_group=kwargs['accounting_group']
+    else:
+        accounting_group='ligo.dev.o3.burst.grb.xoffline'
+        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+    
+   
     # The number of sets to be generated.
     num_of_sets = len(injectionSNR)
 
@@ -2155,8 +2172,9 @@ def auto_gen(duration
                ,log=log
                ,getenv=True
                ,dag=dagman
-               ,extra_lines=["accounting_group_user=vasileios.skliris"
-                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+               ,retry=10
+               ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
         job_list.append(job)
 
@@ -2193,8 +2211,8 @@ def auto_gen(duration
                ,log=log
                ,getenv=True
                ,dag=dagman
-               ,extra_lines=["accounting_group_user=vasileios.skliris"
-                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+               ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
     
     final_job.add_parents(job_list)
     
@@ -2220,7 +2238,7 @@ def auto_gen(duration
 
 
     
-def finalise_gen(path,generation=True):
+def finalise_gen(path,generation=True,**kwargs):
     
     if path[-1]!='/': path=path+'/' # making sure path is right
     files=dirlist(path)             # making a list of files in that path 
@@ -2256,7 +2274,19 @@ def finalise_gen(path,generation=True):
                 print(pyScripts[i],' failed to proceed')
                 failed_pyScripts.append(pyScripts[i])
                 
-                
+    # Accounting group options
+    if 'accounting_group_user' in kwargs:
+        accounting_group_user=kwargs['accounting_group_user']
+    else:
+        accounting_group_user=os.environ['LOGNAME']
+        
+    if 'accounting_group' in kwargs:
+        accounting_group=kwargs['accounting_group']
+    else:
+        accounting_group='ligo.dev.o3.burst.grb.xoffline'
+        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+    
+    
     if merging_flag==False and generation==True:
         
         with open(path+'/'+'flag_file.sh','w+') as f2:
@@ -2283,8 +2313,9 @@ def finalise_gen(path,generation=True):
                            ,log=log
                            ,getenv=True
                            ,dag=repeat_dagman
-                           ,extra_lines=["accounting_group_user=vasileios.skliris"
-                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+                           ,retry=10
+                           ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
                 repeat_job_list.append(repeat_job)
 
@@ -2297,8 +2328,8 @@ def finalise_gen(path,generation=True):
                            ,log=log
                            ,getenv=True
                            ,dag=repeat_dagman
-                           ,extra_lines=["accounting_group_user=vasileios.skliris"
-                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+                           ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
         repeat_final_job.add_parents(repeat_job_list)
         
