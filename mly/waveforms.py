@@ -255,16 +255,10 @@ def csg(frequency
         ,phase=None   
         ,fs=None
         ,sigma=None
+        ,ellipticity=None
         ,amplitude=None):
     
-    """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a 
-    gaussian envelope to make the transition from 0 to maximum amplitude smooth. The signal 
-    follows the following formula:
-    
-    ..math:: hp=A\cos(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
-    ..math:: hc=A\sin(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
-
-    
+    """
     Parameters
     ----------
 
@@ -285,7 +279,9 @@ def csg(frequency
         The standar deviation of the gaussian envelope. If not specified the default
         is 5. This scales along with duration, so don't use smaller numbers to avoid
         edge cut effects.
-
+    
+    ellipticity: int/float
+        The ellipticity of the system. It will modify the cross polarisation.
     amplitude: int/float , optional
         The maximum amplitude of the singal. If not specied 
         the default is 1.
@@ -317,15 +313,21 @@ def csg(frequency
     
     if sigma == None: sigma = 5
     if not (sigma > 0):
-        rais
+        raise ValueError('Sigma must be positive')
+        
+    if ellipticity==None:
+        ellipticity=0
+    if not (isinstance(ellipticity,(float,int)) and 0<=ellipticity<=1):
+        raise ValueError('Elliptisity must be a numeber in the interval [0,1]')
+        
     if amplitude == None:
         amplitude = 1
     elif not (isinstance(amplitude,(int,float))):
-        raise ValueError('amplitude must be a number,')
+        raise ValueError('amplitude must be a number')
          
     t=np.arange(0,duration,1/fs)
     hp=np.sin(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
-    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
+    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)*np.sqrt(1-ellipticity**2)
     
     return(hp,hc)
 
@@ -460,7 +462,8 @@ def WNB(duration
             If not specified it is set to False.
         sidePad: int/bool(optional)
             An option to pad with sidePad number of zeros each side of the injection. It is suggested
-            to have zeropaded injections for the timeshifts to represent 32 ms. If not specified or 
+            to have zeropaded injections for the timeshifts to represent 32 ms, to make it easier
+            for the projectwave function. If not specified or 
             False it is set to 0. If set True it is set to ceil(fs/32). WARNING: Using sidePad will 
             make the injection length bigger than the duration
             

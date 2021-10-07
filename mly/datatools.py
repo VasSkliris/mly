@@ -739,7 +739,8 @@ class DataSet(DataSetBase):
                    ,disposition=None
                    ,maxDuration=None
                    ,differentSignals=False   # In case we want to put different injection to every detector.
-                   ,plugins=None):
+                   ,plugins=None
+                   ,**kwargs):
         
 
         # Integration limits for the calculation of analytical SNR
@@ -848,12 +849,12 @@ class DataSet(DataSetBase):
         # --- injectionSNR ----------------------------------------------------------------------- #
         if injectionFolder == None :
             injectionSNR = 0
-        elif (injectionFolder != None and injectionSNR == None ):
-            raise ValueError("If you want to use an injection for generation of"+
-                             "data, you have to specify the SNR you want.")
-        elif injectionFolder != None and (not (isinstance(injectionSNR,(int,float)) 
-                                          and injectionSNR >= 0)):
-            raise ValueError("injectionSNR has to be a positive number")
+#         elif (injectionFolder != None and injectionSNR == None ):
+#             raise ValueError("If you want to use an injection for generation of"+
+#                              "data, you have to specify the SNR you want.")
+#         elif injectionFolder != None and (not (isinstance(injectionSNR,(int,float)) 
+#                                           and injectionSNR >= 0)):
+#             raise ValueError("injectionSNR has to be a positive number")
 
 
         # ---------------------------------------------------------------------------------------- #   
@@ -964,6 +965,8 @@ class DataSet(DataSetBase):
                     pass
                 else:
                     raise TypeError("plugins must be a list of PlugIn object or from "+str(known_plug_ins))
+                    
+        # --- fames ---
         
         if frames==None or (isinstance(frames,str) and frames.upper()=='C02'):
             frames = {'H': 'H1_HOFT_C02'
@@ -994,8 +997,12 @@ class DataSet(DataSetBase):
                        ,'V': 'V1:Hrec_hoft_16384Hz'}
         else:
               raise ValueError("Channels "+str(channels)+" are not valid")
-        print(frames,channels)
-        ### disposition
+        #print(frames,channels)
+        
+        
+        # --- disposition
+        
+        
         # If you want no shiftings disposition will be zero
         if disposition == None: disposition=0
         # If you want shiftings disposition has to adjust the maximum length of an injection
@@ -1018,7 +1025,7 @@ class DataSet(DataSetBase):
             raise TypeError('Disposition can be a number or a range'
                             +' of two nubers (start,end) that always is less than duration')
             
-        # max Duration
+        # --- max Duration
         
         if maxDuration == None: 
             maxDuration=duration
@@ -1044,7 +1051,42 @@ class DataSet(DataSetBase):
                     injectionFileDict[det] = dirlist(injectionFolder)
                     injFormat='pod'
 
-
+        # --- PSDm PSDc
+        if 'PSDm' in kwargs: 
+            PSDm=kwargs['PSDm']
+        else:
+            PSDm=None
+            
+        if 'PSDc' in kwargs: 
+            PSDc=kwargs['PSDc']
+        else:
+            PSDc=None
+            
+        if PSDm==None: 
+            PSDm={}
+            for det in detectors:
+                PSDm[det]=1
+        if PSDc==None: 
+            PSDc={}
+            for det in detectors:
+                PSDc[det]=0
+        # ------------------------------
+        # --- injectionHRSS ------------
+        
+        if 'injectionHRSS' in kwargs:
+            injectionHRSS = kwargs['injectionHRSS']
+        else: 
+            injectionHRSS=None
+            
+        if injectionFolder == None :
+            injectionHRSS = None
+        # ------------------------------
+        if 'ignoreDetector' in kwargs: 
+            ignoreDetector=kwargs['ignoreDetector']
+        else:
+            ignoreDetector=None
+        
+        
         if backgroundType == 'optimal':
             magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
             param = magic[fs]
@@ -1074,18 +1116,22 @@ class DataSet(DataSetBase):
                                        , frames[detectors[d]]
                                        , noiseSourceFile[d][0]
                                        , noiseSourceFile[d][1])
-
                     noise_segDict[detectors[d]]=TimeSeries.read(urls
                                                                 , channels[detectors[d]]
                                                                 , start =noiseSourceFile[d][0]
                                                                 , end =noiseSourceFile[d][1]
                                                                ).resample(fs).astype('float64').value#[fs:-fs].value
                     # Added [fs:fs] because there was and edge effect
-                    # This also
+                    
                     print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
-
-                    #print(len(noise_segDict[detectors[d]])/fs)
-
+                    
+                    if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
+                        raise ValueError("Detector "+detectors[d]+" is full of zeros")
+                    elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
+                        print("WARNING : "+str(
+                            len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
+                              +" zeros were replased with the average of the array")
+                        
                     gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
 
                 ind=internalLags(detectors = detectors
@@ -1104,6 +1150,8 @@ class DataSet(DataSetBase):
         DATA=DataSet(name = name)
         
         for I in range(size):
+                                  
+                                 
             t0=time.time()
 
             detKeys = list(injectionFileDict.keys())
@@ -1199,7 +1247,12 @@ class DataSet(DataSetBase):
                 if backgroundType == 'optimal':
 
                     # Creation of the artificial noise.
-                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2)
+                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    # Calculatint the psd of FFT=1s
+                    p, f = psd(X, Fs=fs,NFFT=fs)
+                    # Interpolate so that has t*fs values
+                    psd_int=interp1d(f,p)                                     
+                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
                     PSD_dict[det]=PSD
                     back_dict[det] = X
                     # Making the noise a TimeSeries
@@ -1219,8 +1272,13 @@ class DataSet(DataSetBase):
                     p, f = psd(noise, Fs=fs, NFFT=fs) 
                     p, f=p[1::],f[1::]
                     # Feeding the PSD to generate the sudo-real noise.            
-                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2)
+                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    p, f = psd(X, Fs=fs,NFFT=fs)
+                    # Interpolate so that has t*fs values
+                    psd_int=interp1d(f,p)                                     
+                    PSD=psd_int(np.arange(0,fs/2,1/windowSize))
                     PSD_dict[det]=PSD
+                    back_dict[det] = X
                     # Making the noise a TimeSeries
                     back=TimeSeries(X,sample_rate=fs)
                     # Calculating the ASD so tha we can use it for whitening later
@@ -1258,7 +1316,16 @@ class DataSet(DataSetBase):
                     else:
                         inj_pod=DataPod.load(injectionFolder+'/'+injectionFileDict[det][index_selection[det]])
                         inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
-                            
+                                    
+                        if injectionHRSS!=None:
+                            if 'hrss' in inj_pod.pluginDict.keys():
+                                hrss0=inj_pod.hrss
+                            else:
+                                raise AttributeError("There is no hrss in the injection pod")
+                        else:
+                            if 'hrss' in inj_pod.pluginDict.keys():
+                                hrss0=inj_pod.hrss
+
 
                     # Saving the length of the injection
                     inj_len = len(inj)/fs
@@ -1328,16 +1395,19 @@ class DataSet(DataSetBase):
                     
 
                     # Calculating the one sided fft of the template,
-                    inj_fft_0=np.fft.fft(inj)
+                    # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+                    inj_fft_0=(1/fs)*np.fft.fft(inj)
                     inj_fft_0_dict[det] = inj_fft_0
                     
-                    # we get rid of the DC value and everything above fs/2.
-                    inj_fft_0N=np.abs(inj_fft_0[1:int(windowSize*fs/2)+1]) 
-                    
-                    SNR0_dict[det]=np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_0N
-                                  *inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
-                                        
+                    # Getting rid of negative frequencies and DC
+                    inj_fft_0N= inj_fft_0[1:int(windowSize*fs/2)+1]
+
+
+                    SNR0_dict[det]=np.sqrt((1/windowSize #(fs/N=fs/fs*windowSize 
+                                           )*4*np.sum( # 2 from PSD, S=1/2 S1(one sided) and 2 from integral symetry
+                        np.abs(inj_fft_0N*inj_fft_0N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                                   /PSD_dict[det][windowSize*fl-1:windowSize*fm-1]))
+
                     if single == True:
                         if det != luckyDet:
                             SNR0_dict[det] = 0.01 # Making single detector injections as glitch
@@ -1347,8 +1417,23 @@ class DataSet(DataSetBase):
                 else:
                     SNR0_dict[det] = 0.01 # avoiding future division with zero
                     inj_fft_0_dict[det] = np.zeros(windowSize*fs)
-
-
+            
+            
+#             print(
+#                 list(
+#                     len(np.where(
+#                         noise_segDict[det][int(ind[det][I]):int(ind[det][I])+windowSize*fs]
+#                     )[0]
+#                        )
+#                     for det in detKeys
+#                 )
+#             )
+            if (backgroundType=='real' 
+                and any(len(np.where(noise_segDict[det][
+                    int(ind[det][I]):int(ind[det][I])+windowSize*fs]==0)[0])==windowSize*fs for det in detKeys)):
+                print(I,"skipped")
+                continue
+            
             # Calculation of combined SNR    
             SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
 
@@ -1361,15 +1446,29 @@ class DataSet(DataSetBase):
             plugInToApply=[]
 
             for det in detectors:
-                fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det]         
-                inj_cal=np.real(np.fft.ifft(fft_cal*fs))
-                
+                if injectionHRSS!=None:
+                    fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]         
+                else:
+                    fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
+                # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+                if ignoreDetector ==None:
+                    inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
+                elif ignoreDetector==det:
+                    inj_cal=0.0001*np.real(np.fft.ifft(fs*fft_cal)) 
+                else:
+                    inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
+                #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
+                #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
+                #print(strain.value.tolist())
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
                 strain=strain.whiten(4,2,fduration=4,highpass=20)#,asd=asd_dict[det])
+                #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
+                #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
+
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
@@ -1377,10 +1476,11 @@ class DataSet(DataSetBase):
                 if 'snr' in plugins:
                     # Adding snr value as plugin.
                     # Calculating the new SNR which will be slightly different that the desired one.    
-                    inj_fft_N=np.abs(fft_cal[1:int(windowSize*fs/2)+1]) 
-                    SNR_new.append(np.sqrt(param*2*(1/windowSize)*np.sum(np.abs(inj_fft_N
-                                *inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+                    inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
+                    SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
+                                           )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
+                        np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
                     
                     plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
 
@@ -1398,22 +1498,34 @@ class DataSet(DataSetBase):
                     plugInToApply.append(knownPlugIns(pl))
                 
                     
-
+                                  
             pod = DataPod(strain = podstrain
                                ,fs = fs
                                ,labels =  labels
                                ,detectors = detKeys
                                ,gps = gps_list
                                ,duration = duration)
-            
-            for pl in plugInToApply:
-                pod.addPlugIn(pl)
                 
             if injectionFolder!=None and injFormat=='pod':
                 for plkey in list(inj_pod.pluginDict.keys()):
                     if not (plkey in list(pod.pluginDict.keys())):
                         pod.addPlugIn(inj_pod.pluginDict[plkey])
-            
+                        
+            if 'hrss' in plugins: 
+                if 'hrss' in inj_pod.pluginDict.keys():
+                    if injectionHRSS!=None:
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss*(injectionHRSS/hrss0)))
+                    else:
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
+                        
+                else:
+                    print("Warning: Unable to calculate hrss, There was no hrss in the injection pod.")
+
+            for pl in plugInToApply:
+                pod.addPlugIn(pl)
+                
             DATA.add(pod)
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))
@@ -1427,15 +1539,32 @@ class DataSet(DataSetBase):
             DATA.save(savePath+'/'+name,'pkl')
         else:
             return(DATA)
+        
+    def stackDetector(self,**kwargs):
+        kwargs['size']=len(self)
+        if 'duration' not in kwargs: kwargs['duration']=self[0].duration
+        if 'fs' not in kwargs: kwargs['fs']=self[0].fs   
+        if 'detectors' not in kwargs: 
+            raise ValueError("You need to at least specify a detector")
 
-        
-        
-        
-        
-           
-        
-        
+        if 'plugins' not in kwargs: kwargs['plugins']=[]
+        if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
+        if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
+            kwargs['plugins'].append('snr')
 
+
+        newSet=DataSet.generator(**kwargs)
+
+        for i in range(len(self)):
+            self[i].strain=np.vstack((self[i].strain,newSet[i].strain))
+            self[i].detectors+=newSet[i].detectors
+            self[i].gps+=newSet[i].gps
+            if 'psd' in kwargs['plugins']: self[i].psd+=newSet[i].psd
+            if 'snr' in kwargs['plugins']:
+                for d in newSet[i].detectors:
+                    self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
+            if 'correlation' in self[i].pluginDict:
+                self[i].addPlugIn(self[i].pluginDict['correlation'])   
 
 import string
 
@@ -1460,7 +1589,9 @@ def auto_gen(duration
              ,disposition=None
              ,maxDuration=None
              ,differentSignals=False
-             ,plugins=None): 
+             ,plugins=None
+             ,finalDirectory=None
+             ,**kwargs): 
 
 
 
@@ -1643,6 +1774,19 @@ def auto_gen(duration
     
     # ---------------------------------------------------------------------------------------- #    
     
+    # Accounting group options
+    if 'accounting_group_user' in kwargs:
+        accounting_group_user=kwargs['accounting_group_user']
+    else:
+        accounting_group_user=os.environ['LOGNAME']
+        
+    if 'accounting_group' in kwargs:
+        accounting_group=kwargs['accounting_group']
+    else:
+        accounting_group='ligo.dev.o3.burst.grb.xoffline'
+        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+    
+   
     # The number of sets to be generated.
     num_of_sets = len(injectionSNR)
 
@@ -1878,7 +2022,11 @@ def auto_gen(duration
         
         
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
-    answer = None
+    if finalDirectory==None:
+        answer=None
+    else:
+        answer='y'
+        
     while answer not in answers:
         print('Should we proceed to the generation of the following'
               +' data y/n ? \n \n')
@@ -1889,15 +2037,22 @@ def auto_gen(duration
         print('Exiting procedure ...')
         return
     elif answer in ['yes','y','YES','Yes','Y']:
-        print('Type the name of the dataset directory:')
-        dir_name = '0 0'
+        if finalDirectory==None:
+            print('Type the name of the temporary directory:')
+            dir_name = '0 0'
+        else:
+            dir_name = finalDirectory
+        
         while not dir_name.isidentifier():
             dir_name=input()
             if not dir_name.isidentifier(): print("Not valid Folder name ...")
         
     path = savePath+'/'
     print("The current path of the directory is: \n"+path+dir_name+"\n" )  
-    answer = None
+    if finalDirectory==None:
+        answer=None
+    else:
+        answer='y'
     while answer not in answers:
         print('Do you accept the path y/n ?')
         answer=input()
@@ -1936,7 +2091,10 @@ def auto_gen(duration
     
     print('Creation of directory complete: '+path+dir_name)
     #os.system('cd '+path+dir_name)
-                
+    
+    kwstr=""
+    for k in kwargs:
+        kwstr+=(","+k+"="+str(kwargs[k]))           
 
     for i in range(len(d['size'])):
 
@@ -1960,6 +2118,7 @@ def auto_gen(duration
             
             if injectionFolder!=None and injectionFolder[0]!="'":
                 injectionFolder = "'"+injectionFolder+"'"
+
             if backgroundType == 'optimal':
                 comand=( "SET = DataSet.generator(\n"
                          +24*" "+"duration = "+str(duration)+"\n"
@@ -1975,7 +2134,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",plugins = "+str(plugins)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+kwstr+")\n")
 
             else:
                 f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
@@ -1997,7 +2156,7 @@ def auto_gen(duration
                          +24*" "+",single = "+str(single)+"\n"
                          +24*" "+",injectionCrop = "+str(injectionCrop)+"\n"
                          +24*" "+",differentSignals = "+str(differentSignals)+"\n"
-                         +24*" "+",plugins = "+str(plugins)+")\n")
+                         +24*" "+",plugins = "+str(plugins)+kwstr+")\n")
 
             
             f.write(comand+'\n\n')
@@ -2013,8 +2172,9 @@ def auto_gen(duration
                ,log=log
                ,getenv=True
                ,dag=dagman
-               ,extra_lines=["accounting_group_user=vasileios.skliris"
-                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+               ,retry=10
+               ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
         job_list.append(job)
 
@@ -2051,13 +2211,17 @@ def auto_gen(duration
                ,log=log
                ,getenv=True
                ,dag=dagman
-               ,extra_lines=["accounting_group_user=vasileios.skliris"
-                             ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+               ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
     
     final_job.add_parents(job_list)
     
-    print('All set. Initiate dataset generation y/n?')
-    answer4=input()
+    if finalDirectory==None:
+        print('All set. Initiate dataset generation y/n?')
+        answer4=input()
+    else:
+        answer4='y'
+
 
     if answer4 in ['yes','y','YES','Yes','Y']:
         print('Creating Job queue')
@@ -2074,7 +2238,7 @@ def auto_gen(duration
 
 
     
-def finalise_gen(path,generation=True):
+def finalise_gen(path,generation=True,**kwargs):
     
     if path[-1]!='/': path=path+'/' # making sure path is right
     files=dirlist(path)             # making a list of files in that path 
@@ -2110,7 +2274,19 @@ def finalise_gen(path,generation=True):
                 print(pyScripts[i],' failed to proceed')
                 failed_pyScripts.append(pyScripts[i])
                 
-                
+    # Accounting group options
+    if 'accounting_group_user' in kwargs:
+        accounting_group_user=kwargs['accounting_group_user']
+    else:
+        accounting_group_user=os.environ['LOGNAME']
+        
+    if 'accounting_group' in kwargs:
+        accounting_group=kwargs['accounting_group']
+    else:
+        accounting_group='ligo.dev.o3.burst.grb.xoffline'
+        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+    
+    
     if merging_flag==False and generation==True:
         
         with open(path+'/'+'flag_file.sh','w+') as f2:
@@ -2137,8 +2313,9 @@ def finalise_gen(path,generation=True):
                            ,log=log
                            ,getenv=True
                            ,dag=repeat_dagman
-                           ,extra_lines=["accounting_group_user=vasileios.skliris"
-                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+                           ,retry=10
+                           ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
                 repeat_job_list.append(repeat_job)
 
@@ -2151,8 +2328,8 @@ def finalise_gen(path,generation=True):
                            ,log=log
                            ,getenv=True
                            ,dag=repeat_dagman
-                           ,extra_lines=["accounting_group_user=vasileios.skliris"
-                                         ,"accounting_group=ligo.dev.o3.burst.grb.xoffline"] )
+                           ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group] )
 
         repeat_final_job.add_parents(repeat_job_list)
         
