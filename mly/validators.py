@@ -11,7 +11,7 @@ from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
 
 from .simulateddetectornoise import *
-from .tools import dirlist,  fromCategorical, correlate,internalLags,externalLags,circularTimeSlides
+from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
 from .datatools import DataPod, DataSet
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag

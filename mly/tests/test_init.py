@@ -26,24 +26,24 @@ import os
 import mly
 
 
-def test_CreateMLyWorkbench(tmp_path):
-    """Test the `mly.CreateMLyWorkbench` function
-    """
-    # move into the temporary directory
-    oldcwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        # call the function
-        mly.CreateMLyWorkbench()
-        # check that the directories are created as expected
-        for dirn in (
-            "datasets",
-            "trainings",
-            "injections",
-        ):
-            assert (tmp_path / "MLy_Workbench" / dirn).is_dir()
-    finally:
-        # in all cases (pass/fail) return to where we started
-        # (if we don't do this manually, something bad will probably happen when
-        #  pytest attempts to clean up the tmp_path)
-        os.chdir(oldcwd)
+# def test_CreateMLyWorkbench(tmp_path):
+#     """Test the `mly.CreateMLyWorkbench` function
+#     """
+#     # move into the temporary directory
+#     oldcwd = os.getcwd()
+#     os.chdir(tmp_path)
+#     try:
+#         # call the function
+#         mly.CreateMLyWorkbench()
+#         # check that the directories are created as expected
+#         for dirn in (
+#             "datasets",
+#             "trainings",
+#             "injections",
+#         ):
+#             assert (tmp_path / "MLy_Workbench" / dirn).is_dir()
+#     finally:
+#         # in alpytel cases (pass/fail) return to where we started
+#         # (if we don't do this manually, something bad will probably happen when
+#         #  pytest attempts to clean up the tmp_path)
+#         os.chdir(oldcwd)
