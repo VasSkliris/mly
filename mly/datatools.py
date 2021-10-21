@@ -394,18 +394,19 @@ class DataSet(DataSetBase):
         
         """
         if isinstance(newData,DataPod):
-            if self._dataPods==[]:
+            print(self.dataPods)
+            if self.dataPods==[]:
                 pod0 = newData
             else:
-                pod0=self._dataPods[0]
+                pod0=self.dataPods[0]
             if newData.shape != pod0.shape:
                 print("Pods with different shapes")
             elif newData.fs != pod0.fs:
                 print("Pods woth different sample frequencies")
             else:
-                self._dataPods.append(newData)
+                self.dataPods.append(newData)
         elif isinstance(newData, DataSet):
-            pod0=self._dataPods[0]
+            pod0=self.dataPods[0]
             for pod in newData:
                 if pod.shape != pod0.shape:
                     print("Pods with different shapes")
@@ -415,7 +416,7 @@ class DataSet(DataSetBase):
                     print("Pods with different detectors")
                 else:
                     pass
-            self._dataPods += newData.dataPods
+            self.dataPods += newData.dataPods
 
         else:
             raise TypeError("Appended object is not a DataPod or Dataset")
@@ -1093,11 +1094,12 @@ class DataSet(DataSetBase):
 
         elif backgroundType in ['sudo_real','real']:
             param = 1
+            gps0 = {}
             if isinstance(noiseSourceFile[0],str):
                 for det in detectors:
                     noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
                                                            +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-                    gps0 = float(noiseSourceFile[1].split('_')[1])
+                    gps0[det]=float(noiseSourceFile[1].split('_')[1])
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1109,31 +1111,47 @@ class DataSet(DataSetBase):
 
             elif isinstance(noiseSourceFile[0],list):
                 for d in range(len(detectors)):
-                    
-                    t0=time.time()
-                    conn=gwdatafind.connect()
-                    urls=conn.find_urls(detectors[d]
-                                       , frames[detectors[d]]
-                                       , noiseSourceFile[d][0]
-                                       , noiseSourceFile[d][1])
-                    noise_segDict[detectors[d]]=TimeSeries.read(urls
-                                                                , channels[detectors[d]]
-                                                                , start =noiseSourceFile[d][0]
-                                                                , end =noiseSourceFile[d][1]
-                                                               ).resample(fs).astype('float64').value#[fs:-fs].value
-                    # Added [fs:fs] because there was and edge effect
-                    
-                    print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
-                    
-                    if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
-                        raise ValueError("Detector "+detectors[d]+" is full of zeros")
-                    elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
-                        print("WARNING : "+str(
-                            len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
-                              +" zeros were replased with the average of the array")
-                        
-                    gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
+               
+                    for trial in range(10):
+                        try:
+                            t0=time.time()
+                            conn=gwdatafind.connect()
+                            urls=conn.find_urls(detectors[d]
+                                               , frames[detectors[d]]
+                                               , noiseSourceFile[d][0]
+                                               , noiseSourceFile[d][1])
 
+                            noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                                        , channels[detectors[d]]
+                                                                        , start =noiseSourceFile[d][0]
+                                                                        , end =noiseSourceFile[d][1]
+                                                                       ).resample(fs).astype('float64').value#[fs:-fs].value
+                            # Added [fs:fs] because there was and edge effect
+                            
+                            print("\n time to get "+detectors[d]+" data : "+str(time.time()-t0))
+
+                            if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
+                                raise ValueError("Detector "+detectors[d]+" is full of zeros")
+                            elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
+                                print("WARNING : "+str(
+                                    len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
+                                      +" zeros were replased with the average of the array")
+                            print("Success on getting the "+str(detectors[d])+" data.")
+                            break
+                            
+                        except Exception as e:
+                            print(e)
+                            print("/n")
+                            print("Failed getting the "+str(detectors[d])+" data.\n")
+        
+                            waiting=140+120*np.random.rand()
+                            os.system("sleep "+str(waiting))
+                            print("waiting "+str(waiting)+"s")
+                            continue
+                    
+                    gps0[detectors[d]] = float(noiseSourceFile[d][0])
+
+                print(gps0)
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
                                    ,duration = duration
@@ -1284,7 +1302,7 @@ class DataSet(DataSetBase):
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)                 
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
                     back_dict[det] = back.value
                     
                 elif backgroundType == 'real':
@@ -1304,7 +1322,7 @@ class DataSet(DataSetBase):
                     #print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
                 if injectionFolder != None:
