@@ -469,7 +469,7 @@ def WNB(duration
             
             
         Returns
-        ------
+        -------
         
         numpy.ndarray
             The WNB waveform

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from .tools import correlate
+
+################################################################################
 class PlugIn:
     
     """PlugIn is a class to encapsulate any additional data we want to
@@ -9,14 +11,15 @@ class PlugIn:
     from other PlugIns or strain already present in the DataPod instance. Every
     PlugIn has a name and a generation function. Additionally it can have
     attributes (related to the attributes use to create the plugin data) and
-    also a plot function that will help plot the data from the DataPod.plot(<name>).
+    also a plot function that will help plot the data from the 
+    DataPod.plot(<name>).
     
     When the PlugIn is added to a DataPod through DataPod.addPlugIn() method
     it will create a new attribute for the DataPod to be called like strain 
     DataPod.<name>.
     
     Attributes
-    ---------
+    ----------
     
     name: str
         The name you want to use for the data you add. This is going to be an

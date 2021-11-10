@@ -8,3 +8,4 @@ dist/
 build/
 mly.egg-info/
 mly/oldVersionsPackages
+pages

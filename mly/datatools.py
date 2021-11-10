@@ -29,10 +29,6 @@ import copy
 from math import ceil
 
 ################################################################################
-#  TODO:You have to make nan checks to the injection files and noise files 
-#  before running the generator function.
-# 
-################################################################################
 
 class DataPod(DataPodBase):
 
@@ -47,8 +43,8 @@ class DataPod(DataPodBase):
     
     strain :  numpy.ndarray / gwpy.timeseries.TimeSeries / list
         The main data of the pod. It can be a timeseries or a picture or 
-        anything with fixed dimentions. Finally it checks the input for nans
-        and infs and returns errors if the data have size or value problems.
+        anything with fixed dimentions. The input is checked for nan
+        and inf values and raises error if the data have size or value problems.
             
     fs : int
         This is the sample frequency of the data. It is used to determine 
@@ -179,15 +175,16 @@ class DataPod(DataPodBase):
     
     def addPlugIn(self,*args):
         """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
-        data derived either from the already existing data in the pod or tottaly new
-        ones. You can add a simple value to generation function and also a plot function
-        if you need to plot the new data.
+        data derived either from the already existing data in the pod or tottaly
+        new ones. You can add a simple value to generation function and also a
+        plot function if you need to plot the new data.
 
         Parameters
         ----------
 
         *args: PlugIn objects
-            The PlugIn objects that you have already defined and you want to add on the pod.
+            The PlugIn objects that you have already defined and you want to add
+            on the pod.
 
         """
         for plugin in args:
@@ -211,16 +208,18 @@ class DataPod(DataPodBase):
             
     def plot(self,type_='strain'):
         
-        """A visualisation function for the DataPod. It will plot the data currently present
-        on the DataPod object, following LIGO colour conventions.
+        """A visualisation function for the DataPod. It will plot the data 
+        currently present on the DataPod object, following LIGO colour 
+        conventions.
         
         Parameters
-        ------------
+        ----------
         
         type_ : str (optional)
-            The type of data to plot. Some pods might have plottable PlugIn data. In this case
-            you can provide the name of that PlugIn to be ploted. Currently only strain, psd and
-            correlation are supported. The default value is strain.
+            The type of data to plot. Some pods might have plottable PlugIn data.
+            In this case you can provide the name of that PlugIn to be ploted. 
+            Currently only strain, psd and correlation are supported. The
+            default value is strain.
         
         """
         
@@ -260,16 +259,16 @@ class DataSet(DataSetBase):
     
     """DataSet is an object that helps manipulate groups of DataPods as a whole.
     The main attribute is a list of the DataPods. All methods are providing ways
-    to manipulate the data and export them to desired shapes. Finally it provides
-    a DataSet generator.
+    to manipulate the data and export them to desired shapes. Finally it 
+    provides a DataSet generator.
     
     Attributes
     ----------
     
     dataPods: list of DataPod objects (optional)
-        List of the DataPod objects to be part of this DataSet instance. All DataPods
-        are checked for inconsistences such as different shapes, different number of
-        detectors and different sample frequencies.
+        List of the DataPod objects to be part of this DataSet instance. All 
+        DataPods are checked for inconsistences such as different shapes, 
+        different number of detectors and different sample frequencies.
     
     name: str (optional)
         The name of the DataSet
@@ -394,7 +393,6 @@ class DataSet(DataSetBase):
         
         """
         if isinstance(newData,DataPod):
-            print(self.dataPods)
             if self.dataPods==[]:
                 pod0 = newData
             else:
@@ -423,15 +421,16 @@ class DataSet(DataSetBase):
             
     def addPlugIn(self,*args):
         """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
-        data derived either from the already existing data in the pod or tottaly new
-        ones. You can add a simple value to generation function and also a plot function
-        if you need to plot the new data.
+        data derived either from the already existing data in the pod or tottaly
+        new ones. You can add a simple value to generation function and also a 
+        plot function if you need to plot the new data.
 
         Parameters
         ----------
 
         *args: PlugIn objects
-            The PlugIn objects that you have already defined and you want to add on the pod.
+            The PlugIn objects that you have already defined and you want to add
+            on the pod.
 
         """
         for plugin in args:
@@ -1112,7 +1111,7 @@ class DataSet(DataSetBase):
             elif isinstance(noiseSourceFile[0],list):
                 for d in range(len(detectors)):
                
-                    for trial in range(10):
+                    for trial in range(1):
                         try:
                             t0=time.time()
                             conn=gwdatafind.connect()
@@ -1130,7 +1129,8 @@ class DataSet(DataSetBase):
                             
                             print("\n time to get "+detectors[d]+" data : "+str(time.time()-t0))
 
-                            if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
+                            if (len(np.where(noise_segDict[detectors[d]]==0.0)[0])
+                                ==len(noise_segDict[detectors[d]])):
                                 raise ValueError("Detector "+detectors[d]+" is full of zeros")
                             elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
                                 print("WARNING : "+str(
@@ -1140,18 +1140,17 @@ class DataSet(DataSetBase):
                             break
                             
                         except Exception as e:
-                            print(e)
+                            print(e.__class__,e)
                             print("/n")
                             print("Failed getting the "+str(detectors[d])+" data.\n")
         
-                            waiting=140+120*np.random.rand()
-                            os.system("sleep "+str(waiting))
-                            print("waiting "+str(waiting)+"s")
+                            #waiting=140+120*np.random.rand()
+                            #os.system("sleep "+str(waiting))
+                            #print("waiting "+str(waiting)+"s")
                             continue
                     
                     gps0[detectors[d]] = float(noiseSourceFile[d][0])
 
-                print(gps0)
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
                                    ,duration = duration
@@ -1166,7 +1165,6 @@ class DataSet(DataSetBase):
 
         thetime = time.time()
         DATA=DataSet(name = name)
-        
         for I in range(size):
                                   
                                  
@@ -1265,7 +1263,11 @@ class DataSet(DataSetBase):
                 if backgroundType == 'optimal':
 
                     # Creation of the artificial noise.
-                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    PSD,X,T=simulateddetectornoise(profile[det]
+                                                  ,windowSize
+                                                  ,fs,10,fs/2
+                                                  ,PSDm=PSDm[det]
+                                                  ,PSDc=PSDc[det])
                     # Calculatint the psd of FFT=1s
                     p, f = psd(X, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
@@ -1290,7 +1292,10 @@ class DataSet(DataSetBase):
                     p, f = psd(noise, Fs=fs, NFFT=fs) 
                     p, f=p[1::],f[1::]
                     # Feeding the PSD to generate the sudo-real noise.            
-                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    PSD,X,T=simulateddetectornoise([f,p]
+                                                   ,windowSize,fs,10
+                                                   ,fs/2,PSDm=PSDm[det]
+                                                   ,PSDc=PSDc[det])
                     p, f = psd(X, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
                     psd_int=interp1d(f,p)                                     
@@ -1483,7 +1488,7 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(4,2,fduration=4,highpass=20)#,asd=asd_dict[det])
+                strain=strain.whiten(4,2,fduration=4,method='median',highpass=20)#,asd=asd_dict[det])
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
@@ -1545,6 +1550,7 @@ class DataSet(DataSetBase):
                 pod.addPlugIn(pl)
                 
             DATA.add(pod)
+
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))
             #sys.stdout.flush()
