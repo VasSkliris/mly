@@ -1488,7 +1488,7 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(4,2,fduration=4,method='median',highpass=20)#,asd=asd_dict[det])
+                strain=strain.whiten(4,2,fduration=4,highpass=20)#,asd=asd_dict[det])
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
