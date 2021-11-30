@@ -2127,9 +2127,9 @@ def auto_gen(duration
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             #This path is used only for me to test it
-            pwd=os.getcwd()
-            if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            #pwd=os.getcwd()
+            #if 'vasileios.skliris' in pwd:
+            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
 
