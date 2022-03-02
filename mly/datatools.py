@@ -863,54 +863,16 @@ class DataSet(DataSetBase):
             if noiseSourceFile == None:
                 raise TypeError('If you use sudo_real or real noise you need'
                     +' a real noise file as a source.')
-
-#             if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
-#                     and len(noiseSourceFile)==2 
-#                     and all(isinstance(el,str) for el in noiseSourceFile)):
-
-#                 if '.txt' in noiseSourceFile[1]:
-#                     noiseSourceFile[1] = noiseSourceFile[1][:-4]
-
-#                 path_main=''
-#                 path_check = False
-
-#                 if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
-#                                 +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
-#                     path_main = ''
-#                     path_check = True
-
-
-#                 elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
-#                     for p in sys.path:
-#                         if ('ligo_data' in p):
-#                             path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
-#                             if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
-#                                     +noiseSourceFile[1]+'.txt') for det in detectors):    
-#                                 path_check = True
-#                                 break
-#                             else:
-#                                 raise FileNotFoundError("No such file or directory: "+path_main
-#                                                         +"/<detector>/"+noiseSourceFile[1]+".txt")
-#                 else:
-#                     raise TypeError("Noise source file has to be a list of two strings:\n"
-#                                     +"--> The first is the path to the date folder that include\n "
-#                                     +"    the data of all the detectors or just the datefile given\n"
-#                                     +"    that the path is in sys.path.\n\n"
-#                                     +"--> The second is the file name of the segment to be used.")
-#                 if path_check == False:
-#                     raise FileNotFoundError(
-#                         "No such file or directory: "+noiseSourceFile[0]
-#                         +"/<detector>/"+noiseSourceFile[1]+".txt")
             
             # Loading noise using gwdatafind and gwpy
-            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+            elif (isinstance(noiseSourceFile,list) 
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
                 
                 noiseFormat='gwdatafind'
             
             # Loading noise using file paths of txt files (different for each detector)
-            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+            elif (isinstance(noiseSourceFile,list) 
                   and len(noiseSourceFile)==len(detectors) 
                   and all(isisntance(path_,str) for path_ in noiseSourceFile)
                   and all(path_[-4:]=='.txt' for path_ in noiseSourceFile)):
@@ -918,13 +880,13 @@ class DataSet(DataSetBase):
                 noiseFormat='txtD'
                 
             # Loading noise using file paths of txt files (one with all detectors)
-            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,str) 
+            elif (and isinstance(noiseSourceFile,str) 
                   and noiseSourceFile[-4:]=='.txt'):
                 
                 noiseFormat='txt1'
                 
             # Loding noise using DataPods or DataSets (one with all detectors)
-            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,str) 
+            elif (and isinstance(noiseSourceFile,str) 
                   and noiseSourceFile[-4:]=='.pkl'):
                 
                 noiseFormat='PodorSet'
