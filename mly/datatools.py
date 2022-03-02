@@ -1125,7 +1125,7 @@ class DataSet(DataSetBase):
             
             elif noiseFormat=='array':
                 
-                file_=noiseSourceFile:
+                file_=noiseSourceFile
                 
                 if len(detectors) not in file_.shape: 
                     raise ValueError(".txt file provided for noise doesn't have equal "
