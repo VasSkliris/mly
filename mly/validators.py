@@ -26,6 +26,9 @@ from matplotlib.mlab import psd
 from tensorflow.keras.models import load_model, Sequential, Model
 from pycondor import Job, Dagman
 
+
+################################################################################
+################################################################################
 class Validator:
     
     def accuracy(models
@@ -415,8 +418,9 @@ class Validator:
         t1=time.time()
         print('Time to inference: '+str(t1-t0))
         if savePath==None:
-            savePath=='./'
-
+            savePath='./'
+        
+        print(os.getcwd())
         if name!=None:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
@@ -1490,14 +1494,14 @@ def online_FAR(model
     # --- destinationFile -------------------------------------------------------------------- #
 
     if destinationFile == None : 
-        destinationFile = os.getcwd()
+        destinationFile = './'#os.getcwd()
     elif (destinationFile,str): 
         if not os.path.isdir(destinationFile) : 
             raise FileNotFoundError('No such file or directory:' +destinationFile)
     else:
         raise TypeError("Destination Path has to be a string valid path")
-    if destinationFile[:5]!='/home':
-        destinationFile = os.getcwd()+'/'+destinationFile       
+#     if destinationFile[:5]!='/home':
+#         destinationFile = os.getcwd()+'/'+destinationFile       
     if destinationFile[-1] != '/' : destinationFile=destinationFile+'/'
         
         
@@ -1620,7 +1624,8 @@ def online_FAR(model
             # externalLagSize is plus the windowSize because we need the first 
             # windowSize seconds in internal lags.
             #ind=externalLags(detectors,externalLagSize+windowSize-duration,seg[1]-seg[0])
-            ind=internalLags(detectors,externalLagSize,seg[1]-seg[0]-windowSize+duration,includeZeroLag=False)
+            ind=internalLags(detectors,externalLagSize
+                             ,seg[1]-seg[0]-windowSize+duration,includeZeroLag=False)
             for key in ind:
                 externalIndeces[key]+=(np.array(ind[key])+seg[0]).tolist()
             
@@ -1650,55 +1655,16 @@ def online_FAR(model
         
         internalLagSize=int(size/(len(externalIndeces[detectors[0]])*int(externalLagSize/duration)))+1
         sizeList=[ceil(size/blocks)]*blocks
-        
-
-#         if size<=len(externalIndeces[detectors[0]])*int(externalLagSize/duration):
-#             utilised_blocks=ceil(size/externalLagSize)
-#             internalLagSize=0
-#             sizeList=[externalLagSize]*utilised_blocks
-            
-#         elif size>len(externalIndeces[detectors[0]])*int(externalLagSize/duration) and size <= maximumPossibleSize:
-#             utilised_blocks=blocks
-#             internalLagSize=int(size/(len(externalIndeces[detectors[0]])*int(externalLagSize/duration)))
-#             sizeList=[externalLagSize*(internalLagSize+1)]*utilised_blocks
-#                       size/utilised_blocks
-#         else:
-#             raise ValueError("External lag size not big enough for desire test number")
-            
-            
+                  
         
 
         print("Utilised time slides   : ", internalLagSize)
         print("Current block size.    : ", sizeList[0])
-        print("Maximum block size     : "
-              , len(circularTimeSlides(detectors,int(externalLagSize/duration)))*externalLagSize)
+        print("Maximum block size     : ", len(circularTimeSlides(detectors
+                                              ,int(externalLagSize/duration)))
+                                                              *externalLagSize)
                     
             
-            
-#         if size<=chunks*int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-#             int(int(externalLagSize/duration)%2==0)+1)):
-
-#             for det in detectors:
-#                 externalIndeces[det]=externalIndeces[det][:ceil(size/(int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-#                     int(int(externalLagSize/duration)%2==0)+1))))]
-
-#             internalLagSize=(int(externalLagSize/duration)-(
-#                 int(int(externalLagSize/duration)%2==0)+1))
-
-#             size_=int(externalLagSize/duration)*(int(externalLagSize/duration)-(
-#                     int(int(externalLagSize/duration)%2==0)+1))
-
-
-
-#         # If target size is even bigger it cannot be fulfiled in this 
-#         # time interval and it needs bigger date difference.
-#         else:
-#             raise ValueError("The date interval provided cannot fullfil the target size by "
-#                              +str(duration*(size-chunks*int(
-#                                  externalLagSize/duration)*(int(externalLagSize/duration)-(
-#                                  int(int(externalLagSize/duration)%2==0)+1))))+" seconds")
-#         print("Internal lag size      : ",internalLagSize)
-
     # Accounting group options
     if 'accounting_group_user' in kwargs:
         accounting_group_user=kwargs['accounting_group_user']
@@ -1715,168 +1681,171 @@ def online_FAR(model
 
     answers = ['no','n', 'No','NO','N','yes','y','YES','Yes','Y','exit']
 
-    print('Type the name of the temporary directory:')
     if finalDirectory==None:
         dir_name = '0 0'
     else:
         dir_name = finalDirectory
 
-    while not dir_name.isidentifier():
-        dir_name=input()
-        if not dir_name.isidentifier(): print("Not valid Folder name ...")
+    if not dir_name.isidentifier(): raise TypeError("Not valid Folder name ...")
 
     print("The current path of the directory is: \n"+destinationFile+dir_name+"\n" )  
-    answer = None
-    while answer not in answers:
-        print('Do you accept the path y/n ?')
-        if finalDirectory==None:
-            answer=input()
+
+    if os.path.isdir(destinationFile+dir_name):
+        if (".." in destinationFile+dir_name
+            or dir_name=="home" 
+            or dir_name=="home/" 
+            or dir_name==accounting_group_user
+            or dir_name==accounting_group_user+"/"):
+            raise TypeError("You were about to delete "
+                            +destinationFile+dir_name
+                            +". An error was raised for safety."
+                            +" Make sure that this is not an"
+                            +" important directory")
         else:
-            answer='y'
-        if answer not in answers: print("Not valid answer ...")
+            os.system('rm -r '+destinationFile+dir_name)
 
-    if answer in ['no','n', 'No','NO','N','exit']:
-        print('Exiting procedure ...')
-        return
+    print('Initiating procedure ...')
+    os.system('mkdir '+destinationFile+dir_name)
+    os.system('chmod -R 777 '+destinationFile+dir_name)
+    os.chdir(destinationFile+dir_name)
 
-    elif answer in ['yes','y','YES','Yes','Y']:
-        if os.path.isdir(destinationFile+dir_name):
-            answer = None
-            while answer not in answers:
-                print('Already existing '+dir_name+' directory, do you want to'
-                      +' overwrite it? y/n')
-                if finalDirectory==None:
-                    answer=input()
-                else:
-                    answer='y'
-                if answer not in answers: print("Not valid answer ...")
-            if answer in ['yes','y','YES','Yes','Y']:
-                os.system('rm -r '+destinationFile+dir_name)
-            elif answer in ['no','n', 'No','NO','N']:
-                print('Test is cancelled\n')
-                print('Exiting procedure ...')
-                return
+    os.system('mkdir condor')
+    os.system('chmod 777 condor')
 
-        print('Initiating procedure ...')
-        os.system('mkdir '+destinationFile+dir_name)
+    error = 'condor/error'
+    output = 'condor/output'
+    log = 'condor/log'
+    submit = 'condor/submit'
 
-        error = destinationFile+dir_name+'/condor/error'
-        output = destinationFile+dir_name+'/condor/output'
-        log = destinationFile+dir_name+'/condor/log'
-        submit = destinationFile+dir_name+'/condor/submit'
+    os.system('mkdir '+error)
+    os.system('mkdir '+output)
+    os.system('mkdir '+log)
+    os.system('mkdir '+submit)
 
-        dagman = Dagman(name='falsAlarmDagman',
-                submit=submit)
-        job_list=[]
-        
-        if backgroundType == 'optimal':
-            print('Creation of temporary directory complete: '+destinationFile+dir_name)
-            print('Expected jobs :',str(int(size/10000)+int(size%10000!=0)))
-            #size_=10000
-            #looper=range(int(size/size_)+int(size%size_!=0))
-            #print('Creation of temporary directory complete: '+destinationFile+dir_name)
-            #print('Expected jobs :',str(int(size/size_)+int(size%size_!=0)))
-        else:
-            print('Creation of temporary directory complete: '+destinationFile+dir_name)
-            #print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
-            print('Expected jobs :',len(sizeList))
-            print('Internal lags :',str(internalLagSize))
-            #looper=range(len(sizeList)
-        
-        target_size=0
+    os.system('chmod 777 '+error)
+    os.system('chmod 777 '+output)
+    os.system('chmod 777 '+log)
+    os.system('chmod 777 '+submit)
 
-        kwstr=""
-        for k in kwargs:
-            kwstr+=(","+k+"="+str(kwargs[k]))        
 
-        for i in range(len(sizeList)):
-            #target_size+=size_
-            #if target_size>size: size_=size_-(target_size-size)
-            target_size+=sizeList[i]
-            if target_size>size: sizeList[i]=sizeList[i]-(target_size-size)
+    dagman = Dagman(name='falsAlarmDagman',
+            submit=submit)
+    job_list=[]
+
+    if backgroundType == 'optimal':
+        print('Creation of temporary directory complete: '+destinationFile+dir_name)
+        print('Expected jobs :',str(int(size/10000)+int(size%10000!=0)))
+        #size_=10000
+        #looper=range(int(size/size_)+int(size%size_!=0))
+        #print('Creation of temporary directory complete: '+destinationFile+dir_name)
+        #print('Expected jobs :',str(int(size/size_)+int(size%size_!=0)))
+    else:
+        print('Creation of temporary directory complete: '+destinationFile+dir_name)
+        #print('Expected jobs :',str(len(externalIndeces[detectors[0]])))
+        print('Expected jobs :',len(sizeList))
+        print('Internal lags :',str(internalLagSize))
+        #looper=range(len(sizeList)
+
+    target_size=0
+
+    kwstr=""
+    for k in kwargs:
+        kwstr+=(","+k+"="+str(kwargs[k]))        
+
+    for i in range(len(sizeList)):
+        #target_size+=size_
+        #if target_size>size: size_=size_-(target_size-size)
+        target_size+=sizeList[i]
+        if target_size>size:
+            sizeList[i]=sizeList[i]-(target_size-size)
+        if sizeList[i] <=0: break
+
+
+        with open('test_'+str(i)+'.py','w+') as f:
+            f.write('#! /usr/bin/env python3\n')
+            f.write('import sys \n')
+            #This path is used only for me to test it
+            pwd=os.getcwd()
+            #if 'vasileios.skliris' in pwd:
+            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+
+            f.write('from mly.validators import *\n\n')
+
+            f.write("import time\n\n")
+            f.write("t0=time.time()\n")
+
+            if backgroundType == 'optimal':
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"models = "+str(model)+"\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         #+24*" "+",size = "+str(size_)+"\n"
+                         +24*" "+",size = "+str(sizeList[i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",name = 'test_"+str(i)+"'\n"
+                         +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",strides ="+str(strides)+"\n"
+                         +24*" "+",restriction ="+str(restriction)+kwstr+")\n")
+            else:
+                command=( "TEST = Validator.falseAlarmTest(\n"
+                         +24*" "+"models = "+str(model)+"\n"
+                         +24*" "+",duration = "+str(duration)+"\n"
+                         +24*" "+",fs = "+str(fs)+"\n"
+                         #+24*" "+",size = "+str(size_)+"\n"
+                         +24*" "+",size = "+str(sizeList[i])+"\n"
+                         +24*" "+",detectors = "+str(detectors)+"\n"
+                         +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
+                         +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]
+                                                      +int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
+                         +24*" "+",windowSize ="+str(windowSize)+"\n"
+                         +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
+                         +24*" "+",startingPoint = "+str(0)+"\n"
+                         +24*" "+",name = 'test_"+str(i)+"'\n"
+                         +24*" "+",plugins ="+str(plugins)+"\n"
+                         +24*" "+",mapping ="+str(mapping)+"\n"
+                         +24*" "+",strides ="+str(strides)+"\n"
+                         +24*" "+",restriction ="+str(restriction)+"\n"
+                         +24*" "+",frames ='"+str(frames)+"'\n"
+                         +24*" "+",channels ='"+str(channels)+"'"+kwstr+")\n")
+
+
+            f.write(command+'\n\n')
+            f.write("print(time.time()-t0)\n")
+
+        os.system('chmod 777 test_'+str(i)+'.py')
+        job = Job(name='partOfFAR_'+str(i)
+               ,executable='test_'+str(i)+'.py'
+               ,submit=submit
+               ,error=error
+               ,output=output
+               ,log=log
+               ,getenv=True
+               ,dag=dagman
+               ,extra_lines=["accounting_group_user="+accounting_group_user
+                         ,"accounting_group="+accounting_group
+                         ,"should_transfer_files=YES"
+                         ,"when_to_transfer_output=ON_SUCCESS"
+                         ,"success_exit_code=0"]
+                 )
+
+        job_list.append(job)
             
-            with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
-                f.write('#! /usr/bin/env python3\n')
-                f.write('import sys \n')
-                #This path is used only for me to test it
-                pwd=os.getcwd()
-                #if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
-
-                f.write('from mly.validators import *\n\n')
-
-                f.write("import time\n\n")
-                f.write("t0=time.time()\n")
-                  
-                if backgroundType == 'optimal':
-                    command=( "TEST = Validator.falseAlarmTest(\n"
-                             +24*" "+"models = "+str(model)+"\n"
-                             +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",fs = "+str(fs)+"\n"
-                             #+24*" "+",size = "+str(size_)+"\n"
-                             +24*" "+",size = "+str(sizeList[i])+"\n"
-                             +24*" "+",detectors = "+str(detectors)+"\n"
-                             +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                             +24*" "+",windowSize ="+str(windowSize)+"\n"
-                             +24*" "+",name = 'test_"+str(i)+"'\n"
-                             +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
-                             +24*" "+",plugins ="+str(plugins)+"\n"
-                             +24*" "+",mapping ="+str(mapping)+"\n"
-                             +24*" "+",strides ="+str(strides)+"\n"
-                             +24*" "+",restriction ="+str(restriction)+kwstr+")\n")
-                else:
-                    command=( "TEST = Validator.falseAlarmTest(\n"
-                             +24*" "+"models = "+str(model)+"\n"
-                             +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",fs = "+str(fs)+"\n"
-                             #+24*" "+",size = "+str(size_)+"\n"
-                             +24*" "+",size = "+str(sizeList[i])+"\n"
-                             +24*" "+",detectors = "+str(detectors)+"\n"
-                             +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
-                             +24*" "+",noiseSourceFile = "+str(list([externalIndeces[det][i],externalIndeces[det][i]
-                                                          +int(externalLagSize+windowSize-duration)] for det in detectors))+"\n"
-                             +24*" "+",windowSize ="+str(windowSize)+"\n"
-                             +24*" "+",timeSlides ="+str(internalLagSize)+"\n"
-                             +24*" "+",startingPoint = "+str(0)+"\n"
-                             +24*" "+",name = 'test_"+str(i)+"'\n"
-                             +24*" "+",savePath ='"+destinationFile+dir_name+"/'\n"
-                             +24*" "+",plugins ="+str(plugins)+"\n"
-                             +24*" "+",mapping ="+str(mapping)+"\n"
-                             +24*" "+",strides ="+str(strides)+"\n"
-                             +24*" "+",restriction ="+str(restriction)+"\n"
-                             +24*" "+",frames ='"+str(frames)+"'\n"
-                             +24*" "+",channels ='"+str(channels)+"'"+kwstr+")\n")
-
-
-                f.write(command+'\n\n')
-                f.write("print(time.time()-t0)\n")
-
-            os.system('chmod 777 '+destinationFile+dir_name+'/test_'+str(i)+'.py')
-            job = Job(name='partOfGeneratio_'+str(i)
-                   ,executable=destinationFile+dir_name+'/test_'+str(i)+'.py'
-                   ,submit=submit
-                   ,error=error
-                   ,output=output
-                   ,log=log
-                   ,getenv=True
-                   ,dag=dagman
-                   ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
-
-            job_list.append(job)
-            
-    with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
+    with open('finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
         pwd=os.getcwd()
         #if 'vasileios.skliris' in pwd:
         f4.write("import sys \n")
         f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
         f4.write("from mly.validators import *\n")
-        f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
+        f4.write("finalise_far('.')\n")
         
-    os.system('chmod 777 '+destinationFile+dir_name+'/finalise_test.py')
+    os.system('chmod 777 finalise_test.py')
     final_job = Job(name='finishing'
-               ,executable=destinationFile+dir_name+'/finalise_test.py'
+               ,executable='finalise_test.py'
                ,submit=submit
                ,error=error
                ,output=output
@@ -1896,15 +1865,14 @@ def online_FAR(model
 
     if answer4 in ['yes','y','YES','Yes','Y']:
         print('Creating Job queue')
-        
+        print(os.getcwd())
         dagman.build_submit()
 
         return
     
     else:
         print('Data generation canceled')
-        os.system('cd')
-        os.system('rm -r '+destinationFile+dir_name)
+        #os.system('rm -r '+destinationFile+dir_name)
         return
 
 

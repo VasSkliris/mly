@@ -29,10 +29,6 @@ import copy
 from math import ceil
 
 ################################################################################
-#  TODO:You have to make nan checks to the injection files and noise files 
-#  before running the generator function.
-# 
-################################################################################
 
 class DataPod(DataPodBase):
 
@@ -47,8 +43,8 @@ class DataPod(DataPodBase):
     
     strain :  numpy.ndarray / gwpy.timeseries.TimeSeries / list
         The main data of the pod. It can be a timeseries or a picture or 
-        anything with fixed dimentions. Finally it checks the input for nans
-        and infs and returns errors if the data have size or value problems.
+        anything with fixed dimentions. The input is checked for nan
+        and inf values and raises error if the data have size or value problems.
             
     fs : int
         This is the sample frequency of the data. It is used to determine 
@@ -179,15 +175,16 @@ class DataPod(DataPodBase):
     
     def addPlugIn(self,*args):
         """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
-        data derived either from the already existing data in the pod or tottaly new
-        ones. You can add a simple value to generation function and also a plot function
-        if you need to plot the new data.
+        data derived either from the already existing data in the pod or tottaly
+        new ones. You can add a simple value to generation function and also a
+        plot function if you need to plot the new data.
 
         Parameters
         ----------
 
         *args: PlugIn objects
-            The PlugIn objects that you have already defined and you want to add on the pod.
+            The PlugIn objects that you have already defined and you want to add
+            on the pod.
 
         """
         for plugin in args:
@@ -211,16 +208,18 @@ class DataPod(DataPodBase):
             
     def plot(self,type_='strain'):
         
-        """A visualisation function for the DataPod. It will plot the data currently present
-        on the DataPod object, following LIGO colour conventions.
+        """A visualisation function for the DataPod. It will plot the data 
+        currently present on the DataPod object, following LIGO colour 
+        conventions.
         
         Parameters
-        ------------
+        ----------
         
         type_ : str (optional)
-            The type of data to plot. Some pods might have plottable PlugIn data. In this case
-            you can provide the name of that PlugIn to be ploted. Currently only strain, psd and
-            correlation are supported. The default value is strain.
+            The type of data to plot. Some pods might have plottable PlugIn data.
+            In this case you can provide the name of that PlugIn to be ploted. 
+            Currently only strain, psd and correlation are supported. The
+            default value is strain.
         
         """
         
@@ -260,16 +259,16 @@ class DataSet(DataSetBase):
     
     """DataSet is an object that helps manipulate groups of DataPods as a whole.
     The main attribute is a list of the DataPods. All methods are providing ways
-    to manipulate the data and export them to desired shapes. Finally it provides
-    a DataSet generator.
+    to manipulate the data and export them to desired shapes. Finally it 
+    provides a DataSet generator.
     
     Attributes
     ----------
     
     dataPods: list of DataPod objects (optional)
-        List of the DataPod objects to be part of this DataSet instance. All DataPods
-        are checked for inconsistences such as different shapes, different number of
-        detectors and different sample frequencies.
+        List of the DataPod objects to be part of this DataSet instance. All 
+        DataPods are checked for inconsistences such as different shapes, 
+        different number of detectors and different sample frequencies.
     
     name: str (optional)
         The name of the DataSet
@@ -394,18 +393,18 @@ class DataSet(DataSetBase):
         
         """
         if isinstance(newData,DataPod):
-            if self._dataPods==[]:
+            if self.dataPods==[]:
                 pod0 = newData
             else:
-                pod0=self._dataPods[0]
+                pod0=self.dataPods[0]
             if newData.shape != pod0.shape:
                 print("Pods with different shapes")
             elif newData.fs != pod0.fs:
                 print("Pods woth different sample frequencies")
             else:
-                self._dataPods.append(newData)
+                self.dataPods.append(newData)
         elif isinstance(newData, DataSet):
-            pod0=self._dataPods[0]
+            pod0=self.dataPods[0]
             for pod in newData:
                 if pod.shape != pod0.shape:
                     print("Pods with different shapes")
@@ -415,22 +414,23 @@ class DataSet(DataSetBase):
                     print("Pods with different detectors")
                 else:
                     pass
-            self._dataPods += newData.dataPods
+            self.dataPods += newData.dataPods
 
         else:
             raise TypeError("Appended object is not a DataPod or Dataset")
             
     def addPlugIn(self,*args):
         """Method to add PlugIn objects to the dataPod. PlugIn objects are extra
-        data derived either from the already existing data in the pod or tottaly new
-        ones. You can add a simple value to generation function and also a plot function
-        if you need to plot the new data.
+        data derived either from the already existing data in the pod or tottaly
+        new ones. You can add a simple value to generation function and also a 
+        plot function if you need to plot the new data.
 
         Parameters
         ----------
 
         *args: PlugIn objects
-            The PlugIn objects that you have already defined and you want to add on the pod.
+            The PlugIn objects that you have already defined and you want to add
+            on the pod.
 
         """
         for plugin in args:
@@ -661,7 +661,6 @@ class DataSet(DataSetBase):
             shape = goods.shape
             shape = tuple([None]+list(shape[1:]))
         if isinstance(shape,tuple):
-
             if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
                 goodsShapeList = [None]+list(goods.shape)[1:]
@@ -861,53 +860,79 @@ class DataSet(DataSetBase):
         # --- noiseSourceFile -------------------------------------------------------------------- #
 
         if (backgroundType == 'sudo_real' or backgroundType =='real'):
-
             if noiseSourceFile == None:
                 raise TypeError('If you use sudo_real or real noise you need'
                     +' a real noise file as a source.')
 
-            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
-                    and len(noiseSourceFile)==2 
-                    and all(isinstance(el,str) for el in noiseSourceFile)):
+#             if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+#                     and len(noiseSourceFile)==2 
+#                     and all(isinstance(el,str) for el in noiseSourceFile)):
 
-                if '.txt' in noiseSourceFile[1]:
-                    noiseSourceFile[1] = noiseSourceFile[1][:-4]
+#                 if '.txt' in noiseSourceFile[1]:
+#                     noiseSourceFile[1] = noiseSourceFile[1][:-4]
 
-                path_main=''
-                path_check = False
+#                 path_main=''
+#                 path_check = False
 
-                if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
-                                +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
-                    path_main = ''
-                    path_check = True
+#                 if (('/' in noiseSourceFile[0]) and all(os.path.isfile( noiseSourceFile[0]
+#                                 +'/'+det+'/'+noiseSourceFile[1]+'.txt') for det in detectors)):
+#                     path_main = ''
+#                     path_check = True
 
 
-                elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
-                    for p in sys.path:
-                        if ('ligo_data' in p):
-                            path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
-                            if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
-                                    +noiseSourceFile[1]+'.txt') for det in detectors):    
-                                path_check = True
-                                break
-                            else:
-                                raise FileNotFoundError("No such file or directory: "+path_main
-                                                        +"/<detector>/"+noiseSourceFile[1]+".txt")
-                else:
-                    raise TypeError("Noise source file has to be a list of two strings:\n"
-                                    +"--> The first is the path to the date folder that include\n "
-                                    +"    the data of all the detectors or just the datefile given\n"
-                                    +"    that the path is in sys.path.\n\n"
-                                    +"--> The second is the file name of the segment to be used.")
-                if path_check == False:
-                    raise FileNotFoundError(
-                        "No such file or directory: "+noiseSourceFile[0]
-                        +"/<detector>/"+noiseSourceFile[1]+".txt")
+#                 elif (('/' not in noiseSourceFile[0]) and any('ligo_data' in p for p in sys.path)):
+#                     for p in sys.path:
+#                         if ('ligo_data' in p):
+#                             path_main = (p.split('ligo_data')[0]+'ligo_data/'+str(int(fs))+'/')
+#                             if all(os.path.isfile(path_main+noiseSourceFile[0]+'/'+det+'/'
+#                                     +noiseSourceFile[1]+'.txt') for det in detectors):    
+#                                 path_check = True
+#                                 break
+#                             else:
+#                                 raise FileNotFoundError("No such file or directory: "+path_main
+#                                                         +"/<detector>/"+noiseSourceFile[1]+".txt")
+#                 else:
+#                     raise TypeError("Noise source file has to be a list of two strings:\n"
+#                                     +"--> The first is the path to the date folder that include\n "
+#                                     +"    the data of all the detectors or just the datefile given\n"
+#                                     +"    that the path is in sys.path.\n\n"
+#                                     +"--> The second is the file name of the segment to be used.")
+#                 if path_check == False:
+#                     raise FileNotFoundError(
+#                         "No such file or directory: "+noiseSourceFile[0]
+#                         +"/<detector>/"+noiseSourceFile[1]+".txt")
             
-            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+            # Loading noise using gwdatafind and gwpy
+            if (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
-                pass
+                
+                noiseFormat='gwdatafind'
+            
+            # Loading noise using file paths of txt files (different for each detector)
+            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,list) 
+                  and len(noiseSourceFile)==len(detectors) 
+                  and all(isisntance(path_,str) for path_ in noiseSourceFile)
+                  and all(path_[-4:]=='.txt' for path_ in noiseSourceFile)):
+                
+                noiseFormat='txtD'
+                
+            # Loading noise using file paths of txt files (one with all detectors)
+            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,str) 
+                  and noiseSourceFile[-4:]=='.txt'):
+                
+                noiseFormat='txt1'
+                
+            # Loding noise using DataPods or DataSets (one with all detectors)
+            elif (noiseSourceFile!=None and isinstance(noiseSourceFile,str) 
+                  and noiseSourceFile[-4:]=='.pkl'):
+                
+                noiseFormat='PodorSet'
+                
+            else:
+                raise TypeError("The noise type format given is not one valid")
+
+                
 
         # ---------------------------------------------------------------------------------------- #   
         # --- windowSize --(for PSD)-------------------------------------------------------------- #        
@@ -1093,11 +1118,12 @@ class DataSet(DataSetBase):
 
         elif backgroundType in ['sudo_real','real']:
             param = 1
+            gps0 = {}
             if isinstance(noiseSourceFile[0],str):
                 for det in detectors:
-                    noise_segDict[det] = np.loadtxt(path_main+noiseSourceFile[0]
-                                                           +'/'+det+'/'+noiseSourceFile[1]+'.txt')    
-                    gps0 = float(noiseSourceFile[1].split('_')[1])
+                    noise_segDict[det] = np.loadtxt(noiseSourceFile[detectors.index(det)])
+                    
+                    gps0[det]=float(noiseSourceFile[1].split('_')[1])
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1109,30 +1135,46 @@ class DataSet(DataSetBase):
 
             elif isinstance(noiseSourceFile[0],list):
                 for d in range(len(detectors)):
+               
+                    for trial in range(1):
+                        try:
+                            t0=time.time()
+                            conn=gwdatafind.connect()
+                            urls=conn.find_urls(detectors[d]
+                                               , frames[detectors[d]]
+                                               , noiseSourceFile[d][0]
+                                               , noiseSourceFile[d][1])
+
+                            noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                                        , channels[detectors[d]]
+                                                                        , start =noiseSourceFile[d][0]
+                                                                        , end =noiseSourceFile[d][1]
+                                                                       ).resample(fs).astype('float64').value#[fs:-fs].value
+                            # Added [fs:fs] because there was and edge effect
+                            
+                            print("\n time to get "+detectors[d]+" data : "+str(time.time()-t0))
+
+                            if (len(np.where(noise_segDict[detectors[d]]==0.0)[0])
+                                ==len(noise_segDict[detectors[d]])):
+                                raise ValueError("Detector "+detectors[d]+" is full of zeros")
+                            elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
+                                print("WARNING : "+str(
+                                    len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
+                                      +" zeros were replased with the average of the array")
+                            print("Success on getting the "+str(detectors[d])+" data.")
+                            break
+                            
+                        except Exception as e:
+                            print(e.__class__,e)
+                            print("/n")
+                            print("Failed getting the "+str(detectors[d])+" data.\n")
+        
+                            #waiting=140+120*np.random.rand()
+                            #os.system("sleep "+str(waiting))
+                            #print("waiting "+str(waiting)+"s")
+                            continue
                     
-                    t0=time.time()
-                    conn=gwdatafind.connect()
-                    urls=conn.find_urls(detectors[d]
-                                       , frames[detectors[d]]
-                                       , noiseSourceFile[d][0]
-                                       , noiseSourceFile[d][1])
-                    noise_segDict[detectors[d]]=TimeSeries.read(urls
-                                                                , channels[detectors[d]]
-                                                                , start =noiseSourceFile[d][0]
-                                                                , end =noiseSourceFile[d][1]
-                                                               ).resample(fs).astype('float64').value#[fs:-fs].value
-                    # Added [fs:fs] because there was and edge effect
-                    
-                    print("time to get "+detectors[d]+" data : "+str(time.time()-t0))
-                    
-                    if len(np.where(noise_segDict[detectors[d]]==0.0)[0])==len(noise_segDict[detectors[d]]):
-                        raise ValueError("Detector "+detectors[d]+" is full of zeros")
-                    elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
-                        print("WARNING : "+str(
-                            len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
-                              +" zeros were replased with the average of the array")
-                        
-                    gps0 = float(noiseSourceFile[d][0]) # it was inside an int() function before
+                    gps0[detectors[d]] = float(noiseSourceFile[d][0])
 
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1148,7 +1190,6 @@ class DataSet(DataSetBase):
 
         thetime = time.time()
         DATA=DataSet(name = name)
-        
         for I in range(size):
                                   
                                  
@@ -1247,7 +1288,11 @@ class DataSet(DataSetBase):
                 if backgroundType == 'optimal':
 
                     # Creation of the artificial noise.
-                    PSD,X,T=simulateddetectornoise(profile[det],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    PSD,X,T=simulateddetectornoise(profile[det]
+                                                  ,windowSize
+                                                  ,fs,10,fs/2
+                                                  ,PSDm=PSDm[det]
+                                                  ,PSDc=PSDc[det])
                     # Calculatint the psd of FFT=1s
                     p, f = psd(X, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
@@ -1272,7 +1317,10 @@ class DataSet(DataSetBase):
                     p, f = psd(noise, Fs=fs, NFFT=fs) 
                     p, f=p[1::],f[1::]
                     # Feeding the PSD to generate the sudo-real noise.            
-                    PSD,X,T=simulateddetectornoise([f,p],windowSize,fs,10,fs/2,PSDm=PSDm[det],PSDc=PSDc[det])
+                    PSD,X,T=simulateddetectornoise([f,p]
+                                                   ,windowSize,fs,10
+                                                   ,fs/2,PSDm=PSDm[det]
+                                                   ,PSDc=PSDc[det])
                     p, f = psd(X, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values
                     psd_int=interp1d(f,p)                                     
@@ -1284,7 +1332,7 @@ class DataSet(DataSetBase):
                     # Calculating the ASD so tha we can use it for whitening later
                     asd=back.asd(1,0.5)                 
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
                     back_dict[det] = back.value
                     
                 elif backgroundType == 'real':
@@ -1304,7 +1352,7 @@ class DataSet(DataSetBase):
                     #print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
-                    gps_list.append(gps0+ind[det][I]/fs+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
                 if injectionFolder != None:
@@ -1527,6 +1575,7 @@ class DataSet(DataSetBase):
                 pod.addPlugIn(pl)
                 
             DATA.add(pod)
+
             #t1=time.time()
             #sys.stdout.write("\r Instantiation %i / %i --- %s" % (I+1, size, str(t1-t0)))
             #sys.stdout.flush()
@@ -2103,9 +2152,9 @@ def auto_gen(duration
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             #This path is used only for me to test it
-            pwd=os.getcwd()
-            if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            #pwd=os.getcwd()
+            #if 'vasileios.skliris' in pwd:
+            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
 

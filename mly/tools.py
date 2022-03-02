@@ -119,8 +119,8 @@ def circularTimeSlides(detectors,Nstep):
     
     References
     ----------
-    This code is based on circulartimeslides.m 5956 2021-03-30 11:52:17Z patrick.sutton@LIGO.ORG
-    in x-pipeline from Patrick Sutton.
+    This code is based on circulartimeslides.m 5956 2021-03-30 11:52:17Z 
+    patrick.sutton@LIGO.ORG in x-pipeline from Patrick Sutton.
     """
     
     if not(isinstance(detectors,int)) and len(detectors)>=1:
@@ -166,8 +166,9 @@ def internalLags(detectors             # The initials of the detectors you are g
     Parameters
     ----------
     detectors : `str` 
-        It can be any combination of the intials of detectors  (without duplication), {H,L,V,K,I,U}
-        and U stands for undefined. So the parameter should be 'HLV' for three detector network.
+        It can be any combination of the intials of detectors  
+        (without duplication), {H,L,V,K,I,U} and U stands for undefined.
+        So the parameter should be 'HLV' for three detector network.
     duration : `int` or `float`
         The duration of the segment time-lagged in seconds
     size : `int`
@@ -302,8 +303,8 @@ def toCategorical(labels,translation = True,from_mapping=None):
     
     
 def correlate(x,y,window):
-    """Function that calculates the Pearson correlation of two arrays x and y for a
-    given window of pixels
+    """Function that calculates the Pearson correlation of two arrays x and y 
+    for a given window of pixels
     
     Parameters
     ----------
@@ -312,8 +313,8 @@ def correlate(x,y,window):
     y : `nd.array` or `list` [`float`], (N,)
         The second timeseries    
     window : `int`
-        The window of pixels to to which we calculate the correlation. We shift timeseries y
-        in respect to x from -window to window.
+        The window of pixels to to which we calculate the correlation.
+        We shift timeseries y in respect to x from -window to window.
     
     Returns
     -------

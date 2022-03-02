@@ -1,4 +1,4 @@
-2from .datatools import DataPod
+from .datatools import DataPod
 from .tools import *
 from .plugins import *
 import pylab
@@ -129,8 +129,11 @@ def projectWave(sourceWaveform
     if saveName == None:
         if not isinstance(sourceWaveform,str):
             name='projectedGW'
-        else:
+        elif isinstance(sourceWaveform,str): # this is for the case of file source
             name=sourceWaveform.split('/')[-1].split('.')[0]
+    else:
+        name=saveName
+        # this is for the case of file source
         
     if outputFormat.upper()=='TXT':
         outputDict={}
@@ -148,11 +151,7 @@ def projectWave(sourceWaveform
         for key in signal_dict.keys():
             strainList.append(signal_dict[key].tolist())
             
-#         # Creating the dataPod
-#         print(np.asarray(strainList).shape)
-#         print(np.asarray(strainList))
-#         print(np.isfinite(np.asarray(strainList)).all())
-
+        # Creating the dataPod
         pod=DataPod(np.asarray(strainList),detectors=list(d[0] for d in detectors),fs=fs)
         # Adding any plugin info from the source file is any
         
@@ -163,6 +162,7 @@ def projectWave(sourceWaveform
         PANG=PlugIn('polarisationAngle',polarisationAngle)
         TIME=PlugIn('time',time)
         HRSS=PlugIn('hrss',hrss)
+        TDELAY=PlugIn('timeDelay',shift_dict[det])
 
         
         pod.addPlugIn(RA)
@@ -170,6 +170,7 @@ def projectWave(sourceWaveform
         pod.addPlugIn(PANG)
         pod.addPlugIn(TIME)
         pod.addPlugIn(HRSS)
+        pod.addPlugIn(TDELAY)
 
            
         if isinstance(destinationFile,str):
