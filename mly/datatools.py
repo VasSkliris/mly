@@ -860,12 +860,12 @@ class DataSet(DataSetBase):
         # --- noiseSourceFile -------------------------------------------------------------------- #
 
         if (backgroundType == 'sudo_real' or backgroundType =='real'):
-            if noiseSourceFile == None:
-                raise TypeError('If you use sudo_real or real noise you need'
-                    +' a real noise file as a source.')
+            # if noiseSourceFile == None:
+            #     raise TypeError('If you use sudo_real or real noise you need'
+            #         +' a real noise file as a source.')
             
             # Loading noise using gwdatafind and gwpy
-            elif (isinstance(noiseSourceFile,list) 
+            if (isinstance(noiseSourceFile,list) 
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
                 
