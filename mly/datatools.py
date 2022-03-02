@@ -880,13 +880,18 @@ class DataSet(DataSetBase):
                 noiseFormat='txtD'
                 
             # Loading noise using file paths of txt files (one with all detectors)
-            elif (and isinstance(noiseSourceFile,str) 
+            elif (isinstance(noiseSourceFile,str) 
                   and noiseSourceFile[-4:]=='.txt'):
                 
                 noiseFormat='txt1'
                 
+            # Loading noise using file paths of txt files (one with all detectors)
+            elif (isinstance(noiseSourceFile,np.ndarray) and len(detectors) in noiseSourceFile.shape):
+                
+                noiseFormat='array'
+                
             # Loding noise using DataPods or DataSets (one with all detectors)
-            elif (and isinstance(noiseSourceFile,str) 
+            elif (isinstance(noiseSourceFile,str) 
                   and noiseSourceFile[-4:]=='.pkl'):
                 
                 noiseFormat='PodorSet'
@@ -1081,11 +1086,13 @@ class DataSet(DataSetBase):
         elif backgroundType in ['sudo_real','real']:
             param = 1
             gps0 = {}
-            if isinstance(noiseSourceFile[0],str):
+            
+            if noiseFormat=='txtD':
+                
                 for det in detectors:
                     noise_segDict[det] = np.loadtxt(noiseSourceFile[detectors.index(det)])
                     
-                    gps0[det]=float(noiseSourceFile[1].split('_')[1])
+                    gps0[det]=float(noiseSourceFile[detectors.index(det)].split('_')[1])
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1094,8 +1101,77 @@ class DataSet(DataSetBase):
                                    ,size = int(len(noise_segDict[detectors[0]])/fs
                                                -startingPoint-(windowSize-duration))
                                    ,start_from_sec=startingPoint)
+                
+            elif noiseFormat=='txt1':
+                
+                file_=np.loadtxt(noiseSourceFile)
+                
+                if len(detectors) not in file_.shape: 
+                    raise ValueError(".txt file provided for noise doesn't have equal "
+                                     +"to detector number entries of noise")
+                
+                for det in detectors:
+                    noise_segDict[det] = file_[detectors.index(det)]
+                    
+                    gps0[det]=float(noiseSourceFile.split('_')[1])
+                    
+                ind=internalLags(detectors = detectors
+                                   ,lags = timeSlides
+                                   ,duration = duration
+                                   ,fs = fs
+                                   ,size = int(len(noise_segDict[detectors[0]])/fs
+                                               -startingPoint-(windowSize-duration))
+                                   ,start_from_sec=startingPoint)
+            
+            elif noiseFormat=='array':
+                
+                file_=noiseSourceFile:
+                
+                if len(detectors) not in file_.shape: 
+                    raise ValueError(".txt file provided for noise doesn't have equal "
+                                     +"to detector number entries of noise")
+                
+                for det in detectors:
+                    noise_segDict[det] = file_[detectors.index(det)]
+                    
+                    gps0[det]=float(noiseSourceFile.split('_')[1])
+                    
+                ind=internalLags(detectors = detectors
+                                   ,lags = timeSlides
+                                   ,duration = duration
+                                   ,fs = fs
+                                   ,size = int(len(noise_segDict[detectors[0]])/fs
+                                               -startingPoint-(windowSize-duration))
+                                   ,start_from_sec=startingPoint)
+                
+            elif noiseFormat=='PodorSet':
+                
+                with open(noiseSourceFile,'rb') as obj:
+                    file_ = pickle.load(obj)
+                    
+                if 'Pod' in type(file_):
+                    
+                    for det in detectors:
+                        noise_segDict[det] = file_.strain[detectors.index(det)]
+                    
+                        gps0[det]=float(file_.gps[det])
+                    
+                    ind=internalLags(detectors = detectors
+                                       ,lags = timeSlides
+                                       ,duration = duration
+                                       ,fs = fs
+                                       ,size = int(len(noise_segDict[detectors[0]])/fs
+                                                   -startingPoint-(windowSize-duration))
+                                       ,start_from_sec=startingPoint)
+                    
+                elif 'Set' in type(file_):
+                    
+                    pass #for now
+                    
+                    
+            
 
-            elif isinstance(noiseSourceFile[0],list):
+            elif noiseFormat=='gwdatafind':
                 for d in range(len(detectors)):
                
                     for trial in range(1):
