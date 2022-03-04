@@ -1134,7 +1134,7 @@ class DataSet(DataSetBase):
                 for det in detectors:
                     noise_segDict[det] = file_[detectors.index(det)]
                     
-                    gps0[det]=float(noiseSourceFile.split('_')[1])
+                    gps0[det]=0
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1149,7 +1149,7 @@ class DataSet(DataSetBase):
                 with open(noiseSourceFile,'rb') as obj:
                     file_ = pickle.load(obj)
                     
-                if 'Pod' in type(file_):
+                if 'Pod' in str(type(file_)):
                     
                     for det in detectors:
                         noise_segDict[det] = file_.strain[detectors.index(det)]
@@ -1164,7 +1164,7 @@ class DataSet(DataSetBase):
                                                    -startingPoint-(windowSize-duration))
                                        ,start_from_sec=startingPoint)
                     
-                elif 'Set' in type(file_):
+                elif 'Set' in str(type(file_)):
                     
                     pass #for now
                     
