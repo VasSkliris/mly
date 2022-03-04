@@ -1160,7 +1160,7 @@ class DataSet(DataSetBase):
                     for det in detectors:
                         noise_segDict[det] = file_.strain[detectors.index(det)]
                     
-                        gps0[det]=float(file_.gps[det])
+                        gps0[det]=float(file_.gps[detectors.index(det)])
                     
                     ind=internalLags(detectors = detectors
                                        ,lags = timeSlides
