@@ -891,10 +891,13 @@ class DataSet(DataSetBase):
                 noiseFormat='array'
                 
             # Loding noise using DataPods or DataSets (one with all detectors)
-            elif (isinstance(noiseSourceFile,str) 
-                  and noiseSourceFile[-4:]=='.pkl'):
-                
+            elif ((isinstance(noiseSourceFile,str) 
+                  and noiseSourceFile[-4:]=='.pkl') 
+                  or (('Pod' in type(noiseSourceFile)) or ('Set' in type(noiseSourceFile)))):
+                                                                                                          
                 noiseFormat='PodorSet'
+                
+            
                 
             else:
                 raise TypeError("The noise type format given is not one valid")
@@ -1146,8 +1149,11 @@ class DataSet(DataSetBase):
                 
             elif noiseFormat=='PodorSet':
                 
-                with open(noiseSourceFile,'rb') as obj:
-                    file_ = pickle.load(obj)
+                if isinstance(noiseSourceFile,str)
+                    with open(noiseSourceFile,'rb') as obj:
+                        file_ = pickle.load(obj)
+                else:
+                    file_=noiseSourceFile
                     
                 if 'Pod' in str(type(file_)):
                     
