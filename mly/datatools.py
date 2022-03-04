@@ -893,7 +893,7 @@ class DataSet(DataSetBase):
             # Loding noise using DataPods or DataSets (one with all detectors)
             elif ((isinstance(noiseSourceFile,str) 
                   and noiseSourceFile[-4:]=='.pkl') 
-                  or (('Pod' in type(noiseSourceFile)) or ('Set' in type(noiseSourceFile)))):
+                  or (('Pod' in str(type(noiseSourceFile))) or ('Set' in str(type(noiseSourceFile))))):
                                                                                                           
                 noiseFormat='PodorSet'
                 
