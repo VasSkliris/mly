@@ -1149,7 +1149,7 @@ class DataSet(DataSetBase):
                 
             elif noiseFormat=='PodorSet':
                 
-                if isinstance(noiseSourceFile,str)
+                if isinstance(noiseSourceFile,str):
                     with open(noiseSourceFile,'rb') as obj:
                         file_ = pickle.load(obj)
                 else:
