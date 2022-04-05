@@ -269,6 +269,8 @@ class Validator:
                             +' indexes of the data each one uses following the order strain, extra1, extra2...'
                             +'[model1,model2,model3],[[0,1],[0,2],[2]]')
 
+        preptime1=time.time()
+        print("PREP TIME 1:", preptime1-t0)
         # models[0] becomes the trained models list
         trained_models=[]
         for model in models[0]:  
@@ -279,7 +281,8 @@ class Validator:
                     raise FileNotFoundError("No model file in "+model)
             else:
                 trained_models.append(model) 
-
+        preptime2=time.time()
+        print("PREP TIME 2:", preptime2-preptime1)
         # ---------------------------------------------------------------------------------------- #    
         # --- mappings --------------------------------------------------------------------------- #
         # 
@@ -302,7 +305,8 @@ class Validator:
         columns=[]
         for m in range(len(trained_models)):
             columns.append(fromCategorical(labels['type'],mapping=mapping[m],column=True))
-
+        preptime3=time.time()
+        print("PREP TIME 3:", preptime3-preptime2)
         # ---------------------------------------------------------------------------------------- #    
         # --- strides ---------------------------------------------------------------------------- #
             
@@ -311,6 +315,8 @@ class Validator:
         elif not (isinstance(strides,int) and strides <= fs and fs%strides==0):
             raise ValueError('Strides must be a divisible integer of sample frequency')
         
+        preptime=time.time()
+        print("PREP TIME:", preptime-t0)
         # Using a generator for the data to use for testing
         DATA=DataSet.generator(duration=duration
                                ,fs =fs
@@ -351,26 +357,15 @@ class Validator:
                        ,plugins=plugins
                        ,**kwargs)
             
-            t1=time.time()
-            print('Time to generation: '+str(t1-t0)+' stride '+str(st))
-            t0=time.time()
             DATA.add(DATA_)
         
-    
-            t1=time.time()
-            print('Time to merge: '+str(t1-t0)+' stride '+str(st))
-            t0=time.time()
-            
-#         for pod in DATA.dataPods:
-#             pod.plot('strain')
-#             plt.title(str(from_gps(pod.gps[0])))
-#             pod.plot('correlation')
-        t0=time.time()
-    
+
         if 'stackDetectorDict' in kwargs:
             DATA.stackDetector(**kwargs['stackDetectorDict'])
-        print(DATA[0].detectors)
-                
+        
+        generationtime=time.time()
+        print("GENERATION TIME:", generationtime-preptime)
+
         result_list=[]
         scores_collection=[]
 
@@ -380,13 +375,16 @@ class Validator:
             if isinstance(input_shape,tuple): input_shape=[input_shape]
             for i in range(len(models[1][m])):
                 print(input_shape[i],models[1][m][i])
-                print(DATA[0].__getattribute__(models[1][m][i]).shape)
+                #print(DATA[0].__getattribute__(models[1][m][i]).shape)
                 dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
             if len(dataList)==1: dataList=dataList[0]
             scores = 1.0 - trained_models[m].predict(dataList, batch_size=1)[:,columns[m]]
             scores_collection.append(scores.tolist())
-
+            
+        inferencetime=time.time()
+        print("INFERENCE TIME:", inferencetime-generationtime)
+        
         gps_times=DATA.exportGPS()
 
         if len(scores_collection)==1:
@@ -415,8 +413,8 @@ class Validator:
         # saving the test size so that it can be retrievable in the finalisation
         result_pd.testSize= size
                 
-        t1=time.time()
-        print('Time to inference: '+str(t1-t0))
+        finalisationtime=time.time()
+        print("FINALISATION TIME:", finalisationtime-inferencetime)
         if savePath==None:
             savePath='./'
         
@@ -424,8 +422,15 @@ class Validator:
         if name!=None:
             with open(savePath+name+'.pkl', 'wb') as output:
                 pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
+                savingtime=time.time()
+                print("SAVING TIME:", finalisationtime-inferencetime)
+        print("\n\n ----")
+        print("TOTAL TIME:", time.time()-t0)
         
-        return(result_pd)
+        if 'podreturn' in list(kwargs) and len(DATA)==1:
+            return(result_pd,DATA[0])
+        else:
+            return(result_pd)
 
 
 #     def glitchTest(models
