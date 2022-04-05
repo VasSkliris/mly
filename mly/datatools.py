@@ -660,6 +660,7 @@ class DataSet(DataSetBase):
         if shape == None:
             shape = goods.shape
             shape = tuple([None]+list(shape[1:]))
+        print("goods.shape",goods.shape)
         if isinstance(shape,tuple):
             if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
@@ -860,12 +861,12 @@ class DataSet(DataSetBase):
         # --- noiseSourceFile -------------------------------------------------------------------- #
 
         if (backgroundType == 'sudo_real' or backgroundType =='real'):
-            if noiseSourceFile == None:
-                raise TypeError('If you use sudo_real or real noise you need'
-                    +' a real noise file as a source.')
+            # if noiseSourceFile == None:
+            #     raise TypeError('If you use sudo_real or real noise you need'
+            #         +' a real noise file as a source.')
             
             # Loading noise using gwdatafind and gwpy
-            elif (isinstance(noiseSourceFile,list) 
+            if (isinstance(noiseSourceFile,list) 
                     and len(noiseSourceFile)==len(detectors) 
                     and all(len(el)==2 for el in noiseSourceFile)):
                 
@@ -891,11 +892,11 @@ class DataSet(DataSetBase):
                 noiseFormat='array'
                 
             # Loding noise using DataPods or DataSets (one with all detectors)
-            elif (isinstance(noiseSourceFile,str) 
-                  and noiseSourceFile[-4:]=='.pkl'):
-                
+            elif ((isinstance(noiseSourceFile,str) 
+                  and noiseSourceFile[-4:]=='.pkl') 
+                  or (('Pod' in str(type(noiseSourceFile))) or ('Set' in str(type(noiseSourceFile))))):
+                                                                                                          
                 noiseFormat='PodorSet'
-                
             else:
                 raise TypeError("The noise type format given is not one valid")
 
@@ -1134,7 +1135,7 @@ class DataSet(DataSetBase):
                 for det in detectors:
                     noise_segDict[det] = file_[detectors.index(det)]
                     
-                    gps0[det]=float(noiseSourceFile.split('_')[1])
+                    gps0[det]=0
                     
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -1146,15 +1147,18 @@ class DataSet(DataSetBase):
                 
             elif noiseFormat=='PodorSet':
                 
-                with open(noiseSourceFile,'rb') as obj:
-                    file_ = pickle.load(obj)
+                if isinstance(noiseSourceFile,str):
+                    with open(noiseSourceFile,'rb') as obj:
+                        file_ = pickle.load(obj)
+                else:
+                    file_=noiseSourceFile
                     
-                if 'Pod' in type(file_):
+                if 'Pod' in str(type(file_)):
                     
                     for det in detectors:
                         noise_segDict[det] = file_.strain[detectors.index(det)]
                     
-                        gps0[det]=float(file_.gps[det])
+                        gps0[det]=float(file_.gps[detectors.index(det)])
                     
                     ind=internalLags(detectors = detectors
                                        ,lags = timeSlides
@@ -1164,7 +1168,7 @@ class DataSet(DataSetBase):
                                                    -startingPoint-(windowSize-duration))
                                        ,start_from_sec=startingPoint)
                     
-                elif 'Set' in type(file_):
+                elif 'Set' in str(type(file_)):
                     
                     pass #for now
                     
