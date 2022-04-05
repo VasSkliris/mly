@@ -660,6 +660,7 @@ class DataSet(DataSetBase):
         if shape == None:
             shape = goods.shape
             shape = tuple([None]+list(shape[1:]))
+        print("goods.shape",goods.shape)
         if isinstance(shape,tuple):
             if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
@@ -896,9 +897,7 @@ class DataSet(DataSetBase):
                   or (('Pod' in str(type(noiseSourceFile))) or ('Set' in str(type(noiseSourceFile))))):
                                                                                                           
                 noiseFormat='PodorSet'
-                
-            
-                
+
             else:
                 raise TypeError("The noise type format given is not one valid")
 
