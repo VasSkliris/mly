@@ -1,5 +1,6 @@
 .*
 *.pyc
+*.ipynb
 !/.gitignore
 !/.gitlab-ci.yml
 --*
