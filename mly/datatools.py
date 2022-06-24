@@ -1624,7 +1624,15 @@ class DataSet(DataSetBase):
             #sys.stdout.flush()
             #t0=time.time()
             
-        random.shuffle(DATA.dataPods)
+        if not ('shuffle' in kwargs):
+            kwargs['shuffle'] = True
+        
+        if not isinstance(kwargs['shuffle'],bool):
+            raise TypeError("shuffle option must be a bool value")
+
+        if kwargs['shuffle']==True:
+             random.shuffle(DATA.dataPods)
+        # else if false do not shuffle.
                 
         print('\n')
         if savePath!=None:
