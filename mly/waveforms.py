@@ -3,6 +3,15 @@ from gwpy.timeseries import TimeSeries
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+
+import pylab
+import pycbc.pnutils as ut
+from pycbc.waveform import get_td_waveform
+from pycbc.waveform import get_fd_waveform
+from pycbc.detector import Detector
+import numpy as np
+from .projectwave import *
 #########################################################################################################
 
 #########################################################################################################
@@ -742,3 +751,246 @@ def chirplet(duration
 #     else:
 #         return(t,s)
 
+
+from mly.checkingFunctions import *
+import numpy as np
+
+
+
+def minFrequencyEstimation(m1  # Mass 1
+                         ,m2 # Mass 2      
+                         ,injectionDuration):  # The duration of the expected waveform
+
+    """ Function to estimate the minimum frequency that will appear
+    in beggining of a waveform generated with duration 'injectionDuration'
+    This function uses the simple inspiral law and it becomes less accurate
+    as 'injectionDuration' becomes smaller.
+    
+    Parameters
+    ----------
+    
+    m1 : float
+        The mass of the first object
+        
+    m2 : float
+        The mass of the second object
+        
+    injectionDuration : float
+        The duration of the injection we pottentially want to make. 
+        
+        
+    Returns
+    -------
+    
+    minimum frequency : float
+        This is the frequency of the inspiraly roughly <injectionDuration>
+        time before the merger.
+    
+    Note
+    ----
+    
+    Given that the merger time is not at the end of the injection but ~0.1 ms
+    before the end, the minimum frequency returned is that of a slightly earlier 
+    time. It is not adviced to use this function for times close to merger (t<1s)
+    
+    """
+    G=6.674*1e-11
+    Ms=1.9891*1e30
+    c=3*1e8
+    MC= ((((m1*m2)**3.)/(m1+m2))**(1./5.)) *Ms
+    minf=((injectionDuration/5.)**(-3./8.))*(1/(8*np.pi))*((G*MC/c**3)**(-5./8.))
+    # Defaulf minimum function for extream cases.
+    if (minf<=1):
+        minf = 1.0
+    
+    return minf
+
+
+def maxFrequencyCalculation( m1  # Mass 1
+                             ,m2 # Mass 2    
+                             ,spin1=0
+                             ,spin2=0
+                             ,aproximant = 'SEOBNRv4'):
+    
+    """Calculation of the maximum frequency an cbc merger will have.
+    
+    Parameters
+    ----------
+
+    m1 : float
+        The mass of the first object.
+        
+    m2 : float
+        The mass of the second object.
+        
+    spin1 : float
+        The mass of the first object.
+        
+    spin2 : float
+        The mass of the second object.   
+        
+    aproximant : {'TaylorT1', 'TaylorT2', 'TaylorT3', 'EOBNRv2', 'EOBNRv2HM', 'SEOBNRv1', 'SEOBNRv2', 'SEOBNRv2_opt', 'SEOBNRv4', 'SEOBNRv4_opt', 'IMRPhenomA', 'IMRPhenomB', 'IMRPhenomC', 'TaylorEt', 'TaylorT4', 'EccentricTD', 'TaylorF2', 'TaylorF2NL'}
+        The aproximant that is going to be used.
+        
+    Returns
+    -------
+    
+    maximum frequency : float
+        This is the maximum frequency of the inspiral for given aproximant.
+        
+    Note
+    ----
+    
+    Not all aproximants are available for this calculation. Although this should
+    be approached as a rough estimation, unless certainty is needed.
+    """
+
+
+    f=ut.get_final_freq(aproximant, m1,m2, spin1, spin2)
+    
+    return f
+
+
+
+
+
+
+def cbc(duration
+       ,fs
+       ,detectors
+       ,massRange
+       ,massStep=1
+       ,rep=1
+       ,destinationDirectory=None
+       ,aproximant='IMRPhenomD'
+       ,test=False):
+    
+    """Creation of cbc signals using aproximants.
+    
+    Parameters
+    ----------
+    
+    duration: float/int
+        The duration in which the merger will be cropped. For example if duration is 1 second
+        only the last second of the signal will be returned.
+        
+    fs: int
+        Sample frequency of the signal.
+        
+    detectors: list/str
+        A list or string to indicate which detectors we want to project the signals.
+        For simplicity only acronyms are used. For example for projecting the singalt
+        to Ligo Hanfort and Livingston and Virgo, detectors should be 'HLV' or ['H','L','V'].
+        
+    massRange: list/tuple
+        The first and the last mass value to be used in the iteration. All combination of
+        the masses in this range will be tried, with the step given from the massStep parameter.
+        
+    massStep: float/int
+        The step used in the range of masses.
+        
+    rep: int
+        The number of repetitions to be used for each mass combination. Note that this will
+        not use the same spin parameter or sky localisation parameter for obvious reasons.
+        
+    destinationDirectory: str (optional)
+        The path to save the injections. If it is not defined (None) it will return the
+        plot of injections instead.
+    
+    aproximant: str (specific)
+        The aproximant to use for the waveform requested. Only specific aproximants are used.
+        The can be found by using the pycbc function 'pycbc.pnutils.td_approximants()'.
+        
+    test: bool
+        If True it returns only the number of waveforms that could potentially be generated 
+        for the given parameters. If False, it will generate injections.
+        
+    Returns
+    -------
+    
+        None
+    """
+        
+    check_duration(duration)
+    check_fs(fs)
+    check_massRange(massRange)
+    check_mass(massStep)
+    detectors = check_detectors(detectors)
+    destinationDirectory = check_validDirectory(destinationDirectory,default=None)
+
+    
+    # Detector description is different in pycbc than ours
+    detectors=list(detectors[d]+'1' for d in range(len(detectors)))
+        
+    count=0
+    M_min, M_max = massRange[0], massRange[1]
+    # we repeat rep times the same combination of m1,m2
+    for _rep in range(rep):
+        # loop over m1
+        for i in np.arange(M_min, M_max,massStep):
+            #loop over m2
+            for j in np.arange(M_min, M_max,massStep):
+                
+                # creating random spin parameters
+                spin1 = 2*np.random.rand()-1
+                spin2 = 2*np.random.rand()-1
+                
+                # spins affect a lot the maximum frequency
+                # calculation of max frequency given parameters
+                maxf = maxFrequencyCalculation( i  # Mass 1
+                                                ,j # Mass 2    
+                                                ,spin1=spin1
+                                                ,spin2=spin2
+                                                ,aproximant = 'SEOBNRv4')
+                
+                # if maxf below Niquest we create the waveform,
+                # else we skip this combination of parameters
+                if maxf <= fs/2 :
+                    count+=1
+                    # If we just use test, we don't need waveform
+                    if test==True:
+                        continue
+                        
+                    # Function that gives us the waveform
+                    hp, hc = get_td_waveform(approximant=aproximant
+                                             ,mass1=i
+                                             ,mass2=j
+                                             ,spin1z=spin1
+                                             ,spin2z=spin2
+                                             ,inclination=np.pi*np.random.rand()
+                                             ,coa_phase=2*np.pi*np.random.rand()
+                                             ,distance=100
+                                             ,delta_t=1.0/fs
+                                             ,f_lower=minFrequencyEstimation(i,j,duration)
+                                            )
+                    
+                    # Projection of waveform to an injection
+                    pod=projectWave( (np.array(hp),np.array(hc))
+                                    ,detectors
+                                    ,fs
+                                    ,declination=None # random and uniformal
+                                    ,rightAscension=None # random and uniformal
+                                    ,polarisationAngle=None # random and uniformal
+                                    ,time=0
+                                    ,padCrop=1
+                                    ,outputFormat='datapod')
+                    
+                    # Cropping the result when bigger than desired
+                    if len(pod.strain[0]) > fs*duration:
+                        croppedStrain=list(st[-int(duration*fs):] for st in pod.strain)
+                    
+                        pod.strain=croppedStrain
+                        pod.duration=duration
+                    
+                    # If destinationDirectory defined , we save the pod
+                    if destinationDirectory!=None:
+                        # Creation of a name
+                        name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(rep)
+                        pod.save(destinationDirectory+name)
+                    else:
+                        pod.plot()
+                    
+                    # printing a statement to verify that the script is running
+                    if count%100==0: print(count,'File '+name+' is successfully saved')
+    if test==True:
+        print(count)
