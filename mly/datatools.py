@@ -974,9 +974,10 @@ class DataSet(DataSetBase):
             frames = {'H': 'H1_HOFT_C00'
                      ,'L': 'L1_HOFT_C00'
                      ,'V': 'V1Online'}
-        else:
+        elif not (isinstance(frames,dict)): 
+
               raise ValueError("Frame type "+str(frames)+" is not valid")
-                    
+
         if channels==None or (isinstance(channels,str) and channels.upper()=='C02'):
             channels = {'H': 'H1:DCS-CALIB_STRAIN_C02'
                        ,'L': 'L1:DCS-CALIB_STRAIN_C02'
@@ -989,8 +990,10 @@ class DataSet(DataSetBase):
             channels = {'H': 'H1:GDS-CALIB_STRAIN'
                        ,'L': 'L1:GDS-CALIB_STRAIN'
                        ,'V': 'V1:Hrec_hoft_16384Hz'}
-        else:
-              raise ValueError("Channels "+str(channels)+" are not valid")
+        elif not (isinstance(channels,dict)): 
+
+              raise ValueError("Channel type "+str(channels)+" is not valid")
+
         #print(frames,channels)
         
         
