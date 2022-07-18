@@ -12,6 +12,7 @@ from pycbc.waveform import get_fd_waveform
 from pycbc.detector import Detector
 import numpy as np
 from .projectwave import *
+from .checkingFunctions import *
 #########################################################################################################
 
 #########################################################################################################
