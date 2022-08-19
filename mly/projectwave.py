@@ -162,7 +162,7 @@ def projectWave(sourceWaveform
         PANG=PlugIn('polarisationAngle',polarisationAngle)
         TIME=PlugIn('time',time)
         HRSS=PlugIn('hrss',hrss)
-        TDELAY=PlugIn('timeDelay',shift_dict[det])
+        TDELAY=PlugIn('timeDelay',shift_dict)
 
         
         pod.addPlugIn(RA)
