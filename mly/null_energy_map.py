@@ -1,18 +1,19 @@
 """
     This module is a part of the mly machine learning package which allows for
     the creation of null_energy_maps using a mly plugin. Null energy maps can be
-    used for sky localisation. The healpy coordinate system is used throughout.
+    used for sky localisation. The healpix coordinate system is used throughout.
 """
 
-from .datatools import *
-from .validators import *
-from .plugins import *
-from .projectwave import *
-from pycbc.detector import Detector
-import numpy as np
-import healpy as hp
-import tensorflow as tf
+import tempfile
 from math import *
+import tensorflow as tf
+import healpy as hp
+import numpy as np
+from pycbc.detector import Detector
+from .projectwave import *
+from .plugins import *
+from .validators import *
+from .datatools import *
 __author__ = "Wasim Javed, Michael Norman, Vasileios Skliris, Kyle Willetts, and"
 "Patrick Sutton."
 
@@ -196,40 +197,39 @@ def returnNULLVector(num_pixels, theta, phi, detectors, gps_time):
     return null_vector
 
 
-def returnTimeDelayMap(num_pixels, theta, phi, detectors, gps_time):
+def returnTimeDelayVector(num_pixels, theta, phi, detectors, gps_time):
 
-    dt_map = np.zeros([num_pixels, len(detectors)])
+    dt_vector = np.zeros([num_pixels, len(detectors)])
     for pixel_index in range(num_pixels):
         ra, dec = earthtoradec(phi[pixel_index], theta[pixel_index], gps_time)
 
         for detector_index, detector in enumerate(detectors):
-            dt_map[pixel_index][detector_index] = - \
+            dt_vector[pixel_index][detector_index] = - \
                 detector.time_delay_from_detector(detectors[0], ra, dec, gps_time)
 
-    return dt_map
+    return dt_vector
 
 
 def signaltoskymap(
     strain,
-    dt_map,
+    dt_vector,
     frequency_axis,
     num_pixels,
     num_detectors,
-    config,
     num_samples,
     null_vector
 ):
     # Convert required arrays into tensorflow tensors:
     frequency_axis = tf.convert_to_tensor(frequency_axis)
     strain = tf.convert_to_tensor(strain)
-    dt_map = tf.convert_to_tensor(dt_map)
+    dt_vector = tf.convert_to_tensor(dt_vector)
     null_vector = tf.convert_to_tensor(null_vector)
 
     # Run tensorflow graph:
     coherent_null_energy = calc_map(
         strain,
         frequency_axis,
-        dt_map,
+        dt_vector,
         null_vector,
         num_pixels,
         num_detectors,
@@ -248,11 +248,10 @@ def plotsignaltoskymap(strain, data=None):
     return map
 
 
-def createSkymapPlugin(nside, config):
+def createSkymapPlugin(nside, fs, duration):
 
     # Unpack config:
-    fs = config["fs"]
-    num_samples = config["fs"]
+    num_samples = fs * duration
 
     # Reference GPS so that GMST is within 1 second of 0 to make equivilent of
     # earth centre coordinates:
@@ -263,18 +262,19 @@ def createSkymapPlugin(nside, config):
 
     # Setup detector array:
     detectors = []
-    for initial in 'HLV':  # config["detectors"]:
+    for initial in 'HLV':
         detectors.append(Detector(f"{initial}1"))
 
     # Assign number of detectors:
-    num_detectors = len('HLV')  # len(config["detectors"])
+    num_detectors = len('HLV')
 
     # Create theta and phi arrays:
     theta, phi = hp.pix2ang(nside, range(num_pixels))
 
     # Create Antenna and TimeDelay maps:
     null_vector = returnNULLVector(num_pixels, theta, phi, detectors, gps_time)
-    dt_map = returnTimeDelayMap(num_pixels, theta, phi, detectors, gps_time)
+    dt_vector = returnTimeDelayVector(
+        num_pixels, theta, phi, detectors, gps_time)
     frequency_axis = np.fft.rfftfreq(num_samples, d=1 / fs)
 
     # Create mly plugin:
@@ -284,11 +284,10 @@ def createSkymapPlugin(nside, config):
         attributes=['strain'],
         plotAttributes=['strain'],
         plotFunction=plotsignaltoskymap,
-        dt_map=dt_map,
+        dt_vector=dt_vector,
         frequency_axis=frequency_axis,
         num_pixels=num_pixels,
         num_detectors=num_detectors,
-        config=config,
         num_samples=num_samples,
         null_vector=null_vector
     )
