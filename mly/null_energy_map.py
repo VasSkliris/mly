@@ -10,6 +10,7 @@ import tensorflow as tf
 import healpy as hp
 import numpy as np
 from pycbc.detector import Detector
+from ligo.skymap.io import fits
 from .projectwave import *
 from .plugins import *
 from .validators import *
@@ -173,7 +174,7 @@ def calculateSkyMap(
 
 
 # Convert function to tensroflow graph:
-calc_map = tf.function(calculateSkyMaps)
+calc_map = tf.function(calculateSkyMap)
 
 
 def returnNULLVector(num_pixels, theta, phi, detectors, gps_time):
@@ -243,9 +244,9 @@ def signaltoskymap(
 
 
 def plotsignaltoskymap(strain, data=None):
-
-    map = hp.mollview(data[0] / data[1], coord='C', title='the title')
-    return map
+    
+    null_energy_map = hp.mollview(data, coord='C')
+    return null_energy_map
 
 
 def createSkymapPlugin(nside, fs, duration):
@@ -299,8 +300,5 @@ def saveFitsFile(pod, file_path):
 
     null_energy_map = pod.null_energy_map
 
-    with tempfile.NamedTemporaryFile(suffix='.fits') as f:
-        fits.write_sky_map(f.name, null_energy_map, nest=False,
-                           build_date=date.today().strftime("%B %d, %Y"))
-
-        f.write(file_path)
+    with open(file_path, "w") as f:
+        fits.write_sky_map(f.name, null_energy_map, nest=False)
