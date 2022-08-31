@@ -742,7 +742,144 @@ class DataSet(DataSetBase):
                    ,plugins=None
                    ,**kwargs):
         
+        """This is one of the core methods/function of this module.
+        It generates data instances of detector strain data that could be 
+        from real detectors or simulated noise. It has many options for
+        each different type of instance -that it can generate.
+        
+        Parameters
+        ----------
+        
+        duration : float/int
+            The duration of instances to be generated in seconds.
+            
+        fs : float/ing
+            The sample frequency of the instances to be generated.
+            
+        size : int
+            The number of instances to be generated.
+            
+        detectors : str/ list of str
+            The detectors to be used for the background. Even for optimal 
+            gaussian noise the background is different for each detector. 
+            For example if you wan to include Hanford, Livingston and Virgo
+            you state it as 'HLV' or ['H','L','V'].
+            
+        injectionFolder: str (path, optional)
+            The path to the directory with the injections. If not specified
+            the generator will just generate noise instances, setting
+            injectionSNR to 0.
+            
+        labels: dict (optional)
+            The optional label for all the instances to be generated. 
+            If not specified labels is {'type':'UNDEFINED'}.
+            
+        backgroundType: {'optimal','real'}
+            The type of background to be used. If 'optimal' is chosen,
+            a simulated noise background will be used (simulateddetectornoise.py)
+            depending the detector. If 'real' is chosen, a source of real detector
+            noise will need to be specified from noiseSourceFile.
+        
+        injectionSNR: float/int
+            The Signal to Noise Ration of the injection used for the instances.
+            All injections are calibrated to be in that SNR value.
+            
+        noiseSourceFile: {gps intervals, path, txt file, numpy.ndarray}
+            The source of real noise. There are many options to provide source 
+            of real noise. 
+            
+            * A list intervals (one for each detectors) with gps times. The script 
+            will get the available coinsident data within the 'detectors' and use them.
+            
+            * A path with txt or DataPod files that have noise data.
+            
+            * A numpy.ndarray with the data directly.
+            
+            This parameter evolves depending on the needs of users.
+            
+        windowSize: int/float
+            The amount of seconds to use around the instance duration, for the 
+            calculation of PSD. The bigger the windowSize the better whittening.
+            Although the calculation takes more time. It defaults to 16 times
+            the duration parameter.
+            
+        timeSlides: int (optional)
+            The number of timeshifts to use on the provided noise source.
+            If noise source has N instances of utilisable noise by using
+            timeSlides we will have N*(1-timeSlides) instances. Default
+            is 1 which means not using timeSlides.
+            
+        startingPoint: float/int (optional)
+            The starting point in seconds from which we will use the noise
+            source. In case we have a big noise sample by specifing startingPoint
+            we do not start from the beggining but from that second. Default is 0.
+            
+        name : str (optional)
+            The name of the dataset, if it is saved. 
+            
+        savePath : str (path, optional)
+            The of the file to be saved. If not stated file will not be saved and
+            it will just be returned.
+            
+        single : bool
+            If true and injectionSNR or injectionHRSS is defined, it will add
+            a signal to only one of the available detectors, randomly selected.
+            All SNR or hrss will be used on the single injection. Default is False.
+            
+        differentSignals : bool
+            If true each detector gets a different randomly selected signal. 
+            Default is False.
+            
+        injectionCrop : float [0,1]
+            Allows to crop part of the injection (up to the value provided when 
+            randomly positions the injection arroud on the background. 0 means
+            no croppin allowd and 1 means maximum 100% cropping allowed. The cropping 
+            will be a random displacement from zero to parto of durationn.
+            
+        frames: dict or {C00, C01,C02}
+            In case we use real detector noise and the script looks for the available 
+            noise segments we need to specify the frames to look for. We have to provide 
+            a dictionary of the frames for the given detectors. C00, C01 and C02 provides a
+            shortcut for the widly used frames. 
+            {'H': 'H1_HOFT_C0X' ,'L': 'L1_HOFT_C0X' ,'V': 'V1Online'}.
+            C02 is chossen as default given that is pressent in all observing runs.
 
+        channels: dict or {C00, C01,C02} 
+            As with frames, in case we use real detector noise and the script looks for 
+            the available noise segments we need to specify the channels to look for. 
+            We have to provide a dictionary of the channels for the given detectors. 
+            C00, C01 and C02 provides a shortcut for the widly used frames. 
+            {'H': 'H1:DCS-CALIB_STRAIN_C0X','L': 'L1:DCS-CALIB_STRAIN_C0X' ,'V': 'V1:Hrec_hoft_16384Hz'}.
+            C02 is chossen as default given that is pressent in all observing runs.
+
+        disposition: float (optional)
+            Disposition is the time interval in seconds within we want the central times of the 
+            signals to appear. It is used with differentSignals = True. The bigger
+            the interval the bigger the spread. Although the spread is always constrained by
+            the duration of the longest signa selected so that the signals don't get cropped.
+        
+        maxDuration : float (optional)
+            If you want to use injections and want to restrict the maximum duration used.
+            This will check the randomly selected injection's duration. If it is bigger
+            that the one specified here, it will select another random injection. This will
+            continue until it finds one with duration smaller than maxDuration parameter.
+            Note that the smaller this parameter is the more time it will take to complete
+            the generation.
+            
+        plugins : list of strings
+            You can specify here plugins that are included in plugins.known_plug_ins variable.
+            Those plugins will automaticly be added into the dataset returned.
+            
+            
+        Returns
+        -------
+        
+        A DataSet object. If savePath is defined, it saves the DataSet to that path
+        and it returns None.
+        
+        
+
+        """
         # Integration limits for the calculation of analytical SNR
         # These values are very important for the calculation
 
@@ -897,6 +1034,7 @@ class DataSet(DataSetBase):
                   or (('Pod' in str(type(noiseSourceFile))) or ('Set' in str(type(noiseSourceFile))))):
                                                                                                           
                 noiseFormat='PodorSet'
+
             else:
                 raise TypeError("The noise type format given is not one valid")
 
@@ -973,9 +1111,10 @@ class DataSet(DataSetBase):
             frames = {'H': 'H1_HOFT_C00'
                      ,'L': 'L1_HOFT_C00'
                      ,'V': 'V1Online'}
-        else:
+        elif not (isinstance(frames,dict)): 
+
               raise ValueError("Frame type "+str(frames)+" is not valid")
-                    
+
         if channels==None or (isinstance(channels,str) and channels.upper()=='C02'):
             channels = {'H': 'H1:DCS-CALIB_STRAIN_C02'
                        ,'L': 'L1:DCS-CALIB_STRAIN_C02'
@@ -988,8 +1127,10 @@ class DataSet(DataSetBase):
             channels = {'H': 'H1:GDS-CALIB_STRAIN'
                        ,'L': 'L1:GDS-CALIB_STRAIN'
                        ,'V': 'V1:Hrec_hoft_16384Hz'}
-        else:
-              raise ValueError("Channels "+str(channels)+" are not valid")
+        elif not (isinstance(channels,dict)): 
+
+              raise ValueError("Channel type "+str(channels)+" is not valid")
+
         #print(frames,channels)
         
         
@@ -1623,7 +1764,15 @@ class DataSet(DataSetBase):
             #sys.stdout.flush()
             #t0=time.time()
             
-        random.shuffle(DATA.dataPods)
+        if not ('shuffle' in kwargs):
+            kwargs['shuffle'] = True
+        
+        if not isinstance(kwargs['shuffle'],bool):
+            raise TypeError("shuffle option must be a bool value")
+
+        if kwargs['shuffle']==True:
+             random.shuffle(DATA.dataPods)
+        # else if false do not shuffle.
                 
         print('\n')
         if savePath!=None:
