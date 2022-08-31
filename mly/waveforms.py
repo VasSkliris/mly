@@ -1,3 +1,4 @@
+from mly.checkingFunctions import *
 from math import ceil
 from gwpy.timeseries import TimeSeries
 import numpy as np
@@ -13,116 +14,121 @@ from pycbc.detector import Detector
 import numpy as np
 from .projectwave import *
 from .checkingFunctions import *
-#########################################################################################################
+##########################################################################
 
-#########################################################################################################
+##########################################################################
 
-#########################################################################################################
+##########################################################################
 
-def envelope(strain
-             ,option=None
-             ,**kwargs):
-    
+
+def envelope(strain, option=None, **kwargs):
     """Envelope is a wrapper function that covers all types of envelopes available here.
-    
+
         Arguments
         ---------
-        
+
         strain: list/array/gwpy.TimeSeries
             The timeseries to be enveloped
-            
+
         option: {'sigmoid'} (optional)
             The type of envelope you want to apply. If not specified it defaults to 'sigmoid'
-        
+
         **kwargs: Any keyword arguments acompany the option of envelope.
-    
+
         Returns
         -------
         numpy.ndarray
             The same timeseries that had in the input, but enveloped.
-    
-    
+
+
     """
-    
-    
-    if option == None: option='sigmoid'
-        
+
+    if option is None:
+        option = 'sigmoid'
+
     if 'fs' in kwargs:
-        if not (isinstance(kwargs['fs'],int) and kwargs['fs'] >= 1):
+        if not (isinstance(kwargs['fs'], int) and kwargs['fs'] >= 1):
             raise ValueError('fs must be greater than 2*fax')
         else:
-            fs=kwargs['fs']
-            duration=len(strain)/fs
+            fs = kwargs['fs']
+            duration = len(strain) / fs
     else:
-        fs=len(strain) 
-        duration=1
-        
+        fs = len(strain)
+        duration = 1
+
     if option == 'sigmoid':
-        
-        envStart=sigmoid(np.arange(int(len(strain)/10)))
-        envEnd=sigmoid(np.arange(int(len(strain)/10)),ascending=False)
-        env=np.hstack((envStart,np.ones(len(strain)-len(envStart)-len(envEnd))-0.01,envEnd))
-                
+
+        envStart = sigmoid(np.arange(int(len(strain) / 10)))
+        envEnd = sigmoid(np.arange(int(len(strain) / 10)), ascending=False)
+        env = np.hstack(
+            (envStart,
+             np.ones(
+                 len(strain) -
+                 len(envStart) -
+                 len(envEnd)) -
+                0.01,
+                envEnd))
+
     if option == 'wnb':
-        
 
-            
-        envStart=sigmoid(np.arange(int(len(strain)/10)))
-        envEnd=sigmoid(np.arange(int(len(strain)/10)),ascending=False)
-        
+        envStart = sigmoid(np.arange(int(len(strain) / 10)))
+        envEnd = sigmoid(np.arange(int(len(strain) / 10)), ascending=False)
+
         fmin = 1
-        fmax = fmin+1+np.random.rand()*10
-        wnb=1.2+np.random.rand()*1.8+WNB(duration=duration,fs=fs,fmin=fmin,fmax=fmax)
-        env=wnb*np.hstack((envStart,np.ones(len(strain)-len(envStart)-len(envEnd))-0.01,envEnd))
-        env=env/np.abs(np.max(env))
-        
-    return env*np.array(strain)
+        fmax = fmin + 1 + np.random.rand() * 10
+        wnb = 1.2 + np.random.rand() * 1.8 + WNB(duration=duration,
+                                                 fs=fs, fmin=fmin, fmax=fmax)
+        env = wnb * np.hstack((envStart, np.ones(len(strain) -
+                              len(envStart) - len(envEnd)) - 0.01, envEnd))
+        env = env / np.abs(np.max(env))
+
+    return env * np.array(strain)
 
 
-def sigmoid(timeRange
-            ,t0=None
-            ,stepTime=None
-            ,ascending=True):
-    
+def sigmoid(timeRange, t0=None, stepTime=None, ascending=True):
     """Sigmoid is a functIon of a simple sigmoid.
 
         Parameters
         ----------
-        
-        timeRange: list/numpy.ndarray 
+
+        timeRange: list/numpy.ndarray
             The time range that the sigmoid will be applied.
-            
+
         t0: int/float (optional)
             The time in the center of the sigmoid. If not specified,
             the default value is the center of the timeRange.
-        
+
         stepTime: int/float (optional)
-            The time interval where the function will go from 0.01 
-            to 0.99 (or the oposite). If not specified, the default value 
+            The time interval where the function will go from 0.01
+            to 0.99 (or the oposite). If not specified, the default value
             is the duration of the timeRange.
-        
+
         ascending: bool (optional)
             If True the sigmoid will go from 0 to 1, if False from 1 to 0.
             If not specified the default value is True.
-            
+
         Returns
         -------
-        
+
         numpy.ndarray
             A sigmoid function
     """
-    if t0 == None: t0=(timeRange[-1]-timeRange[0])/2
-    if stepTime == None: stepTime=(timeRange[-1]-timeRange[0])
-    if ascending == None: ascending == True
-    
-    a=((-1)**(int(not ascending)))*(np.log(0.01/0.99)/(stepTime-t0))
-    
-    y=1/(1+np.exp(a*(np.array(timeRange)-t0)))
+    if t0 is None:
+        t0 = (timeRange[-1] - timeRange[0]) / 2
+    if stepTime is None:
+        stepTime = (timeRange[-1] - timeRange[0])
+    if ascending is None:
+        ascending
+
+    a = ((-1)**(int(not ascending))) * (np.log(0.01 / 0.99) / (stepTime - t0))
+
+    y = 1 / (1 + np.exp(a * (np.array(timeRange) - t0)))
     return y
 
-def BLWNB(f,df,dt,fs):
-    #BLWNB - Generate a random signal of given duration with constant power
-    #in a given band (and zero power out of band).
+
+def BLWNB(f, df, dt, fs):
+    # BLWNB - Generate a random signal of given duration with constant power
+    # in a given band (and zero power out of band).
 
     #   x = blwnb(f,df,dt,fs)
     #
@@ -131,143 +137,132 @@ def BLWNB(f,df,dt,fs):
     #   dt  Scalar. Signal duration [s].
     #   fs  Scalar. Signal sample rate [Hz].
 
-    # Power is restricted to the band (f,f+df). 
+    # Power is restricted to the band (f,f+df).
     # Note that fs must be greater than 2*(f+df).
 
     # original version: L. S. Finn, 2004.08.03
 
     # $Id: BLWNB.m 4992 2015-07-25 18:59:12Z patrick.sutton@LIGO.ORG $
 
-    #% ---- Check that fs > 2*(f+df), otherwise sampling rate is not high enough to
+    # % ---- Check that fs > 2*(f+df), otherwise sampling rate is not high enough to
     #       cover requested frequency range of the signal.
-    if (fs <= abs(2*(f+df))):
-        raise ValueError('Sampling rate fs is too small, fs = '+str(fs)+' must be greater than 2*(f+df) = '+str(np.abs(2*(f+df))))
+    if (fs <= abs(2 * (f + df))):
+        raise ValueError('Sampling rate fs is too small, fs = ' + str(fs) +
+                         ' must be greater than 2*(f+df) = ' + str(np.abs(2 * (f + df))))
 
-
-    if f < 0 or df <= 0 or fs <= 0 or dt <= 0 :
+    if f < 0 or df <= 0 or fs <= 0 or dt <= 0:
         raise ValueError('All arguments must be greater than zero')
 
-    #% ---- Generate white noise with duration dt at sample rate df. This will be
-    #%      white over the band [-df/2,df/2].
+    # % ---- Generate white noise with duration dt at sample rate df. This will be
+    # %      white over the band [-df/2,df/2].
 
-    nSamp = ceil(dt*df)
-    x_old = TimeSeries(np.random.randn(nSamp),sample_rate=1/dt)
-    
+    nSamp = ceil(dt * df)
+    x_old = TimeSeries(np.random.randn(nSamp), sample_rate=1 / dt)
 
-
-    #% ---- Resample to desired sample rate fs.
-    x=x_old.resample(fs/df)
+    # % ---- Resample to desired sample rate fs.
+    x = x_old.resample(fs / df)
     #frac = Fraction(Decimal(fs/df))
     #p, q = frac.numerator , frac.denominator
 
-
-    #% ---- Note that the rat() function returns p,q values that give the desired
-    #%      ratio to a default accuracy of 1e-6. This is a big enough error that
-    #%      x may be a few samples too short or too long. If too long, then truncate
-    #%      to duration dt. If too short, zero-pad to duration dt.
-    #print((np.zeros(nSamp-len(x)).shape))
-    nSamp = round(dt*fs)
+    # % ---- Note that the rat() function returns p,q values that give the desired
+    # %      ratio to a default accuracy of 1e-6. This is a big enough error that
+    # %      x may be a few samples too short or too long. If too long, then truncate
+    # %      to duration dt. If too short, zero-pad to duration dt.
+    # print((np.zeros(nSamp-len(x)).shape))
+    nSamp = round(dt * fs)
     if len(x) > nSamp:
         x = x[0:nSamp]
     elif len(x) < nSamp:
-        x=np.hstack((np.array(x),np.zeros(nSamp-len(x))))
+        x = np.hstack((np.array(x), np.zeros(nSamp - len(x))))
 
-    #% ---- Heterodyne up by f+df/2 (moves zero frequency to center of desired band).
-    fup = f+df/2.
-    x = x*np.exp(-2*np.pi*1j*fup/fs*np.arange(1,len(x)+1))
+    # % ---- Heterodyne up by f+df/2 (moves zero frequency to center of desired band).
+    fup = f + df / 2.
+    x = x * np.exp(-2 * np.pi * 1j * fup / fs * np.arange(1, len(x) + 1))
 
-    #% ---- Take real part and adjust amplitude.
-    x = np.array(np.real(x)/np.sqrt(2))
-    #% ---- Done.
-    return(x)
+    # % ---- Take real part and adjust amplitude.
+    x = np.array(np.real(x) / np.sqrt(2))
+    # % ---- Done.
+    return (x)
 
 
-def old_envelope(applicationTime # Time that the envelope will be applied
-             ,fs             # Sample Frequency
-             ,q=0.5          # Weight of the two gaussians creating the envelope
-             ,t0='default'   # Max value time of envelope
-             ,sig=3          # Combined sigma of two gaussians
-             ,duration=None):# Duration of the combined gaussians
-    
+def old_envelope(applicationTime  # Time that the envelope will be applied
+                 , fs             # Sample Frequency
+                 , q=0.5          # Weight of the two gaussians creating the envelope
+                 , t0='default'   # Max value time of envelope
+                 , sig=3          # Combined sigma of two gaussians
+                 , duration=None):  # Duration of the combined gaussians
 
     # Duration of the signal is smaller that the duration of the envelope
-    if isinstance(duration,(float,int)) and duration < applicationTime :
+    if isinstance(duration, (float, int)) and duration < applicationTime:
         T = duration
-        pad = np.zeros(int((applicationTime-duration)*fs/2))
+        pad = np.zeros(int((applicationTime - duration) * fs / 2))
     else:    # Envelope time = duration (default)
         T = applicationTime
-    
-            
-    
-    t=np.arange(0,T,1/fs)
-    
-    length=len(t)
-    
-    if q>=1-1/fs: q=1-1/fs
-    if q<=1/fs: q=1/fs
 
-    sigma=T/sig
-    sigma_m=q*sigma
-    sigma_p=(1-q)*sigma
-    
+    t = np.arange(0, T, 1 / fs)
 
-    
-    if t0=='default':
-        t0=t[0]+sig*sigma_m
-        
-    tm=np.arange(0,t0,1/fs)
-    tp=np.arange(t0,t[-1],1/fs)        
+    length = len(t)
 
-    
-    env_m=np.exp(-((tm-t0)/(sigma_m))**2)
-    env_p=np.exp(-((tp-t0)/(sigma_p))**2)
-    envel=np.hstack((env_m,env_p))
+    if q >= 1 - 1 / fs:
+        q = 1 - 1 / fs
+    if q <= 1 / fs:
+        q = 1 / fs
 
-    
-    if (len(envel)>length):
-        envel=np.delete(envel,-1)
+    sigma = T / sig
+    sigma_m = q * sigma
+    sigma_p = (1 - q) * sigma
 
-    elif (len(envel)<length):
-        envel=np.append(0,envel)
-        
-        
+    if t0 == 'default':
+        t0 = t[0] + sig * sigma_m
+
+    tm = np.arange(0, t0, 1 / fs)
+    tp = np.arange(t0, t[-1], 1 / fs)
+
+    env_m = np.exp(-((tm - t0) / (sigma_m))**2)
+    env_p = np.exp(-((tp - t0) / (sigma_p))**2)
+    envel = np.hstack((env_m, env_p))
+
+    if (len(envel) > length):
+        envel = np.delete(envel, -1)
+
+    elif (len(envel) < length):
+        envel = np.append(0, envel)
+
     # Envelope time = duration (default)
-    
-    if isinstance(duration,(float,int)) and duration < applicationTime :
-        envel = np.hstack((pad,envel,pad))
-        
-    return(envel)
+
+    if isinstance(duration, (float, int)) and duration < applicationTime:
+        envel = np.hstack((pad, envel, pad))
+
+    return (envel)
 
 
-def decimal_power(t,n):
-    if t[0]<0:
+def decimal_power(t, n):
+    if t[0] < 0:
         for i in range(len(t)):
-            if t[i]>0:
-                pos_index=i
+            if t[i] > 0:
+                pos_index = i
                 break
-        yp=t[pos_index:]**n
-        yn=-(-t[:pos_index])**n
-        y=np.append(yn,yp)
+        yp = t[pos_index:]**n
+        yn = -(-t[:pos_index])**n
+        y = np.append(yn, yp)
     else:
-        y=t**n
-    return(y)
+        y = t**n
+    return (y)
 
 
-#########################################################################################################
-#########################################################################################################
-#########################################################################################################
+##########################################################################
+##########################################################################
+##########################################################################
 
 
-
-
-def csg(frequency 
-        ,duration 
-        ,phase=None   
-        ,fs=None
-        ,sigma=None
-        ,ellipticity=None
-        ,amplitude=None):
-    
+def csg(
+        frequency,
+        duration,
+        phase=None,
+        fs=None,
+        sigma=None,
+        ellipticity=None,
+        amplitude=None):
     """
     Parameters
     ----------
@@ -275,25 +270,25 @@ def csg(frequency
     frequency: int/float
         The frequency of the oscilator.
 
-    duration: int/float 
+    duration: int/float
         The duration of the final timeseries.
 
-    phase: int/float - (0,2π] , optional 
+    phase: int/float - (0,2π] , optional
         The phase of the oscilator. If not specified the default is a random phase.
 
     fs: int , optional
-        The sample frequency of the timeseries to be generated. If not specified 
+        The sample frequency of the timeseries to be generated. If not specified
         the default is 1.
-        
+
     sigma: int/float, optional
         The standar deviation of the gaussian envelope. If not specified the default
         is 5. This scales along with duration, so don't use smaller numbers to avoid
         edge cut effects.
-    
+
     ellipticity: int/float
         The ellipticity of the system. It will modify the cross polarisation.
     amplitude: int/float , optional
-        The maximum amplitude of the singal. If not specied 
+        The maximum amplitude of the singal. If not specied
         the default is 1.
 
     Returns
@@ -304,83 +299,86 @@ def csg(frequency
     Notes
     -----
 
-    If you want to generate many of those waveforms, the main parameters you need to 
+    If you want to generate many of those waveforms, the main parameters you need to
     loop around are frequency, duration and phase.
 
     """
-    if not frequency >=0:
+    if not frequency >= 0:
         raise ValueError('Frequency must be a positive number')
-        
-    if phase == None:
-        phase = np.random.rand()*2*np.pi
-    elif not (isinstance(phase,(int,float)) and 0<=phase<=2*np.pi):
+
+    if phase is None:
+        phase = np.random.rand() * 2 * np.pi
+    elif not (isinstance(phase, (int, float)) and 0 <= phase <= 2 * np.pi):
         raise ValueError('phase must be a number between zero and 2pi.')
-        
-    if fs == None:
-        fs=1
-    elif not (isinstance(fs,int) and fs>=1):
-        raise ValueError('sample frequency must be an integer bigger than 1.')    
-    
-    if sigma == None: sigma = 5
+
+    if fs is None:
+        fs = 1
+    elif not (isinstance(fs, int) and fs >= 1):
+        raise ValueError('sample frequency must be an integer bigger than 1.')
+
+    if sigma is None:
+        sigma = 5
     if not (sigma > 0):
         raise ValueError('Sigma must be positive')
-        
-    if ellipticity==None:
-        ellipticity=0
-    if not (isinstance(ellipticity,(float,int)) and 0<=ellipticity<=1):
+
+    if ellipticity is None:
+        ellipticity = 0
+    if not (isinstance(ellipticity, (float, int)) and 0 <= ellipticity <= 1):
         raise ValueError('Elliptisity must be a numeber in the interval [0,1]')
-        
-    if amplitude == None:
+
+    if amplitude is None:
         amplitude = 1
-    elif not (isinstance(amplitude,(int,float))):
+    elif not (isinstance(amplitude, (int, float))):
         raise ValueError('amplitude must be a number')
-         
-    t=np.arange(0,duration,1/fs)
-    hp=np.sin(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)
-    hc=np.cos(2*np.pi*frequency*t+phase)*np.exp(-((t-duration/2)/(duration/sigma))**2)*np.sqrt(1-ellipticity**2)
-    
-    return(hp,hc)
+
+    t = np.arange(0, duration, 1 / fs)
+    hp = np.sin(2 * np.pi * frequency * t + phase) * \
+        np.exp(-((t - duration / 2) / (duration / sigma))**2)
+    hc = np.cos(2 * np.pi * frequency * t + phase) * np.exp(-((t - \
+                duration / 2) / (duration / sigma))**2) * np.sqrt(1 - ellipticity**2)
+
+    return (hp, hc)
 
 
-def ringdown(frequency 
-             ,duration = None
-             ,damping = None   
-             ,phase=None 
-             ,fs=None
-             ,amplitude=None):
-    
-    """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a 
-    gaussian envelope to make the transition from 0 to maximum amplitude smooth. The signal 
+def ringdown(
+        frequency,
+        duration=None,
+        damping=None,
+        phase=None,
+        fs=None,
+        amplitude=None):
+    """Ringdown is a simple damping oscilator signal. At the beggining of the signal we use a
+    gaussian envelope to make the transition from 0 to maximum amplitude smooth. The signal
     follows the following formula:
-    
-    ..math:: hp=A\cos(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
-    ..math:: hc=A\sin(2\pi ft + \phi)e^{-t/\tau}  \qquad\qquad  \tau = duration/\ln(damping)
 
-    
+    ..math:: hp=A\\cos(2\\pi ft + \\phi)e^{-t/\tau}  \\qquad\\qquad  \tau = duration/\\ln(damping)
+    ..math:: hc=A\\sin(2\\pi ft + \\phi)e^{-t/\tau}  \\qquad\\qquad  \tau = duration/\\ln(damping)
+
+
     Parameters
     ----------
 
     frequency: int/float
         The frequency of the damping oscilator.
 
-    duration: int/float , optional 
+    duration: int/float , optional
         The duration of the final timeseries. If not specified the defult value is 1.
 
     damping: int, optional
-        Damping describes the fraction of the initial amplitude 
+        Damping describes the fraction of the initial amplitude
         the signal will have at the end of the timeseries. A damping value of 10 means that
         in the end of the signal the amplitude will be 1/10 of the initial amplitude.
         If not specified the default value is 256.
 
-    phase: int/float - (0,2π] , optional 
+    phase: int/float - (0,2π] , optional
         The phase of the oscilator. If not specified the default is a random phase.
 
     fs: int , optional
-        The sample frequency of the timeseries to be generated. If not specified 
+        The sample frequency of the timeseries to be generated. If not specified
         the default is 1.
 
     amplitude: int/float , optional
-        The maximum amplitude of the singal. If not specied 
+        The maximum amplitude of the singal. If not specied
         the default is 1.
 
     Returns
@@ -391,81 +389,80 @@ def ringdown(frequency
     Notes
     -----
 
-    If you want to generate many of those waveforms, the main parameters you need to 
-    loop around are frequency, duration and phase. Changing damping parameter will not give 
+    If you want to generate many of those waveforms, the main parameters you need to
+    loop around are frequency, duration and phase. Changing damping parameter will not give
     any difference and it is good to keep it big so that you don't have discontinuities at the end.
 
 
     """
-    if not isinstance(frequency,(int,float)) and frequency >=0:
+    if not isinstance(frequency, (int, float)) and frequency >= 0:
         raise ValueError('Frequency must be a positive number')
-        
-    if duration == None:
+
+    if duration is None:
         duration = 1
-    elif not (isinstance(duration,(int,float)) and duration > 1/frequency):
-        raise ValueError('duration must be a positive number bigger than 1/frequency.')
-        
-    if damping == None:
+    elif not (isinstance(duration, (int, float)) and duration > 1 / frequency):
+        raise ValueError(
+            'duration must be a positive number bigger than 1/frequency.')
+
+    if damping is None:
         damping = 256
-    elif not (isinstance(damping,(int,float)) and damping >= 1):
+    elif not (isinstance(damping, (int, float)) and damping >= 1):
         raise ValueError('damping must be a number bigger than or equal to 1.')
-    
-    if phase == None:
-        phase = np.random.rand()*2*np.pi
-    elif not (isinstance(phase,(int,float)) and 0<=phase<=2*np.pi):
+
+    if phase is None:
+        phase = np.random.rand() * 2 * np.pi
+    elif not (isinstance(phase, (int, float)) and 0 <= phase <= 2 * np.pi):
         raise ValueError('phase must be a number between zero and 2pi.')
-        
-    if fs == None:
-        fs=1
-    elif not (isinstance(fs,int) and fs>=1):
-        raise ValueError('sample frequency must be an integer bigger than 1.')    
-    
-    if amplitude == None:
+
+    if fs is None:
+        fs = 1
+    elif not (isinstance(fs, int) and fs >= 1):
+        raise ValueError('sample frequency must be an integer bigger than 1.')
+
+    if amplitude is None:
         amplitude = 1
-    elif not (isinstance(amplitude,(int,float))):
+    elif not (isinstance(amplitude, (int, float))):
         raise ValueError('amplitude must be a number,')
-         
-    
-    t0=0
-    alpha=np.log(damping)/(duration-1/frequency)
-        
-    sigma=1/frequency/4 # This sigma value creates a half gaussian at the beggining of 4 sigma.
 
-    t_m=np.arange(t0-1/frequency,t0,1/fs)
-    t_p=np.arange(t0,duration+t0-1/frequency-1/fs,1/fs)
-    
-    h_pp = amplitude*np.cos(2*np.pi*(t_p-t0)*frequency+phase)*np.exp(-(t_p-t0)*alpha)          #t>=t0
-    h_mp = amplitude*np.cos(2*np.pi*(t_m-t0)*frequency+phase)*np.exp(-0.5*((t_m-t0)/sigma)**2) #t<t0
-    h_pc = amplitude*np.sin(2*np.pi*(t_p-t0)*frequency+phase)*np.exp(-(t_p-t0)*alpha)          #t>=t0
-    h_mc = amplitude*np.sin(2*np.pi*(t_m-t0)*frequency+phase)*np.exp(-0.5*((t_m-t0)/sigma)**2) #t<t0
-    
-    hp=np.append(h_mp,h_pp)
-    hc=np.append(h_mc,h_pc)
-    t=np.append(t_m,t_p)
+    t0 = 0
+    alpha = np.log(damping) / (duration - 1 / frequency)
 
-    return(hp,hc)
+    # This sigma value creates a half gaussian at the beggining of 4 sigma.
+    sigma = 1 / frequency / 4
+
+    t_m = np.arange(t0 - 1 / frequency, t0, 1 / fs)
+    t_p = np.arange(t0, duration + t0 - 1 / frequency - 1 / fs, 1 / fs)
+
+    h_pp = amplitude * np.cos(2 * np.pi * (t_p - t0) * \
+                              frequency + phase) * np.exp(-(t_p - t0) * alpha) # t>=t0
+    h_mp = amplitude * np.cos(2 * np.pi * (t_m - t0) * frequency +
+                              phase) * np.exp(-0.5 * ((t_m - t0) / sigma)**2)  # t<t0
+    h_pc = amplitude * np.sin(2 * np.pi * (t_p - t0) * \
+                              frequency + phase) * np.exp(-(t_p - t0) * alpha) # t>=t0
+    h_mc = amplitude * np.sin(2 * np.pi * (t_m - t0) * frequency +
+                              phase) * np.exp(-0.5 * ((t_m - t0) / sigma)**2)  # t<t0
+
+    hp = np.append(h_mp, h_pp)
+    hc = np.append(h_mc, h_pc)
+    t = np.append(t_m, t_p)
+
+    return (hp, hc)
 
 
-def WNB(duration
-      ,fs
-      ,fmin
-      ,fmax
-      ,enveloped=True
-      ,sidePad=None):
-    
+def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None):
     """Generate a random signal of given duration with constant power
     in a given frequency range band (and zero power out of the this range).
-    
+
         Parameters
         ----------
-        
+
         duration: int/float
             The desirable duration of the signal. Duration must be bigger than 1/fs
         fs: int
-            The sample frequncy of the signal        
-        fmin: int/float 
+            The sample frequncy of the signal
+        fmin: int/float
             The minimum frequency
-        fmax: int/float 
+        fmax: int/float
             The maximum frequency
         enveloped: bool (optional)
             If set to True it returns the signal within a sigmoid envelope on the edges.
@@ -473,97 +470,100 @@ def WNB(duration
         sidePad: int/bool(optional)
             An option to pad with sidePad number of zeros each side of the injection. It is suggested
             to have zeropaded injections for the timeshifts to represent 32 ms, to make it easier
-            for the projectwave function. If not specified or 
-            False it is set to 0. If set True it is set to ceil(fs/32). WARNING: Using sidePad will 
+            for the projectwave function. If not specified or
+            False it is set to 0. If set True it is set to ceil(fs/32). WARNING: Using sidePad will
             make the injection length bigger than the duration
-            
-            
+
+
         Returns
         -------
-        
+
         numpy.ndarray
             The WNB waveform
     """
-    if not (isinstance(fmin,(int,float)) and fmin>=1):
+    if not (isinstance(fmin, (int, float)) and fmin >= 1):
         raise ValueError('fmin must be greater than 1')
-    if not (isinstance(fmax,(int,float)) and fmax>fmin):
+    if not (isinstance(fmax, (int, float)) and fmax > fmin):
         raise ValueError('fmax must be greater than fmin')
-    if not (isinstance(fs,int) and fs >= 2*fmax):
+    if not (isinstance(fs, int) and fs >= 2 * fmax):
         raise ValueError('fs must be greater than 2*fax')
-    if not (isinstance(duration,(int,float)) and duration>1/fs):
-        raise ValueError('duration must be bigger than 1/fs') 
-    if sidePad == None: sidePad=0
-    if isinstance(sidePad,bool):
-        if sidePad==True:
-            sidePad=ceil(fs/32)
+    if not (isinstance(duration, (int, float)) and duration > 1 / fs):
+        raise ValueError('duration must be bigger than 1/fs')
+    if sidePad is None:
+        sidePad = 0
+    if isinstance(sidePad, bool):
+        if sidePad:
+            sidePad = ceil(fs / 32)
         else:
-            sidePad=0       
-    elif isinstance(sidePad,(int,float)) and sidePad>=0:
-        sidePad=int(sidePad)
+            sidePad = 0
+    elif isinstance(sidePad, (int, float)) and sidePad >= 0:
+        sidePad = int(sidePad)
 
     else:
         raise TypeError('sidePad can be boolean or int value.'
-                        +' If set True it is set to ceil(fs/32).')
-        
-    df=fmax-fmin
-    T=ceil(duration)        
-        
-        
+                        + ' If set True it is set to ceil(fs/32).')
+
+    df = fmax - fmin
+    T = ceil(duration)
+
     # Generate white noise with duration dt at sample rate df. This will be
     # white over the band [-df/2,df/2].
-    nSamp = ceil(T*df)
-    h=[]
+    nSamp = ceil(T * df)
+    h = []
     for _h in range(2):
-        x_ = TimeSeries(np.random.randn(nSamp),sample_rate=1/T)
+        x_ = TimeSeries(np.random.randn(nSamp), sample_rate=1 / T)
 
         # Resample to desired sample rate fs.
-        x=x_.resample(fs/df)
+        x = x_.resample(fs / df)
 
-        # Heterodyne up by f+df/2 (moves zero frequency to center of desired band). 
-        fshift = fmin+df/2.
-        x = x*np.exp(-2*np.pi*1j*fshift/fs*np.arange(1,len(x)+1))
+        # Heterodyne up by f+df/2 (moves zero frequency to center of desired
+        # band).
+        fshift = fmin + df / 2.
+        x = x * np.exp(-2 * np.pi * 1j * fshift /
+                       fs * np.arange(1, len(x) + 1))
 
         # Take real part and adjust length to duration and normalise to 1.
-        x = np.array(np.real(x))[:int(fs*duration)]/np.sqrt(2)
-        x = x/np.abs(np.max(x))
+        x = np.array(np.real(x))[:int(fs * duration)] / np.sqrt(2)
+        x = x / np.abs(np.max(x))
         h.append(x)
-       
-    hp=h[0]
-    hc=h[1]
-    
-    if enveloped==True:
-        hp=envelope(hp,option='sigmoid')
-        hc=envelope(hc,option='sigmoid')
-    
-    if sidePad!=0:
-        hp=np.hstack((np.zeros(sidePad),hp,np.zeros(sidePad)))
-        hc=np.hstack((np.zeros(sidePad),hc,np.zeros(sidePad)))
 
-    return(hp,hc)
+    hp = h[0]
+    hc = h[1]
 
-def chirplet(duration
-             ,fs
-             ,fmin
-             ,fmax
-             ,powerLaw=None
-             ,powerSymmetry=None
-             ,tc=None
-             ,phase=None
-             ,enveloped=False
-             ,returnFrequency=False):
-    
+    if enveloped:
+        hp = envelope(hp, option='sigmoid')
+        hc = envelope(hc, option='sigmoid')
+
+    if sidePad != 0:
+        hp = np.hstack((np.zeros(sidePad), hp, np.zeros(sidePad)))
+        hc = np.hstack((np.zeros(sidePad), hc, np.zeros(sidePad)))
+
+    return (hp, hc)
+
+
+def chirplet(
+        duration,
+        fs,
+        fmin,
+        fmax,
+        powerLaw=None,
+        powerSymmetry=None,
+        tc=None,
+        phase=None,
+        enveloped=False,
+        returnFrequency=False):
     """Generate a random cosine signal of given duration with evolving frequency.
-    
+
         Parameters
         ----------
-        
+
         duration: int/float
             The desirable duration of the signal. Duration must be bigger than 1/fs
         fs: int
-            The sample frequncy of the signal        
-        fmin: int/float 
+            The sample frequncy of the signal
+        fmin: int/float
             The minimum frequency
-        fmax: int/float 
+        fmax: int/float
             The maximum frequency
         powerLaw : float/int (optional)
             This is the power used to describe the frequency evolution. Any positive non
@@ -575,7 +575,7 @@ def chirplet(duration
             take values from 0 to duration. If not specified it is set to 0.
         powerSymmetry: {0,1,-1} (optional)
             This value specifies what will happen befor tc. 1 is for symmetrical around tc.
-            -1 for antisymmetrical and 0 for random choice. There are cases like when powerLaw 
+            -1 for antisymmetrical and 0 for random choice. There are cases like when powerLaw
             is les than 1 that this value can be only -1. It will automaticly set itself if it
             is set wrong. If not specified it is set to symmetry.
         phase: float/int (optional)
@@ -585,69 +585,65 @@ def chirplet(duration
             If not specified it is set to False.
         returnFrequency bool (optional)
             If set to True it will also return the function that describes the frequency.
-            
-        
+
+
         Returns
         ------
-        
+
         numpy.ndarray:
             The chirplet waveform
-        
+
         (numpy.ndarray,numpy.ndarray): in case returnFrequency == True
             The chirplet waveform and the frequency evolution function
-            
+
         Note
         ----
-        
+
         The evolution of the frequency can be tested and experiment with by using the
         returnFrequency=True. This function creates more than the linear chirplet.
     """
-    if not (isinstance(fmin,(int,float)) and fmin>=1):
+    if not (isinstance(fmin, (int, float)) and fmin >= 1):
         raise ValueError('fmin must be greater than 1')
-    if not (isinstance(fmax,(int,float)) and fmax>fmin):
+    if not (isinstance(fmax, (int, float)) and fmax > fmin):
         raise ValueError('fmax must be greater than fmin')
-    if not (isinstance(fs,int) and fs >= 2*fmax):
+    if not (isinstance(fs, int) and fs >= 2 * fmax):
         raise ValueError('fs must be greater than 2*fmax')
-    if not (isinstance(duration,(int,float)) and duration>1/fs):
+    if not (isinstance(duration, (int, float)) and duration > 1 / fs):
         raise ValueError('duration must be bigger than 1/fs')
-    if powerLaw==None: 
-        powerLaw=1
-    elif not (isinstance(powerLaw,(int,float)) and powerLaw>0):
+    if powerLaw is None:
+        powerLaw = 1
+    elif not (isinstance(powerLaw, (int, float)) and powerLaw > 0):
         raise ValueError('powerLaw must be a possitive number')
-    if powerSymmetry==None:
-        powerSymmetry=1
-    elif not (powerSymmetry in [0,1,-1]):
+    if powerSymmetry is None:
+        powerSymmetry = 1
+    elif not (powerSymmetry in [0, 1, -1]):
         raise ValueError('powerSymmetry must be 0 , 1 or -1,'
-                         +' for random selection of symmetry,'
-                         +' symmetric or antisymmetric powerLaw respectively')
-    if tc==None:
-        tc=0
-    elif not (isinstance(tc,(int,float)) and 0<=tc<duration):
+                         + ' for random selection of symmetry,'
+                         + ' symmetric or antisymmetric powerLaw respectively')
+    if tc is None:
+        tc = 0
+    elif not (isinstance(tc, (int, float)) and 0 <= tc < duration):
         raise ValueError('tc must be a nuber in the duration interval')
-    if phase == None:
-        phase = np.random.rand()*2*np.pi
-    elif not (isinstance(phase,(int,float)) and 0<=phase<=2*np.pi):
+    if phase is None:
+        phase = np.random.rand() * 2 * np.pi
+    elif not (isinstance(phase, (int, float)) and 0 <= phase <= 2 * np.pi):
         raise ValueError('phase must be a number between zero and 2pi')
 
-    
-    t=np.arange(0,duration,1/fs)
-    
-    f=fmin+(fmax-fmin)*norm_decimal_power(t-tc,powerLaw,symmetry=powerSymmetry)
+    t = np.arange(0, duration, 1 / fs)
 
+    f = fmin + (fmax - fmin) * norm_decimal_power(t - \
+                tc, powerLaw, symmetry=powerSymmetry)
 
     # FINAL BURST INJECTION
-    hp=np.cos(2*np.pi*f*t+phase)   
-    hc=np.sin(2*np.pi*f*t+phase)   
+    hp = np.cos(2 * np.pi * f * t + phase)
+    hc = np.sin(2 * np.pi * f * t + phase)
 
-    if returnFrequency == True:
-        return(hp,hc,f)
+    if returnFrequency:
+        return (hp, hc, f)
     else:
-        return (hp,hc)
+        return (hp, hc)
 
-    
 
-    
-    
 # def old_chirplet(T,fs
 #               ,t0=0
 #               ,f0=20+np.random.rand()*30
@@ -661,13 +657,12 @@ def chirplet(duration
 #               ,demo=False):
 
 
-
 #     # ENVELOPE FORM
 
 #     ## WNB FORM
 
 #     if wnb_envelope==True:
-        
+
 #         wnb_fc = 2+np.random.rand()*10
 #         wnb_df = 1+np.random.rand()+5
 #         t,wnb=WNB(param=[1, wnb_fc, wnb_df ],T=T,fs=fs,q='noenv')
@@ -679,7 +674,7 @@ def chirplet(duration
 #     if ENV=='double':
 #         q1=0.2+np.random.rand()*0.6
 #         q2=0.2+np.random.rand()*0.6
-        
+
 #         sig1=2.5+np.random.rand()*2
 #         sig2=2.5+np.random.rand()*2
 
@@ -713,15 +708,14 @@ def chirplet(duration
 #     f=f0+((fe-f0)/((1-tc)**n+tc**n))*decimal_power(t-tc,n)+((fe-f0)*(tc**n)/((1-tc)**n+tc**n))
 
 
-
 #     # FINAL BURST INJECTION
-#     s=env*np.cos(2*np.pi*f*(t-t0)+phi)   
+#     s=env*np.cos(2*np.pi*f*(t-t0)+phi)
 
 #     if demo==True:
 #         fig=plt.figure(figsize=(15,7))
 
 #         gs = gridSpec.GridSpec(2,3, figure=fig)
-        
+
 #         ax0=fig.add_subplot(gs[0,0:2])
 #         ax0.plot(t,s,'royalblue')
 #         ax0.set_title('Waveform Timeseries')
@@ -734,264 +728,237 @@ def chirplet(duration
 #         ax0s.set_title('Waveform FFT')
 #         ax0s.set_xlabel('Frequency')
 #         ax0s.set_ylabel('Amplitude')
-        
+
 #         ax1=fig.add_subplot(gs[0,2])
 #         ax1.plot(t,f,'blueviolet')
 #         ax1.set_title('Frequency change function')
 #         ax1.set_ylabel('Frequency')
 #         ax1.set_xlabel('Time')
 
-        
 #         ax2=fig.add_subplot(gs[1,2])
 #         ax2.plot(t,env,'g')
 #         ax2.set_title('Envelope function')
 #         ax2.set_xlabel('Time')
-#         ax2.set_ylabel('Amplitude')        
+#         ax2.set_ylabel('Amplitude')
 #         if wnb_envelope==True:
 #             ax2.plot(t,wnb+1.5)
 #     else:
 #         return(t,s)
 
 
-from mly.checkingFunctions import *
-import numpy as np
-
-
-
 def minFrequencyEstimation(m1  # Mass 1
-                         ,m2 # Mass 2      
-                         ,injectionDuration):  # The duration of the expected waveform
-
+                           , m2  # Mass 2
+                           , injectionDuration):  # The duration of the expected waveform
     """ Function to estimate the minimum frequency that will appear
     in beggining of a waveform generated with duration 'injectionDuration'
     This function uses the simple inspiral law and it becomes less accurate
     as 'injectionDuration' becomes smaller.
-    
+
     Parameters
     ----------
-    
+
     m1 : float
         The mass of the first object
-        
+
     m2 : float
         The mass of the second object
-        
+
     injectionDuration : float
-        The duration of the injection we pottentially want to make. 
-        
-        
+        The duration of the injection we pottentially want to make.
+
+
     Returns
     -------
-    
+
     minimum frequency : float
         This is the frequency of the inspiraly roughly <injectionDuration>
         time before the merger.
-    
+
     Note
     ----
-    
+
     Given that the merger time is not at the end of the injection but ~0.1 ms
-    before the end, the minimum frequency returned is that of a slightly earlier 
+    before the end, the minimum frequency returned is that of a slightly earlier
     time. It is not adviced to use this function for times close to merger (t<1s)
-    
+
     """
-    G=6.674*1e-11
-    Ms=1.9891*1e30
-    c=3*1e8
-    MC= ((((m1*m2)**3.)/(m1+m2))**(1./5.)) *Ms
-    minf=((injectionDuration/5.)**(-3./8.))*(1/(8*np.pi))*((G*MC/c**3)**(-5./8.))
+    G = 6.674 * 1e-11
+    Ms = 1.9891 * 1e30
+    c = 3 * 1e8
+    MC = ((((m1 * m2)**3.) / (m1 + m2))**(1. / 5.)) * Ms
+    minf = ((injectionDuration / 5.)**(-3. / 8.)) * \
+        (1 / (8 * np.pi)) * ((G * MC / c**3)**(-5. / 8.))
     # Defaulf minimum function for extream cases.
-    if (minf<=1):
+    if (minf <= 1):
         minf = 1.0
-    
+
     return minf
 
 
-def maxFrequencyCalculation( m1  # Mass 1
-                             ,m2 # Mass 2    
-                             ,spin1=0
-                             ,spin2=0
-                             ,aproximant = 'SEOBNRv4'):
-    
+def maxFrequencyCalculation(m1  # Mass 1
+                            , m2  # Mass 2
+                            , spin1=0, spin2=0, aproximant='SEOBNRv4'):
     """Calculation of the maximum frequency an cbc merger will have.
-    
+
     Parameters
     ----------
 
     m1 : float
         The mass of the first object.
-        
+
     m2 : float
         The mass of the second object.
-        
+
     spin1 : float
         The mass of the first object.
-        
+
     spin2 : float
-        The mass of the second object.   
-        
+        The mass of the second object.
+
     aproximant : {'TaylorT1', 'TaylorT2', 'TaylorT3', 'EOBNRv2', 'EOBNRv2HM', 'SEOBNRv1', 'SEOBNRv2', 'SEOBNRv2_opt', 'SEOBNRv4', 'SEOBNRv4_opt', 'IMRPhenomA', 'IMRPhenomB', 'IMRPhenomC', 'TaylorEt', 'TaylorT4', 'EccentricTD', 'TaylorF2', 'TaylorF2NL'}
         The aproximant that is going to be used.
-        
+
     Returns
     -------
-    
+
     maximum frequency : float
         This is the maximum frequency of the inspiral for given aproximant.
-        
+
     Note
     ----
-    
+
     Not all aproximants are available for this calculation. Although this should
     be approached as a rough estimation, unless certainty is needed.
     """
 
+    f = ut.get_final_freq(aproximant, m1, m2, spin1, spin2)
 
-    f=ut.get_final_freq(aproximant, m1,m2, spin1, spin2)
-    
     return f
 
 
-
-
-
-
-def cbc(duration
-       ,fs
-       ,detectors
-       ,massRange
-       ,massStep=1
-       ,rep=1
-       ,destinationDirectory=None
-       ,aproximant='IMRPhenomD'
-       ,test=False):
-    
+def cbc(
+        duration,
+        fs,
+        detectors,
+        massRange,
+        massStep=1,
+        rep=1,
+        destinationDirectory=None,
+        aproximant='IMRPhenomD',
+        test=False):
     """Creation of cbc signals using aproximants.
-    
+
     Parameters
     ----------
-    
+
     duration: float/int
         The duration in which the merger will be cropped. For example if duration is 1 second
         only the last second of the signal will be returned.
-        
+
     fs: int
         Sample frequency of the signal.
-        
+
     detectors: list/str
         A list or string to indicate which detectors we want to project the signals.
         For simplicity only acronyms are used. For example for projecting the singalt
         to Ligo Hanfort and Livingston and Virgo, detectors should be 'HLV' or ['H','L','V'].
-        
+
     massRange: list/tuple
         The first and the last mass value to be used in the iteration. All combination of
         the masses in this range will be tried, with the step given from the massStep parameter.
-        
+
     massStep: float/int
         The step used in the range of masses.
-        
+
     rep: int
         The number of repetitions to be used for each mass combination. Note that this will
         not use the same spin parameter or sky localisation parameter for obvious reasons.
-        
+
     destinationDirectory: str (optional)
         The path to save the injections. If it is not defined (None) it will return the
         plot of injections instead.
-    
+
     aproximant: str (specific)
         The aproximant to use for the waveform requested. Only specific aproximants are used.
         The can be found by using the pycbc function 'pycbc.pnutils.td_approximants()'.
-        
+
     test: bool
-        If True it returns only the number of waveforms that could potentially be generated 
+        If True it returns only the number of waveforms that could potentially be generated
         for the given parameters. If False, it will generate injections.
-        
+
     Returns
     -------
-    
+
         None
     """
-        
+
     check_duration(duration)
     check_fs(fs)
     check_massRange(massRange)
     check_mass(massStep)
     detectors = check_detectors(detectors)
-    destinationDirectory = check_validDirectory(destinationDirectory,default=None)
+    destinationDirectory = check_validDirectory(
+        destinationDirectory, default=None)
 
-    
     # Detector description is different in pycbc than ours
-    detectors=list(detectors[d]+'1' for d in range(len(detectors)))
-        
-    count=0
+    detectors = list(detectors[d] + '1' for d in range(len(detectors)))
+
+    count = 0
     M_min, M_max = massRange[0], massRange[1]
     # we repeat rep times the same combination of m1,m2
     for _rep in range(rep):
         # loop over m1
-        for i in np.arange(M_min, M_max,massStep):
-            #loop over m2
-            for j in np.arange(M_min, M_max,massStep):
-                
+        for i in np.arange(M_min, M_max, massStep):
+            # loop over m2
+            for j in np.arange(M_min, M_max, massStep):
+
                 # creating random spin parameters
-                spin1 = 2*np.random.rand()-1
-                spin2 = 2*np.random.rand()-1
-                
+                spin1 = 2 * np.random.rand() - 1
+                spin2 = 2 * np.random.rand() - 1
+
                 # spins affect a lot the maximum frequency
                 # calculation of max frequency given parameters
-                maxf = maxFrequencyCalculation( i  # Mass 1
-                                                ,j # Mass 2    
-                                                ,spin1=spin1
-                                                ,spin2=spin2
-                                                ,aproximant = 'SEOBNRv4')
-                
+                maxf = maxFrequencyCalculation(i  # Mass 1
+                                               , j  # Mass 2
+                                               , spin1=spin1, spin2=spin2, aproximant='SEOBNRv4')
+
                 # if maxf below Niquest we create the waveform,
                 # else we skip this combination of parameters
-                if maxf <= fs/2 :
-                    count+=1
+                if maxf <= fs / 2:
+                    count += 1
                     # If we just use test, we don't need waveform
-                    if test==True:
+                    if test:
                         continue
-                        
+
                     # Function that gives us the waveform
-                    hp, hc = get_td_waveform(approximant=aproximant
-                                             ,mass1=i
-                                             ,mass2=j
-                                             ,spin1z=spin1
-                                             ,spin2z=spin2
-                                             ,inclination=np.pi*np.random.rand()
-                                             ,coa_phase=2*np.pi*np.random.rand()
-                                             ,distance=100
-                                             ,delta_t=1.0/fs
-                                             ,f_lower=minFrequencyEstimation(i,j,duration)
-                                            )
-                    
+                    hp, hc = get_td_waveform(approximant=aproximant, mass1=i, mass2=j, spin1z=spin1, spin2z=spin2, inclination=np.pi * np.random.rand(
+                    ), coa_phase=2 * np.pi * np.random.rand(), distance=100, delta_t=1.0 / fs, f_lower=minFrequencyEstimation(i, j, duration))
+
                     # Projection of waveform to an injection
-                    pod=projectWave( (np.array(hp),np.array(hc))
-                                    ,detectors
-                                    ,fs
-                                    ,declination=None # random and uniformal
-                                    ,rightAscension=None # random and uniformal
-                                    ,polarisationAngle=None # random and uniformal
-                                    ,time=0
-                                    ,padCrop=1
-                                    ,outputFormat='datapod')
-                    
+                    pod = projectWave((np.array(hp), np.array(hc)), detectors, fs, declination=None  # random and uniformal
+                                      , rightAscension=None  # random and uniformal
+                                      , polarisationAngle=None  # random and uniformal
+                                      , time=0, padCrop=1, outputFormat='datapod')
+
                     # Cropping the result when bigger than desired
-                    if len(pod.strain[0]) > fs*duration:
-                        croppedStrain=list(st[-int(duration*fs):] for st in pod.strain)
-                    
-                        pod.strain=croppedStrain
-                        pod.duration=duration
-                    
+                    if len(pod.strain[0]) > fs * duration:
+                        croppedStrain = list(
+                            st[-int(duration * fs):] for st in pod.strain)
+
+                        pod.strain = croppedStrain
+                        pod.duration = duration
+
                     # If destinationDirectory defined , we save the pod
-                    if destinationDirectory!=None:
+                    if destinationDirectory is not None:
                         # Creation of a name
-                        name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(rep)
-                        pod.save(destinationDirectory+name)
+                        name = 'cbc_' + str(int(i)) + '_' + \
+                            str(int(j)) + '_repNo' + str(_rep)
+                        pod.save(destinationDirectory + name)
                     else:
                         pod.plot()
-                    
+
                     # printing a statement to verify that the script is running
-                    if count%100==0: print(count,'File '+name+' is successfully saved')
-    if test==True:
+                    if count % 100 == 0:
+                        print(count, 'File ' + name + ' is successfully saved')
+    if test:
         print(count)
