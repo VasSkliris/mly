@@ -938,26 +938,50 @@ class DataSet(DataSetBase):
 
         if injectionFolder == None:
             pass
-        elif isinstance(injectionFolder, str):            
-            if (('/' in injectionFolder) and os.path.isdir(injectionFolder)):
-                injectionFolder_set = injectionFolder.split('/')[-1]
-            elif (('/' not in injectionFolder) and any('injections' in p for p in sys.path)):
-                    for p in sys.path:
-                        if ('injections' in p):
-                            injectionFolder_path = (p.split('injections')[0]+'injections'
-                                +'/'+injectionFolder)
-                            if os.path.isdir(injectionFolder_path):
-                                injectionFolder = injectionFolder_path
-                                injectionFolder_set = injectionFolder.split('/')[-1]
-                            else:
-                                raise FileNotFoundError('No such file or directory:'
-                                                        +injectionFolder_path)
-
+        
+        # Path input
+        elif isinstance(injectionFolder, str): 
+            
+            # directory with pods path
+            if os.path.isdir(injectionFolder):
+                
+                if injectionFolder[-1] != "/": injectionFolder+="/" 
+                
+                if all(os.path.isdir(injectionFolder+det) for det in detectors):
+                
+                    inj_type = 'oldtxt'
+                else:
+                    inj_type = 'directory'
+               
+            # dataPod or dataSet path
+            elif (os.path.isfile(injectionFolder) and injectionFolder[-4:]=='.pkl'):
+                with open(injectionFolder,'rb') as obj:
+                    injectionFolder = pickle.load(obj)
+                if isinstance(injectionFolder,DataPod):
+                    inj_type = 'DataPod'
+                elif isinstance(injectionFolder,DataSet):
+                    if len(injectionFolder) > 0:
+                        inj_type = 'DataSet'
+                    else:
+                        raise ValueError("injectionFolder DataSet is empty")
+            
             else:
-                raise FileNotFoundError('No such file or directory:'+injectionFolder) 
+                raise FileNotFoundError('Not valid directory for :'+injectionFolder)
+        # DataSet                     
+        elif isinstance(injectionFolder,DataSet):
+                                    
+            if len(injectionFolder) > 0:
+                inj_type = 'DataSet'
+            else:
+                raise ValueError("injectionFolder DataSet is empty")
+        
+        # DataPod
+        elif isinstance(injectionFolder,DataPod):
+            inj_type = 'DataPod'
+
         else:
-            raise TypeError("cbcFolder has to be a string indicating a folder "
-                            +"in MLyWorkbench or a full path to a folder")
+            raise Type('Not valid input for injectionFolder:'+injectionFolder
+                        ,"\nIt has to be either a folder or a DataPod or DataSet object.") 
 
         # ---------------------------------------------------------------------------------------- #   
         # --- labels ----------------------------------------------------------------------------- #
@@ -1177,13 +1201,22 @@ class DataSet(DataSetBase):
 
             if injectionFolder == None:
                 injectionFileDict[det] = None
+            elif inj_type == 'oldtxt':
+                injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
+                                
+            elif inj_type == 'directory':
+                injectionFileDict[det] = dirlist(injectionFolder)
+                                        
+            elif inj_type == 'DataPod':
+                injectionFileDict[det] = [injectionFolder]
+                                        
+            elif inj_type == 'DataSet':
+                injectionFileDict[det] = [injectionFolder.datsPods]
+                                        
             else:
-                if det in dirlist(injectionFolder):
-                    injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
-                    injFormat='txt'
-                else:
-                    injectionFileDict[det] = dirlist(injectionFolder)
-                    injFormat='pod'
+                raise TypeError("Unknown type of injections")
+                                        
+
 
         # --- PSDm PSDc
         if 'PSDm' in kwargs: 
@@ -1392,28 +1425,45 @@ class DataSet(DataSetBase):
                         for det in detectors: 
                             index_sample=np.random.randint(0,
                                                       len(injectionFileDict[detKeys[0]]))
-                            if injFormat=='txt':
+                            
+                            if inj_type =='oldtxt':
                                 sampling_strain=np.loadtxt(injectionFolder+'/'
                                                            +det+'/'+injectionFileDict[det][index_sample])
-                            else:
+                                
+                            elif inj_type == 'directory':
                                 s_pod=DataPod.load(injectionFolder+
-                                                             '/'+injectionFileDict[det][index_sample])
+                                                             '/'+injectionFileDict[det])
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                            
+                            # case where we pass one pod only
+                            elif inj_type == 'DataPod':
+                                raise TypeError("You cannot have single pod for inejctions and "
+                                                +" also differentSignals = True")
+                                
+                            elif inj_type == 'DataSet':
+                                s_pod = injectionFileDict[det][index_sample] 
+                                sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                                                                
                                 
                             while (len(sampling_strain)/fs > maxDuration_ 
                                    or index_sample in list(index_selection.values())):
                                 index_sample=np.random.randint(0,
                                                           len(injectionFileDict[detKeys[0]]))
                                 
-                                if injFormat=='txt':
+                                if inj_type=='oldtxt':
                                     sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                    +det+'/'+injectionFileDict[det][index_sample])
-                                else:
-                                    s_pod=DataPod.load(injectionFolder+
-                                                                 '/'+injectionFileDict[det][index_sample])
-                                    sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                                                           +det+'/'+injectionFileDict[det][index_sample])
+                                
+                                elif inj_type == 'directory':
+                                    sampling_strain=np.loadtxt(injectionFolder+'/'
+                                                           +det+'/'+injectionFileDict[det][index_sample])
                             
-                            index_selection[det]=index_sample
+                                elif inj_type == 'DataSet':
+                                    s_pod = injectionFileDict[det][index_sample] 
+                                    sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+
+                                index_selection[det]=index_sample
+                                
                     else:
                         for det in detectors: 
                             index_sample=np.random.randint(0,
@@ -1426,24 +1476,42 @@ class DataSet(DataSetBase):
                     if maxDuration_ != duration:
                         index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
                         
-                        if injFormat=='txt':
+                        if inj_type =='oldtxt':
                             sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                   +det+'/'+injectionFileDict[det][index_sample])
-                        else:
+                                                       +det+'/'+injectionFileDict[det][index_sample])
+
+                        elif inj_type == 'directory':
                             s_pod=DataPod.load(injectionFolder+
-                                                             '/'+injectionFileDict[det][index_sample])
+                                                         '/'+injectionFileDict[det])
+                            sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+
+                        elif inj_type == 'DataPod':
+                            s_pod=injectionFolder
+                            sampling_strain=s_pod.strain[s_pod.detectors.index(det)]         
+
+                        elif inj_type == 'DataSet':
+                            s_pod = injectionFileDict[det][index_sample] 
                             sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                             
                         while (len(sampling_strain)/fs > maxDuration_
                                or index_sample in list(index_selection.values())):
                             index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
 
-                            if injFormat=='txt':
+                            if inj_type =='oldtxt':
                                 sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                       +det+'/'+injectionFileDict[det][index_sample])
-                            else:
+                                                           +det+'/'+injectionFileDict[det][index_sample])
+                                
+                            elif inj_type == 'directory':
                                 s_pod=DataPod.load(injectionFolder+
-                                                                 '/'+injectionFileDict[det][index_sample])
+                                                             '/'+injectionFileDict[det])
+                                sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
+                            
+                            elif inj_type == 'DataPod':
+                                s_pod=injectionFolder
+                                sampling_strain=s_pod.strain[s_pod.detectors.index(det)]         
+                                                   
+                            elif inj_type == 'DataSet':
+                                s_pod = injectionFileDict[det][index_sample] 
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
                         for det in detectors: index_selection[det]=index_sample
@@ -1538,15 +1606,28 @@ class DataSet(DataSetBase):
                     gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
-                if injectionFolder != None:
+                if injectionFolder != None:      
+                                                   
                     # Calling the templates generated with PyCBC
                     # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
-                    if injFormat=='txt':
+                    if inj_type =='oldtxt':
                         inj = np.loadtxt(injectionFolder+'/'
                                          +det+'/'+injectionFileDict[det][index_selection[det]])
-                    else:
+                    
+                    elif inj_type == 'directory':
                         inj_pod=DataPod.load(injectionFolder+'/'+injectionFileDict[det][index_selection[det]])
                         inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
+                                    
+                        
+                    elif inj_type == 'DataPod':
+                        inj_pod=injectionFolder
+                        inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
+                                
+                    elif inj_type == 'DataSet':
+                        inj_pod = injectionFileDict[det][index_selection[det]]
+                        inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
+                                
+                    if inj_type in ['DataSet','DataPod','directory']:
                                     
                         if injectionHRSS!=None:
                             if 'hrss' in inj_pod.pluginDict.keys():
@@ -1737,7 +1818,8 @@ class DataSet(DataSetBase):
                                ,gps = gps_list
                                ,duration = duration)
                 
-            if injectionFolder!=None and injFormat=='pod':
+            if injectionFolder!=None and inj_type in ['DataSet','DataPod','directory']:
+
                 for plkey in list(inj_pod.pluginDict.keys()):
                     if not (plkey in list(pod.pluginDict.keys())):
                         pod.addPlugIn(inj_pod.pluginDict[plkey])
