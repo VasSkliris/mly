@@ -1261,7 +1261,6 @@ class DataSet(DataSetBase):
         elif backgroundType in ['sudo_real','real']:
             param = 1
             gps0 = {}
-            
             if noiseFormat=='txtD':
                 
                 for det in detectors:
@@ -1328,11 +1327,12 @@ class DataSet(DataSetBase):
                     file_=noiseSourceFile
                     
                 if 'Pod' in str(type(file_)):
-                    
+                    noiseFormat = 'DataPod'
                     for det in detectors:
                         noise_segDict[det] = file_.strain[detectors.index(det)]
                     
                         gps0[det]=float(file_.gps[detectors.index(det)])
+                        
                     
                     ind=internalLags(detectors = detectors
                                        ,lags = timeSlides
@@ -1342,11 +1342,55 @@ class DataSet(DataSetBase):
                                                    -startingPoint-(windowSize-duration))
                                        ,start_from_sec=startingPoint)
                     
+                    if size > int(len(noise_segDict[detectors[0]])/fs
+                                                   -startingPoint-(windowSize-duration)):
+                        print("Requested size is bigger that the noise sourse data"
+                                         +" can provide. Background will be used multiple times")
+                        
+                        indexRepetition = ceil(size/int(len(noise_segDict[detectors[0]])/fs
+                                                   -startingPoint-(windowSize-duration)))
+                        
+                        for det in detectors:
+                            ind[det] = indexRepetition*ind[det]
+                    
                 elif 'Set' in str(type(file_)):
+                    noiseFormat = 'DataSet'
+                    for podi in range(len(file_)):
+                        
+                        if podi==0:
+                            for det in detectors:
+                                noise_segDict[det] = [file_[podi].strain[detectors.index(det)]]
+
+                                gps0[det]=float(file_[podi].gps[detectors.index(det)])
+                                if len(file_[podi].strain[detectors.index(det)])!=windowSize*fs:
+                                    raise ValueError("Noise source data are not in the shape expected.")
+
+                        else:
+                            for det in detectors:
+                                noise_segDict[det].append(file_[podi].strain[detectors.index(det)])
+
                     
-                    pass #for now
+
+                    ind=internalLags(detectors = detectors
+                                       ,lags = timeSlides
+                                       ,duration = duration
+                                       ,fs = 1
+                                       ,size = len(file_)
+                                       ,start_from_sec=startingPoint)
                     
-                    
+                    print(ind)
+
+                    if size > len(file_):
+                        print("Requested size is bigger that the noise sourse data"
+                                         +" can provide. Background will be used multiple times")
+
+                        indexRepetition = ceil(size/len(file_))
+                        
+                        for det in detectors:
+                            ind[det] = indexRepetition*ind[det]
+                            noise_segDict[det] = indexRepetition*noise_segDict[det]
+                            
+                            
             
 
             elif noiseFormat=='gwdatafind':
@@ -1589,7 +1633,12 @@ class DataSet(DataSetBase):
                 elif backgroundType == 'real':
                     noise_seg=noise_segDict[det]
                     # Calling the real noise segments
-                    noise=noise_seg[int(ind[det][I]):int(ind[det][I])+windowSize*fs]
+                    
+                    if noiseFormat == 'DataSet':
+                        noise=noise_seg[I]
+
+                    else:
+                        noise=noise_seg[int(ind[det][I]):int(ind[det][I])+windowSize*fs]
                     # Calculatint the psd of FFT=1s
                     p, f = psd(noise, Fs=fs,NFFT=fs)
                     # Interpolate so that has t*fs values

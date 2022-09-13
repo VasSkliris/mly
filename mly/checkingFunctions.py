@@ -339,6 +339,9 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
         
     filelist=dirlist(masterDirectory+"/"+detectors[0])
     firstfile=DataSet.load(masterDirectory+"/"+detectors[0]+"/"+filelist[0])
+    
+
+    if len(firstfile)==0: raise ValueError("DataSet provided is empty")
 
     duration=firstfile[0].duration
     fs=firstfile[0].fs
