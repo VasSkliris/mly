@@ -9,12 +9,15 @@ from math import *
 import tensorflow as tf
 import healpy as hp
 import numpy as np
+from gwpy.timeseries import TimeSeries
 from pycbc.detector import Detector
 from ligo.skymap.io import fits
 from .projectwave import *
 from .plugins import *
 from .validators import *
 from .datatools import *
+import matplotlib.pyplot as plt
+
 __author__ = "Wasim Javed, Michael Norman, Vasileios Skliris, Kyle Willetts, and"
 "Patrick Sutton."
 
@@ -29,7 +32,7 @@ def GPStoGMST(gps):
 
     gps0 = 630763213   # Start of J2000 epoch, Jan 1 2000 at 12:00 UTC
 
-    D = (gps - gps0) / 86400.0   # Days since J2000
+    D = (gps - gps0) / 86400.0   # Days since J2000 
 
     # Days between J2000 and last 0h at Greenwich (always integer + 1/2)
     d_u = np.floor(D) + 0.5
@@ -120,17 +123,16 @@ def timeDelayShiftTensorflow(strain, freq, shift):    # sample frequency
         tf.complex(
             tf.cast(
                 0.0, tf.float64), -2 * np.pi * freq * shift))
-    y = tf.signal.irfft(phaseFactor * strainFFT)
-
-    return tf.math.real(y)
+    
+    return tf.math.real(phaseFactor * strainFFT)
 
 
 # Convert function to tensorflow graph:
 tf_fft = tf.function(timeDelayShiftTensorflow)
 
-
 def calculateSkyMap(
-    strain,
+    strain, 
+    noise_spectrum,
     frequency_axis,
     dt,
     null_vector,
@@ -138,6 +140,18 @@ def calculateSkyMap(
     num_detectors,
     num_samples
 ):
+    #Rescale to allow exponential to be taken:
+    
+    scaling_factor = 10e20
+    strain = tf.math.scalar_mul(
+        tf.cast(scaling_factor,tf.float64), 
+        strain
+    )
+    noise_spectrum = tf.math.scalar_mul(
+        tf.square(tf.cast(scaling_factor,tf.float64)), 
+        noise_spectrum
+    )
+    
     # Reshape tensors into compatible shape for operation:
     strain = tf.reshape(
         strain,
@@ -155,6 +169,10 @@ def calculateSkyMap(
         null_vector,
         [num_pixels, num_detectors, 1]
     )
+    noise_spectrum = tf.reshape(
+        noise_spectrum,
+        [1, num_detectors, (int)(num_samples / 2) + 1]
+    )
 
     # Calculate shifted positions using phase correction:
     shifted_strain = tf_fft(strain, frequency_axis, dt)
@@ -163,19 +181,46 @@ def calculateSkyMap(
     response = tf.math.multiply(shifted_strain, null_vector)
 
     # Calculate map:
-    coherent_null_energy = tf.math.reduce_sum(
+    null_stream_noise_spectrum = \
+        tf.reduce_sum(
+            tf.math.multiply(tf.math.square(null_vector), noise_spectrum),
+            axis = 1)
+    
+    coherent_null_energy = tf.divide(
         tf.math.square(
             tf.math.reduce_sum(
                 response,
-                axis=1)),
-        axis=1)
+                axis=1
+            )),
+        null_stream_noise_spectrum)
+    
+    coherent_null_energy = tf.math.reduce_sum(coherent_null_energy, axis=1)
+        
+    # Normalising map sum to one to avoid precision error
+    coherent_null_energy = \
+        tf.math.divide(
+            coherent_null_energy, 
+            tf.math.reduce_sum(coherent_null_energy)
+        );
 
-    return coherent_null_energy
+    # Convert to Gaussian probability map:
+    probability_map = \
+        tf.math.exp(
+            -tf.math.scalar_mul(tf.cast(0.5, tf.float64), coherent_null_energy)
+        );    
+    
+    # Normalising map sum to one:
+    probability_map = \
+        tf.math.divide(
+            probability_map, 
+            tf.math.reduce_sum(probability_map)
+        );
+    
+    return probability_map
 
 
 # Convert function to tensroflow graph:
 calc_map = tf.function(calculateSkyMap)
-
 
 def returnNULLVector(num_pixels, theta, phi, detectors, gps_time):
 
@@ -220,15 +265,24 @@ def signaltoskymap(
     num_samples,
     null_vector
 ):
+    
+    noise_spectrum = np.empty([num_detectors, len(frequency_axis)])    
+    for i, ts in enumerate(strain):        
+        noise_spectrum[i] = plt.psd(ts, NFFT=num_samples)[0]
+    
+    strain = strain[:,-num_samples:]
+    
     # Convert required arrays into tensorflow tensors:
     frequency_axis = tf.convert_to_tensor(frequency_axis)
     strain = tf.convert_to_tensor(strain)
     dt_vector = tf.convert_to_tensor(dt_vector)
     null_vector = tf.convert_to_tensor(null_vector)
+    noise_spectrum = tf.convert_to_tensor(noise_spectrum)
 
     # Run tensorflow graph:
     coherent_null_energy = calc_map(
         strain,
+        noise_spectrum,
         frequency_axis,
         dt_vector,
         null_vector,
@@ -239,7 +293,7 @@ def signaltoskymap(
 
     # Convert back to numpy arrays:
     coherent_null_energy = coherent_null_energy.numpy()
-
+    
     return coherent_null_energy
 
 
@@ -295,9 +349,7 @@ def createSkymapPlugin(nside, fs, duration):
 
     return skymap_plugin
 
-
 def saveFitsFile(pod, file_path):
-
     null_energy_map = pod.null_energy_map
 
     with open(file_path, "w") as f:
