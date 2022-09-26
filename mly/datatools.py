@@ -1376,9 +1376,9 @@ class DataSet(DataSetBase):
                                        ,duration = duration
                                        ,fs = 1
                                        ,size = len(file_)
-                                       ,start_from_sec=startingPoint)
+                                       ,start_from_sec=startingPoint
+                                       ,includeZeroLag=False)
                     
-                    print(ind)
 
                     if size > len(file_):
                         print("Requested size is bigger that the noise sourse data"

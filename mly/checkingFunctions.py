@@ -415,7 +415,7 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
                 else:
                     raise ValueError("No files passed to be used")
 
-            elif all(os.isfile(masterDirectory+"/"+det+"/"+el) for el in dataSets):
+            elif all(os.path.isfile(masterDirectory+"/"+det+"/"+el) for el in dataSets):
 
                 if len(dataSets)!=0 : 
                     theSet=DataSet.load(masterDirectory+"/"+det+"/"+dataSets[0])
