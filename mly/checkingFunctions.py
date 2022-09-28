@@ -419,7 +419,7 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
 
                 if len(dataSets)!=0 : 
                     theSet=DataSet.load(masterDirectory+"/"+det+"/"+dataSets[0])
-                    for f in range(1,len(filesToUse)):
+                    for f in range(1,len(dataSets)):
                         subset=DataSet.load(masterDirectory+"/"+det+"/"+dataSets[f])
                         theSet.add(subset)
                 else:
