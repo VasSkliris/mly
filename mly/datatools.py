@@ -1675,9 +1675,6 @@ class DataSet(DataSetBase):
             SNR_new=[]
             psdPlugDict={}
             plugInToApply=[]
-            clean_whiten = []
-
-
 
             for det in detectors:
                 if injectionHRSS!=None:
@@ -1691,26 +1688,6 @@ class DataSet(DataSetBase):
                     inj_cal=0.0001*np.real(np.fft.ifft(fs*fft_cal)) 
                 else:
                     inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
-                    
-                if 'clean_inj' in plugins:
-                
-                    signal_main = TimeSeries( inj_cal, sample_rate=fs, t0=0)
-                    background_noise = TimeSeries( back_dict[det], sample_rate=fs, t0=0)
-                    strain = signal_main + background_noise
-
-                    asd = strain.asd(4, 2)
-                    strain = strain.whiten( 4, 2, fduration=4, asd=asd, highpass=20).astype('float64')
-                    asd_dict[det] = asd
-
-                    # if "clean_inj" in plugins:
-
-                    w = signal_main.whiten(
-                        4, 2, fduration=4, asd=asd, highpass=20).astype('float64')
-                    w = w[int(((windowSize - duration) / 2) * fs)                      :int(((windowSize + duration) / 2) * fs)]
-                    clean_whiten.append(w.value.tolist())
-                
-                    
-                    
                 # Joining calibrated injection and background noise
                 strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
@@ -1740,12 +1717,6 @@ class DataSet(DataSetBase):
 
                 if 'psd' in plugins:
                     podPSD.append(asd_dict[det]**2)
-            
-            if 'clean_inj' in plugins:
-
-                clean_inj = PlugIn('clean_inj', clean_whiten)
-                plugInToApply.append(clean_inj)
-
             
             if 'psd' in plugins:
                 plugInToApply.append(PlugIn('psd'
