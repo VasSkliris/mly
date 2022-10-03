@@ -660,7 +660,7 @@ class DataSet(DataSetBase):
         if shape == None:
             shape = goods.shape
             shape = tuple([None]+list(shape[1:]))
-        print("goods.shape",goods.shape)
+        # print("goods.shape",goods.shape)
         if isinstance(shape,tuple):
             if all(((dim in goods.shape) or dim==None) for dim in shape):
                 shapeList = list(shape)
