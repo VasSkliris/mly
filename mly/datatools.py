@@ -1476,7 +1476,7 @@ class DataSet(DataSetBase):
                                 
                             elif inj_type == 'directory':
                                 s_pod=DataPod.load(injectionFolder+
-                                                             '/'+injectionFileDict[det])
+                                                             '/'+injectionFileDict[det][index_sample])
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                             
                             # case where we pass one pod only
@@ -1488,9 +1488,11 @@ class DataSet(DataSetBase):
                                 s_pod = injectionFileDict[det][index_sample] 
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                                                                 
-                                
+                            index_selection[det]=index_sample
+
                             while (len(sampling_strain)/fs > maxDuration_ 
-                                   or index_sample in list(index_selection.values())):
+                                   or list(index_selection.values()).count(index_sample) > 1 ):
+                                
                                 index_sample=np.random.randint(0,
                                                           len(injectionFileDict[detKeys[0]]))
                                 
@@ -1499,8 +1501,9 @@ class DataSet(DataSetBase):
                                                            +det+'/'+injectionFileDict[det][index_sample])
                                 
                                 elif inj_type == 'directory':
-                                    sampling_strain=np.loadtxt(injectionFolder+'/'
-                                                           +det+'/'+injectionFileDict[det][index_sample])
+                                    s_pod=DataPod.load(injectionFolder+
+                                                             '/'+injectionFileDict[det][index_sample])
+                                    sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                             
                                 elif inj_type == 'DataSet':
                                     s_pod = injectionFileDict[det][index_sample] 
@@ -1512,10 +1515,15 @@ class DataSet(DataSetBase):
                         for det in detectors: 
                             index_sample=np.random.randint(0,
                                                       len(injectionFileDict[detKeys[0]]))
-                            while (index_sample in list(index_selection.values())):
+                            
+                            index_selection[det]=index_sample
+
+                            while (list(index_selection.values()).count(index_sample) > 1):
+                                
                                 index_sample=np.random.randint(0,
                                                           len(injectionFileDict[detKeys[0]]))
-                            index_selection[det]=index_sample
+                                
+                                index_selection[det]=index_sample
                 else:
                     if maxDuration_ != duration:
                         index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
@@ -1526,7 +1534,7 @@ class DataSet(DataSetBase):
 
                         elif inj_type == 'directory':
                             s_pod=DataPod.load(injectionFolder+
-                                                         '/'+injectionFileDict[det])
+                                                         '/'+injectionFileDict[det][index_sample])
                             sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
                         elif inj_type == 'DataPod':
@@ -1539,6 +1547,7 @@ class DataSet(DataSetBase):
                             
                         while (len(sampling_strain)/fs > maxDuration_
                                or index_sample in list(index_selection.values())):
+                            
                             index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
 
                             if inj_type =='oldtxt':
@@ -1547,7 +1556,7 @@ class DataSet(DataSetBase):
                                 
                             elif inj_type == 'directory':
                                 s_pod=DataPod.load(injectionFolder+
-                                                             '/'+injectionFileDict[det])
+                                                             '/'+injectionFileDict[det][index_sample])
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
                             
                             elif inj_type == 'DataPod':
