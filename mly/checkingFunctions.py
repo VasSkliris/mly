@@ -339,6 +339,9 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
         
     filelist=dirlist(masterDirectory+"/"+detectors[0])
     firstfile=DataSet.load(masterDirectory+"/"+detectors[0]+"/"+filelist[0])
+    
+
+    if len(firstfile)==0: raise ValueError("DataSet provided is empty")
 
     duration=firstfile[0].duration
     fs=firstfile[0].fs
@@ -412,11 +415,11 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
                 else:
                     raise ValueError("No files passed to be used")
 
-            elif all(os.isfile(masterDirectory+"/"+det+"/"+el) for el in dataSets):
+            elif all(os.path.isfile(masterDirectory+"/"+det+"/"+el) for el in dataSets):
 
                 if len(dataSets)!=0 : 
                     theSet=DataSet.load(masterDirectory+"/"+det+"/"+dataSets[0])
-                    for f in range(1,len(filesToUse)):
+                    for f in range(1,len(dataSets)):
                         subset=DataSet.load(masterDirectory+"/"+det+"/"+dataSets[f])
                         theSet.add(subset)
                 else:

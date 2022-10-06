@@ -1,3 +1,4 @@
+import tensorflow as tf
 import pandas as pd
 # Path sourcing and access to the ligo real data
 import sys
@@ -16,19 +17,18 @@ import time
 import multiprocessing
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 print('before tensorflow')
 
-import tensorflow as tf
 from tensorflow.keras.models import load_model
 
 print('after tensorflow')
 
 
-tf.autograph.set_verbosity(
-    0, alsologtostdout=False
-)
+# tf.autograph.set_verbosity(
+#     0, alsologtostdout=False
+# )
 
 
 
@@ -126,7 +126,7 @@ def assembleDataSet( masterDirectory
     dataSet = DataSet(podList)
               
     datasetCreationTime=time.time()
-    print("DATASET CREATION TIME:", datasetCreationTime-t0," ")
+    #print("DATASET CREATION TIME:", datasetCreationTime-t0," ")
     
     return dataSet
 
@@ -162,7 +162,7 @@ def testModel(model
         if len(dataList)==1: dataList=dataList[0]
         
         
-        scores = 1.0 - trainedModels[m].predict(dataList, batch_size=1)[:,columns[m]]
+        scores = 1.0 - trainedModels[m].predict(dataList, batch_size=1, verbose=0)[:,columns[m]]
         
         scores_collection.append(scores.tolist())
 
@@ -318,21 +318,21 @@ def fartestOffline(model
 
     
     
-model1_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model1_32V_No5.h5" # Path to conincident model.
-model2_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model2_32V_No6.h5" # Path to coherence model.
+# model1_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model1_32V_No5.h5" # Path to conincident model.
+# model2_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model2_32V_No6.h5" # Path to coherence model.
 
 
-dfs=fartestOffline(model=[[model1_path,model2_path],[['strain'],['strain','correlation']]]
-                   ,masterDirectory= '/home/vasileios.skliris/masterdir'
-                   ,dataSets=[1185592956,1185592956+1024]
-                   ,detectors='HLV'
-                   ,batches = 1 
-                   ,lags=10
-                   ,includeZeroLag=False
-                   ,restriction=0.5
-                   ,labels={'type':'noise'}
-                   ,mapping= 2*[{ "noise" : [1, 0],"signal": [0, 1]}]
-                   ,GPUs=1)
+# dfs=fartestOffline(model=[[model1_path,model2_path],[['strain'],['strain','correlation']]]
+#                    ,masterDirectory= '/home/vasileios.skliris/masterdir'
+#                    ,dataSets=[1185592956,1185592956+1024]
+#                    ,detectors='HLV'
+#                    ,batches = 1 
+#                    ,lags=10
+#                    ,includeZeroLag=False
+#                    ,restriction=0.5
+#                    ,labels={'type':'noise'}
+#                    ,mapping= 2*[{ "noise" : [1, 0],"signal": [0, 1]}]
+#                    ,GPUs=1)
 
     
 

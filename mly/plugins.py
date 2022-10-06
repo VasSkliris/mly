@@ -137,7 +137,7 @@ class PlugIn:
 
 # Default PlugIn objects
 
-known_plug_ins=['snr','hrss','psd','correlation','correlation_12','correlation_30']
+known_plug_ins=['snr','hrss','psd','correlation','correlation_12','correlation_30','clean_inj']
 
 def correlationFunction(strain,detectors,fs,window=None):
     if window==None:
