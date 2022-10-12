@@ -141,7 +141,6 @@ def calculateSkyMap(
     num_samples
 ):
     #Rescale to allow exponential to be taken:
-    
     scaling_factor = 10e20
     strain = tf.math.scalar_mul(
         tf.cast(scaling_factor,tf.float64), 
@@ -202,12 +201,23 @@ def calculateSkyMap(
             coherent_null_energy, 
             tf.math.reduce_sum(coherent_null_energy)
         );
+    
+    # ~ Null energy around fs? or 1
 
     # Convert to Gaussian probability map:
     probability_map = \
         tf.math.exp(
             -tf.math.scalar_mul(tf.cast(0.5, tf.float64), coherent_null_energy)
         );    
+    
+    """ Possible neccisary normalisation
+    frequency_step = tf.subtract(frequency_axis[0], frequency_axis[1])
+    probability_map = \
+        tf.math.scalar_mul(
+            frequency_step,
+            probabilty_map
+        )     
+    """
     
     # Normalising map sum to one:
     probability_map = \
@@ -270,7 +280,14 @@ def signaltoskymap(
     for i, ts in enumerate(strain):        
         noise_spectrum[i] = plt.psd(ts, NFFT=num_samples)[0]
     
-    strain = strain[:,-num_samples:]
+    background_samples = len(strain[0])
+    strain_start = int((background_samples-num_samples)/2)
+    strain_end  = int((background_samples+num_samples)/2)
+    
+    print(background_samples, strain_start, strain_end)
+    strain = strain[:,strain_start:strain_end]
+    
+    print(f"length {len(strain)}")
     
     # Convert required arrays into tensorflow tensors:
     frequency_axis = tf.convert_to_tensor(frequency_axis)
