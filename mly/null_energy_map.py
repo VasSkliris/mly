@@ -194,30 +194,19 @@ def calculateSkyMap(
         null_stream_noise_spectrum)
     
     coherent_null_energy = tf.math.reduce_sum(coherent_null_energy, axis=1)
-        
-    # Normalising map sum to one to avoid precision error
-    coherent_null_energy = \
-        tf.math.divide(
-            coherent_null_energy, 
-            tf.math.reduce_sum(coherent_null_energy)
-        );
     
-    # ~ Null energy around fs? or 1
-
     # Convert to Gaussian probability map:
     probability_map = \
         tf.math.exp(
             -tf.math.scalar_mul(tf.cast(0.5, tf.float64), coherent_null_energy)
         );    
     
-    """ Possible neccisary normalisation
-    frequency_step = tf.subtract(frequency_axis[0], frequency_axis[1])
+    frequency_step = tf.subtract(tf.gather(frequency_axis, 1), tf.gather(frequency_axis, 0))
     probability_map = \
         tf.math.scalar_mul(
             frequency_step,
             probabilty_map
         )     
-    """
     
     # Normalising map sum to one:
     probability_map = \
