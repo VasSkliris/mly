@@ -18,6 +18,8 @@ from .validators import *
 from .datatools import *
 import matplotlib.pyplot as plt
 
+from scipy.stats import chi2
+
 __author__ = "Wasim Javed, Michael Norman, Vasileios Skliris, Kyle Willetts, and"
 "Patrick Sutton."
 
@@ -124,7 +126,7 @@ def timeDelayShiftTensorflow(strain, freq, shift):    # sample frequency
             tf.cast(
                 0.0, tf.float64), -2 * np.pi * freq * shift))
     
-    return tf.math.real(phaseFactor * strainFFT)
+    return phaseFactor * strainFFT
 
 
 # Convert function to tensorflow graph:
@@ -138,7 +140,8 @@ def calculateSkyMap(
     null_vector,
     num_pixels,
     num_detectors,
-    num_samples
+    num_samples,
+    fs
 ):
     #Rescale to allow exponential to be taken:
     scaling_factor = 10e20
@@ -175,10 +178,15 @@ def calculateSkyMap(
 
     # Calculate shifted positions using phase correction:
     shifted_strain = tf_fft(strain, frequency_axis, dt)
-
+    
+    shifted_strain = tf.scalar_mul(
+        tf.cast((1.0/fs),tf.complex128), shifted_strain
+    )
+    
     # Multiply by the null_vector:
-    response = tf.math.multiply(shifted_strain, null_vector)
-
+    null_stream = \
+        tf.math.multiply(shifted_strain, tf.cast(null_vector, tf.complex128))
+    
     # Calculate map:
     null_stream_noise_spectrum = \
         tf.reduce_sum(
@@ -187,50 +195,26 @@ def calculateSkyMap(
     
     coherent_null_energy = tf.divide(
         tf.math.square(
-            tf.math.reduce_sum(
-                response,
-                axis=1
-            )),
+            tf.math.abs(
+                tf.math.reduce_sum(
+                    null_stream,
+                    axis=1
+                ))
+            ),
         null_stream_noise_spectrum)
     
+    plt.figure()
+    plt.plot(coherent_null_energy.numpy()[0])
+    plt.savefig("before_summation.png")
+    
+    coherent_null_energy = tf.math.scalar_mul(tf.cast((2.0*num_samples),tf.float64), coherent_null_energy)
     coherent_null_energy = tf.math.reduce_sum(coherent_null_energy, axis=1)
-        
-    # Normalising map sum to one to avoid precision error
-    coherent_null_energy = \
-        tf.math.divide(
-            coherent_null_energy, 
-            tf.math.reduce_sum(coherent_null_energy)
-        );
     
-    # ~ Null energy around fs? or 1
-
-    # Convert to Gaussian probability map:
-    probability_map = \
-        tf.math.exp(
-            -tf.math.scalar_mul(tf.cast(0.5, tf.float64), coherent_null_energy)
-        );    
-    
-    """ Possible neccisary normalisation
-    frequency_step = tf.subtract(frequency_axis[0], frequency_axis[1])
-    probability_map = \
-        tf.math.scalar_mul(
-            frequency_step,
-            probabilty_map
-        )     
-    """
-    
-    # Normalising map sum to one:
-    probability_map = \
-        tf.math.divide(
-            probability_map, 
-            tf.math.reduce_sum(probability_map)
-        );
-    
-    return probability_map
+    return coherent_null_energy
 
 
 # Convert function to tensroflow graph:
-calc_map = tf.function(calculateSkyMap)
+calc_map = calculateSkyMap #tf.function(calculateSkyMap)
 
 def returnNULLVector(num_pixels, theta, phi, detectors, gps_time):
 
@@ -273,22 +257,20 @@ def signaltoskymap(
     num_pixels,
     num_detectors,
     num_samples,
-    null_vector
+    null_vector,
+    fs
 ):
     
     noise_spectrum = np.empty([num_detectors, len(frequency_axis)])    
     for i, ts in enumerate(strain):        
         noise_spectrum[i] = plt.psd(ts, NFFT=num_samples)[0]
-    
+            
     background_samples = len(strain[0])
     strain_start = int((background_samples-num_samples)/2)
     strain_end  = int((background_samples+num_samples)/2)
-    
-    print(background_samples, strain_start, strain_end)
+        
     strain = strain[:,strain_start:strain_end]
-    
-    print(f"length {len(strain)}")
-    
+        
     # Convert required arrays into tensorflow tensors:
     frequency_axis = tf.convert_to_tensor(frequency_axis)
     strain = tf.convert_to_tensor(strain)
@@ -305,13 +287,22 @@ def signaltoskymap(
         null_vector,
         num_pixels,
         num_detectors,
-        num_samples
+        num_samples,
+        fs
     )
-
+    
     # Convert back to numpy arrays:
     coherent_null_energy = coherent_null_energy.numpy()
     
-    return coherent_null_energy
+    plt.figure()
+    hp.mollview(coherent_null_energy, coord='C')
+    plt.savefig("coherent_null_energy.png")
+    
+    print(np.mean(coherent_null_energy))
+    
+    probability_map = 1 - chi2.cdf(coherent_null_energy, num_samples)
+    
+    return probability_map
 
 
 def plotsignaltoskymap(strain, data=None):
@@ -322,7 +313,7 @@ def plotsignaltoskymap(strain, data=None):
 
 def createSkymapPlugin(nside, fs, duration):
 
-    # Unpack config:
+        # Unpack config:
     num_samples = fs * duration
 
     # Reference GPS so that GMST is within 1 second of 0 to make equivilent of
@@ -361,7 +352,8 @@ def createSkymapPlugin(nside, fs, duration):
         num_pixels=num_pixels,
         num_detectors=num_detectors,
         num_samples=num_samples,
-        null_vector=null_vector
+        null_vector=null_vector,
+        fs=fs
     )
 
     return skymap_plugin
