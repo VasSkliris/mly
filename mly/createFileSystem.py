@@ -263,16 +263,16 @@ def createFileSysem(duration
 
 
 
-createFileSysem(duration=1
-             ,fs=1024
-             ,detectors='HLV'
-             ,labels = None
-             ,dates=['1 Aug 2017 00:00','1 Aug 2017 06:00']
-             ,windowSize = 16
-             ,backgroundType='real'
-             ,masterDirectory="/home/vasileios.skliris/masterdir"
-             ,frames='C02' 
-             ,channels='C02')                           
+# createFileSysem(duration=1
+#              ,fs=1024
+#              ,detectors='HLV'
+#              ,labels = None
+#              ,dates=['1 Aug 2017 00:00','1 Aug 2017 06:00']
+#              ,windowSize = 16
+#              ,backgroundType='real'
+#              ,masterDirectory="/home/vasileios.skliris/masterdir"
+#              ,frames='C02' 
+#              ,channels='C02')                           
                         
                         
 # createFileSysem(duration=1

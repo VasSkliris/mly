@@ -144,7 +144,7 @@ class DataPod(DataPodBase):
             
         if type_ == 'pkl':
             with open(finalName+'.pkl', 'wb') as output:
-                pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self, output, 4)
         elif type_ == 'txt':
             np.savetxt(finalName+'.txt', self.strain)
         else:
@@ -726,7 +726,7 @@ class DataSet(DataSetBase):
                    ,labels = None
                    ,backgroundType = None
                    ,injectionSNR = None
-                   ,noiseSourceFile = None  
+                   ,noiseSourceFile = None
                    ,windowSize = None #(32)            
                    ,timeSlides = None #(1)
                    ,startingPoint= None #(32)

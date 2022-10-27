@@ -303,7 +303,7 @@ def plotsignaltoskymap(strain, data=None):
     return null_energy_map
 
 
-def createSkymapPlugin(nside, fs, duration):
+def createSkymapPlugin(nside, fs, duration, pluginName = "skymap"):
 
     # Unpack config:
     num_samples = fs * duration
@@ -334,7 +334,7 @@ def createSkymapPlugin(nside, fs, duration):
 
     # Create mly plugin:
     skymap_plugin = PlugIn(
-        name="null_energy_map",
+        name = pluginName,
         genFunction=signaltoskymap,
         attributes=['strain'],
         plotAttributes=['strain'],
