@@ -208,7 +208,7 @@ def calculateSkyMap(
     plt.savefig("before_summation.png")
     
     coherent_null_energy = tf.math.scalar_mul(tf.cast((2.0*num_samples),tf.float64), coherent_null_energy)
-    coherent_null_energy = tf.math.reduce_sum(coherent_null_energy, axis=1)
+    coherent_null_energy = tf.math.reduce_sum(coherent_null_energy, axis=1) 
     
     return coherent_null_energy
 
