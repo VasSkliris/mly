@@ -16,14 +16,10 @@ import matplotlib.pyplot as plt
 import time
 import multiprocessing
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-print('before tensorflow')
-
 from tensorflow.keras.models import load_model
-
-print('after tensorflow')
 
 
 # tf.autograph.set_verbosity(
@@ -124,10 +120,7 @@ def assembleDataSet( masterDirectory
         podList.append(pod)
 
     dataSet = DataSet(podList)
-              
-    datasetCreationTime=time.time()
-    #print("DATASET CREATION TIME:", datasetCreationTime-t0," ")
-    
+
     return dataSet
 
 
