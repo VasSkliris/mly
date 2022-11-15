@@ -10,10 +10,11 @@ import os
 from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
 
-# from .simulateddetectornoise import *
-# from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
-# from .datatools import DataPod, DataSet
-from checkingFunctions import *
+from .simulateddetectornoise import *
+from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
+from .datatools import DataPod, DataSet
+
+from .checkingFunctions import *
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
@@ -147,7 +148,7 @@ def createFileSysem(duration
     dagman = Dagman(name='createFileSystemDagman',
             submit=submit)
     job_list=[]
-    
+
     kwstr=""
     for k in kwargs:
         kwstr+=(","+k+"="+str(kwargs[k]))       
@@ -251,7 +252,7 @@ def createFileSysem(duration
                    ,getenv=True
                    ,dag=dagman
                    ,retry=10
-                   ,request_disk = '2560'
+                   ,request_disk = '50M'
                    ,extra_lines=["accounting_group_user="+accounting_group_user
                                  ,"accounting_group="+accounting_group] )
 
@@ -263,18 +264,6 @@ def createFileSysem(duration
 
 
 
-# createFileSysem(duration=1
-#              ,fs=1024
-#              ,detectors='HLV'
-#              ,labels = None
-#              ,dates=['1 Aug 2017 00:00','1 Aug 2017 06:00']
-#              ,windowSize = 16
-#              ,backgroundType='real'
-#              ,masterDirectory="/home/vasileios.skliris/masterdir"
-#              ,frames='C02' 
-#              ,channels='C02')                           
-                        
-                        
 # createFileSysem(duration=1
 #                  ,fs=1024
 #                  ,detectors='HLV'

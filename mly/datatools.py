@@ -1835,7 +1835,7 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(4,2,fduration=4,highpass=20)#,asd=asd_dict[det])
+                strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
@@ -2554,7 +2554,8 @@ def auto_gen(duration
                ,dag=dagman
                ,retry=10
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"] )
 
         job_list.append(job)
 
@@ -2592,7 +2593,8 @@ def auto_gen(duration
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
     
@@ -2695,7 +2697,8 @@ def finalise_gen(path,generation=True,**kwargs):
                            ,dag=repeat_dagman
                            ,retry=10
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
                 repeat_job_list.append(repeat_job)
 
@@ -2709,7 +2712,8 @@ def finalise_gen(path,generation=True,**kwargs):
                            ,getenv=True
                            ,dag=repeat_dagman
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         repeat_final_job.add_parents(repeat_job_list)
         
