@@ -128,7 +128,7 @@ def check_maxSegmentSize(maxSegmentSize=None,duration=None,windowSize=None,**kwa
     if maxSegmentSize == None and 'maxSegmentSize' in kwargs:
         maxSegmentSize = kwarg['maxSegmentSize']
     elif maxSegmentSize == None and 'maxSegmentSize' not in kwargs:
-        maxSegmentSize = int(1024*duration)
+        maxSegmentSize = int(3600/duration)
         
 
     if not (isinstance(maxSegmentSize,int) and maxSegmentSize >= windowSize):
