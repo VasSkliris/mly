@@ -334,7 +334,7 @@ def createSkymapPlugin(nside, fs, duration, pluginName = "skymap"):
 
     # Create mly plugin:
     skymap_plugin = PlugIn(
-        name = pluginName,
+        name="skymap",
         genFunction=signaltoskymap,
         attributes=['strain'],
         plotAttributes=['strain'],
