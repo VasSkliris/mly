@@ -303,7 +303,7 @@ def plotsignaltoskymap(strain, data=None):
     return null_energy_map
 
 
-def createSkymapPlugin(nside, fs, duration):
+def createSkymapPlugin(nside, fs, duration, pluginName = "skymap"):
 
     # Unpack config:
     num_samples = fs * duration
