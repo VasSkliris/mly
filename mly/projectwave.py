@@ -21,7 +21,8 @@ def projectWave(sourceWaveform
                 ,rightAscension=None
                 ,polarisationAngle=None
                 ,time=0
-                ,padCrop=1
+                ,crop=None
+                ,pad=None
                 ,outputFormat=None
                 ,destinationFile=None
                 ,saveName=None):
@@ -53,6 +54,7 @@ def projectWave(sourceWaveform
     # Making the polarisation data into TimeSeries objects
     hp=TimeSeries(h[0],delta_t=1./fs,epoch=time)         
     hc=TimeSeries(h[1],delta_t=1./fs,epoch=time) 
+    
     
     hrss=np.sqrt(np.sum(h[0]**2+h[1]**2)/fs)
     
@@ -118,13 +120,74 @@ def projectWave(sourceWaveform
         for det in detectors:
             if len(signal_dict[det])<maxlen: 
                 signal_dict[det]=np.hstack((signal_dict[det],np.zeros(maxlen-len(signal_dict[det]))))
-              
+    
     # Shifting the signals acording to shift_dict
     for det in detectors:    
-        signal_dict[det]=timeDelayShift(signal_dict[det],shift_dict[det],fs)[padCrop:-padCrop]
-        # padCrop: Due to shifting the project_wave function pads with zeros to avoid
-        # edge effects. Eventually we might want to crop after we finish. Avoid if not necessary 
-    
+        signal_dict[det]=timeDelayShift(signal_dict[det],shift_dict[det],fs)
+        
+    if crop==None and pad==None:
+        pass
+    elif crop!=None and pad==None:
+            
+        if isinstance(crop,int) and crop > 0:
+            crop = [ceil(crop/2), int(crop/2)]
+            for det in detectors:    
+                signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
+
+        elif isinstance(crop,(list,tuple)) and all(el>0 for el in crop):
+            for det in detectors:    
+                signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
+
+        elif crop == "same":
+
+            originalSize = max(len(hp),len(hc))
+            
+            for det in detectors:   
+                
+                if originalSize - len(signal_dict[det]) >= 0:
+                    rightPad = int((originalSize - len(signal_dict[det]))/2)
+                    leftPad = int(originalSize - len(signal_dict[det])) - rightPad
+
+                    if rightPad!=0:
+                        signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
+                    if leftPad!=0:
+                        signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
+                else:
+
+                    rightCrop = int((len(signal_dict[det]) - originalSize)/2)
+                    leftCrop = int(len(signal_dict[det]) - originalSize) - rightCrop
+
+                    if rightCrop!=0:
+                        signal_dict[det] = signal_dict[det][:-rightCrop]
+                    if leftCrop!=0:
+                        signal_dict[det] = signal_dict[det][leftCrop:]
+
+    elif crop==None and pad!=None:
+
+        if isinstance(pad,int) and pad > 0:
+            pad = [ceil(pad/2), int(pad/2)]
+            for det in detectors:    
+                signal_dict[det] = np.hstack((np.pad(pad[0]),signal_dict[det],np.zeros(pad[1])))
+
+        elif isinstance(pad,(list,tuple)) and all(el>0 for el in pad):
+            for det in detectors:    
+                signal_dict[det] = np.hstack((np.pad(pad[0]),signal_dict[det],np.zeros(pad[1])))
+
+        elif pad == "same":
+
+            originalSize = max(len(hp),len(hc))
+
+            for det in detectors: 
+
+                rightPad = int((originalSize - len(signal_dict[det]))/2)
+                leftPad = int(originalSize - len(signal_dict[det])) - rightPad
+
+                if rightPad!=0:
+                    signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
+                if leftPad!=0:
+                    signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
+                            
+
     # # # OUTPUT FORMAT - SAVING 
     if saveName == None:
         if not isinstance(sourceWaveform,str):

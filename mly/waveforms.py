@@ -836,16 +836,21 @@ def maxFrequencyCalculation(m1  # Mass 1
     return f
 
 
-def cbc(
-        duration,
-        fs,
-        detectors,
-        massRange,
-        massStep=1,
-        rep=1,
-        destinationDirectory=None,
-        aproximant='IMRPhenomD',
-        test=False):
+
+
+
+
+def cbc(duration
+       ,fs
+       ,detectors
+       ,massRange
+       ,massStep=1
+       ,rep=1
+       ,destinationDirectory=None
+       ,aproximant='IMRPhenomD'
+       ,frequencyRestriction=True
+       ,test=False):
+    
     """Creation of cbc signals using aproximants.
 
     Parameters
@@ -882,6 +887,10 @@ def cbc(
         The aproximant to use for the waveform requested. Only specific aproximants are used.
         The can be found by using the pycbc function 'pycbc.pnutils.td_approximants()'.
 
+    frequencyRestriction: bool
+        If true it returns a signal unless the aproximate merger highest frequency does is above
+        the niquest frequency calculated by maxFrequencyCalculation function.
+        
     test: bool
         If True it returns only the number of waveforms that could potentially be generated
         for the given parameters. If False, it will generate injections.
@@ -924,22 +933,47 @@ def cbc(
 
                 # if maxf below Niquest we create the waveform,
                 # else we skip this combination of parameters
-                if maxf <= fs / 2:
-                    count += 1
+                if frequencyRestriction and maxf > fs/2:
+                    continue
+                else:
+                    count+=1
                     # If we just use test, we don't need waveform
                     if test:
                         continue
 
                     # Function that gives us the waveform
-                    hp, hc = get_td_waveform(approximant=aproximant, mass1=i, mass2=j, spin1z=spin1, spin2z=spin2, inclination=np.pi * np.random.rand(
-                    ), coa_phase=2 * np.pi * np.random.rand(), distance=100, delta_t=1.0 / fs, f_lower=minFrequencyEstimation(i, j, duration))
+                    hp, hc = get_td_waveform(approximant=aproximant
+                                             ,mass1=i
+                                             ,mass2=j
+                                             ,spin1z=spin1
+                                             ,spin2z=spin2
+                                             ,inclination=np.pi*np.random.rand()
+                                             ,coa_phase=2*np.pi*np.random.rand()
+                                             ,distance=100
+                                             ,delta_t=1.0/fs
+                                             ,f_lower=minFrequencyEstimation(i,j,duration) 
+                                            )
+                    
+                    # Note above that for f_lower we use duration+1, that is because some rough cuts will
+                    # appear if we use exactly the duration. Below we cut the signal to the original duration. 
+                    # h = np.array([hp[len(hp)-int(fs*duration):], hc[len(hc)-int(fs*duration):]])
+
+                    h = np.array([hp,hc])
 
                     # Projection of waveform to an injection
-                    pod = projectWave((np.array(hp), np.array(hc)), detectors, fs, declination=None  # random and uniformal
-                                      , rightAscension=None  # random and uniformal
-                                      , polarisationAngle=None  # random and uniformal
-                                      , time=0, padCrop=1, outputFormat='datapod')
-
+                    pod=projectWave( h
+                                    ,detectors
+                                    ,fs
+                                    ,declination=None # random and uniformal
+                                    ,rightAscension=None # random and uniformal
+                                    ,polarisationAngle=None # random and uniformal
+                                    ,time=0
+                                    ,crop='same'
+                                    ,outputFormat='datapod')
+                    originalLen = len(pod.strain[0])
+                    pod.strain = pod.strain[:, originalLen - int(duration*fs):]
+                    pod.duration = duration
+                    
                     # Cropping the result when bigger than desired
                     if len(pod.strain[0]) > fs * duration:
                         croppedStrain = list(
@@ -951,9 +985,8 @@ def cbc(
                     # If destinationDirectory defined , we save the pod
                     if destinationDirectory is not None:
                         # Creation of a name
-                        name = 'cbc_' + str(int(i)) + '_' + \
-                            str(int(j)) + '_repNo' + str(_rep)
-                        pod.save(destinationDirectory + name)
+                        name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(_rep)
+                        pod.save(destinationDirectory+name)
                     else:
                         pod.plot()
 

@@ -217,7 +217,7 @@ class Validator:
 
         if name!=None:
             with open(savePath+name+'.pkl', 'wb') as output:
-                pickle.dump(result, output, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(result, output, 4)
         
         return(result)
 
@@ -421,7 +421,7 @@ class Validator:
         print(os.getcwd())
         if name!=None:
             with open(savePath+name+'.pkl', 'wb') as output:
-                pickle.dump(result_pd, output, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(result_pd, output, 4)
                 savingtime=time.time()
                 print("SAVING TIME:", finalisationtime-inferencetime)
         print("\n\n ----")
@@ -1384,7 +1384,7 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
 
         finaltest = finaltest.sort_values(by=['total'],ascending = False)
         with open(path+'FAR_TEST.pkl', 'wb') as output:
-            pickle.dump(finaltest, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(finaltest, output, 4)
                 
 
         # Deleting unnescesary file in the folder
@@ -1834,8 +1834,8 @@ def online_FAR(model
                          ,"accounting_group="+accounting_group
                          ,"should_transfer_files=YES"
                          ,"when_to_transfer_output=ON_SUCCESS"
-                         ,"success_exit_code=0"]
-                 )
+                         ,"success_exit_code=0"
+                         ,"request_disk            = 64M"] )
 
         job_list.append(job)
             
@@ -2750,7 +2750,8 @@ def online_TAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"] )
     
     final_job.add_parents(job_list)
 
@@ -2918,7 +2919,7 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                 print(k)
 
         with open(path+'TAR_TEST.pkl', 'wb') as output:
-            pickle.dump(finaltest, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(finaltest, output, 4)
                 
 
         # Deleting unnescesary file in the folder
