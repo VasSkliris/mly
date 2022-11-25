@@ -1,5 +1,4 @@
 from math import ceil
-from gwpy.timeseries import TimeSeries
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -11,6 +10,8 @@ from pycbc.waveform import get_td_waveform
 from pycbc.waveform import get_fd_waveform
 from pycbc.detector import Detector
 import numpy as np
+from gwpy.timeseries import TimeSeries as gwTS
+
 from .projectwave import *
 from .checkingFunctions import *
 #########################################################################################################
@@ -151,7 +152,7 @@ def BLWNB(f,df,dt,fs):
     #%      white over the band [-df/2,df/2].
 
     nSamp = ceil(dt*df)
-    x_old = TimeSeries(np.random.randn(nSamp),sample_rate=1/dt)
+    x_old = gwTS(np.random.randn(nSamp),sample_rate=1/dt)
     
 
 
@@ -514,7 +515,8 @@ def WNB(duration
     nSamp = ceil(T*df)
     h=[]
     for _h in range(2):
-        x_ = TimeSeries(np.random.randn(nSamp),sample_rate=1/T)
+
+        x_ = gwTS(np.random.randn(nSamp),sample_rate=1/T)
 
         # Resample to desired sample rate fs.
         x=x_.resample(fs/df)
