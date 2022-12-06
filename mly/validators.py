@@ -386,14 +386,14 @@ class Validator:
         print("INFERENCE TIME:", inferencetime-generationtime)
         
         gps_times=DATA.exportGPS()
-
-        if len(scores_collection)==1:
+        
+        if len(np.array(scores_collection).shape)==1:
             scores_collection=np.expand_dims(np.array(scores_collection),0)
         else:
             scores_collection=np.array(scores_collection)
+
         scores_collection=np.transpose(scores_collection)
 
-        #print(scores_collection.shape,np.array(gps_times).shape)
         result=np.hstack((scores_collection,np.array(gps_times)))
 
         result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
