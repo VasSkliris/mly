@@ -167,11 +167,11 @@ def projectWave(sourceWaveform
         if isinstance(pad,int) and pad > 0:
             pad = [ceil(pad/2), int(pad/2)]
             for det in detectors:    
-                signal_dict[det] = np.hstack((np.pad(pad[0]),signal_dict[det],np.zeros(pad[1])))
+                signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
 
         elif isinstance(pad,(list,tuple)) and all(el>0 for el in pad):
             for det in detectors:    
-                signal_dict[det] = np.hstack((np.pad(pad[0]),signal_dict[det],np.zeros(pad[1])))
+                signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
 
         elif pad == "same":
 
