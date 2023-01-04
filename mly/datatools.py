@@ -1836,26 +1836,44 @@ class DataSet(DataSetBase):
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
                 strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
+                
+                # if 'snr' in plugins:
+                #     median_abs_of_window = np.median(np.abs(strain.value))
+
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
                 # Crop data to the duration length
                 strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
                 podstrain.append(strain.value.tolist())
-                
+
                 if 'snr' in plugins:
-                    # Adding snr value as plugin.
-                    # Calculating the new SNR which will be slightly different that the desired one.    
-                    inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
-                    SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
-                                           )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
-                        np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+                    new_snr = np.sqrt(max(np.sum(strain.value**2 - 1),0)) 
+                    SNR_new.append(new_snr)
+
+                
+                # if 'snr' in plugins:
+                #     # Adding snr value as plugin.
+                #     # Calculating the new SNR which will be slightly different that the desired one.    
+                #     inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
+                #     SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
+                #                            )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
+                #         np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                #                                  /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
                     
-                    plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
+                #     plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
 
                 if 'psd' in plugins:
                     podPSD.append(asd_dict[det]**2)
+
+            if 'snr' in plugins: 
+                
+                network_snr = np.sqrt(np.sum(np.array(SNR_new)**2))
+                SNR_new.append(network_snr)
+                plugInToApply.append(PlugIn('snr',SNR_new))
+
+
+
             
             if 'psd' in plugins:
                 plugInToApply.append(PlugIn('psd'
@@ -1929,8 +1947,8 @@ class DataSet(DataSetBase):
 
         if 'plugins' not in kwargs: kwargs['plugins']=[]
         if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
-        if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
-            kwargs['plugins'].append('snr')
+        # if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
+        #     kwargs['plugins'].append('snr')
 
 
         newSet=DataSet.generator(**kwargs)
@@ -1940,9 +1958,9 @@ class DataSet(DataSetBase):
             self[i].detectors+=newSet[i].detectors
             self[i].gps+=newSet[i].gps
             if 'psd' in kwargs['plugins']: self[i].psd+=newSet[i].psd
-            if 'snr' in kwargs['plugins']:
-                for d in newSet[i].detectors:
-                    self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
+            # if 'snr' in kwargs['plugins']:
+            #     for d in newSet[i].detectors:
+            #         self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
             if 'correlation' in self[i].pluginDict:
                 self[i].addPlugIn(self[i].pluginDict['correlation'])   
 

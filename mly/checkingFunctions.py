@@ -182,7 +182,7 @@ def check_masterDirectory_verifyFS(masterDirectory, detectors):
         
         if not (os.path.isdir(masterDirectory)
                 and all(os.path.isdir(masterDirectory+det) for det in detectors)):
-            raise FileNotFound("Filesystem structure not correct")
+            raise FileNotFoundError("Filesystem structure not correct")
             
         fileSizes=list(len(dirlist(masterDirectory+det)) for det in detectors)
         result = 1
