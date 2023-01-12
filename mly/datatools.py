@@ -1812,6 +1812,7 @@ class DataSet(DataSetBase):
             podPSD = []
             podCorrelations=[]
             SNR_new=[]
+            SNR_new_sq_sum=0
             psdPlugDict={}
             plugInToApply=[]
 
@@ -1835,21 +1836,23 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
+                whiten_strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
                 
-                # if 'snr' in plugins:
-                #     median_abs_of_window = np.median(np.abs(strain.value))
-
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
                 # Crop data to the duration length
-                strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
-                podstrain.append(strain.value.tolist())
+                whiten_strain=whiten_strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+                podstrain.append(whiten_strain.value.tolist())
 
                 if 'snr' in plugins:
-                    new_snr = np.sqrt(max(np.sum(strain.value**2 - 1),0)) 
-                    SNR_new.append(new_snr)
+                    whiten_strain_median=strain.whiten(4,2,fduration=4,method = 'median'
+                            , highpass=20)[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+                    # This is strictly for duration 1 and fs 1024
+                    new_snr = np.sum(whiten_strain_median.value**2 -0.978**2)
+
+                    SNR_new.append(np.sqrt(max(new_snr,0)))
+                    SNR_new_sq_sum += new_snr
 
                 
                 # if 'snr' in plugins:
@@ -1868,7 +1871,7 @@ class DataSet(DataSetBase):
 
             if 'snr' in plugins: 
                 
-                network_snr = np.sqrt(np.sum(np.array(SNR_new)**2))
+                network_snr = np.sqrt(max(SNR_new_sq_sum,0))
                 SNR_new.append(network_snr)
                 plugInToApply.append(PlugIn('snr',SNR_new))
 
