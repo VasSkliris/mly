@@ -2503,8 +2503,7 @@ def auto_gen(duration
             +str(d['size'][i])+'.py','w') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            user_name = os.environ['HOME'].split("/")[-1]
-            f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
 
@@ -2594,9 +2593,8 @@ def auto_gen(duration
                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
     with open(path+dir_name+'/final_gen.py','w') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        user_name = os.environ['HOME'].split("/")[-1]
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/"+user_name+"/mly/')\n")
+        f4.write("sys.path.append('/home/"+accounting_group_user+"/mly/')\n")
         f4.write("from mly.datatools import *\n")
         f4.write("finalise_gen('"+path+dir_name+"')\n")
         

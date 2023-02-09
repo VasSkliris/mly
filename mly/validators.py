@@ -1133,8 +1133,7 @@ def auto_FAR(model
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             
-            user_name = os.environ['HOME'].split("/")[-1]
-            f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1214,8 +1213,7 @@ def auto_FAR(model
         f4.write("#! /usr/bin/env python3\n")
         f4.write("import sys \n")
         
-        user_name = os.environ['HOME'].split("/")[-1]
-        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+path+dir_name+"')\n")
@@ -1775,8 +1773,7 @@ def online_FAR(model
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
             
-            user_name = os.environ['HOME'].split("/")[-1]
-            f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1844,8 +1841,7 @@ def online_FAR(model
         f4.write("#! /usr/bin/env python3\n")
         f4.write("import sys \n")
         
-        user_name = os.environ['HOME'].split("/")[-1]
-        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('.')\n")
         
@@ -2128,8 +2124,7 @@ def zeroLagSearch(model
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
                 
-                user_name = os.environ['HOME'].split("/")[-1]
-                f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+                f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2180,8 +2175,7 @@ def zeroLagSearch(model
 
         f4.write("import sys \n")
         
-        user_name = os.environ['HOME'].split("/")[-1]
-        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
@@ -2659,8 +2653,7 @@ def online_TAR(model
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
                 
-                user_name = os.environ['HOME'].split("/")[-1]
-                f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+                f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2738,8 +2731,7 @@ def online_TAR(model
         f4.write("#! /usr/bin/env python3\n")
         f4.write("import sys \n")
 
-        user_name = os.environ['HOME'].split("/")[-1]
-        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         
         f4.write("from mly.validators import *\n")
         f4.write("finalise_tar('"+destinationFile+dir_name+"')\n")
