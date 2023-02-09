@@ -1131,10 +1131,9 @@ def auto_FAR(model
         with open(path+dir_name+'/test_'+d['name'][i]+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            #This path is used only for me to test it
-            pwd=os.getcwd()
-            if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            
+            user_name = os.environ['HOME'].split("/")[-1]
+            f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1211,10 +1210,11 @@ def auto_FAR(model
                 
     with open(path+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        if 'vasileios.skliris' in pwd:
-            f4.write("import sys \n")
-            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("import sys \n")
+        
+        user_name = os.environ['HOME'].split("/")[-1]
+        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+path+dir_name+"')\n")
         
@@ -1769,10 +1769,9 @@ def online_FAR(model
         with open('test_'+str(i)+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            #This path is used only for me to test it
-            pwd=os.getcwd()
-            #if 'vasileios.skliris' in pwd:
-            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            
+            user_name = os.environ['HOME'].split("/")[-1]
+            f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1841,10 +1840,10 @@ def online_FAR(model
             
     with open('finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        
+        user_name = os.environ['HOME'].split("/")[-1]
+        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('.')\n")
         
@@ -2125,11 +2124,9 @@ def zeroLagSearch(model
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
-                #This path is used only for me to test it
-                pwd=os.getcwd()
-                #if 'vasileios.skliris' in pwd:
                 
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+                user_name = os.environ['HOME'].split("/")[-1]
+                f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2176,10 +2173,12 @@ def zeroLagSearch(model
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
+
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        
+        user_name = os.environ['HOME'].split("/")[-1]
+        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
         
@@ -2654,10 +2653,9 @@ def online_TAR(model
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
-                #This path is used only for me to test it
-                pwd=os.getcwd()
-                #if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+                
+                user_name = os.environ['HOME'].split("/")[-1]
+                f.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2733,10 +2731,11 @@ def online_TAR(model
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+
+        user_name = os.environ['HOME'].split("/")[-1]
+        f4.write('sys.path.append(\'/home/'+user_name+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_tar('"+destinationFile+dir_name+"')\n")
         
