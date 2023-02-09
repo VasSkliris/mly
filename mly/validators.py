@@ -707,6 +707,7 @@ class Validator:
 
 
 def auto_FAR(model
+             # DEPRICATED NOT WORKING UNTIL UPDATE
              ,duration 
              ,fs
              ,detectors
@@ -1190,7 +1191,8 @@ def auto_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         job_list.append(job)
 
@@ -1228,7 +1230,8 @@ def auto_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -1340,7 +1343,8 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
                        ,getenv=True
                        ,dag=repeat_dagman
                        ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             repeat_job_list.append(repeat_job)
                
@@ -1353,7 +1357,8 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
                            ,getenv=True
                            ,dag=repeat_dagman
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         repeat_final_job.add_parents(repeat_job_list)
         
@@ -1830,11 +1835,8 @@ def online_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                         ,"accounting_group="+accounting_group
-                         ,"should_transfer_files=YES"
-                         ,"when_to_transfer_output=ON_SUCCESS"
-                         ,"success_exit_code=0"
-                         ,"request_disk            = 64M"] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         job_list.append(job)
             
@@ -1857,7 +1859,8 @@ def online_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -2167,7 +2170,8 @@ def zeroLagSearch(model
                    ,getenv=True
                    ,dag=dagman
                    ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             job_list.append(job)
             
@@ -2192,7 +2196,8 @@ def zeroLagSearch(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
     
@@ -2723,9 +2728,9 @@ def online_TAR(model
                    ,getenv=True
                    ,dag=dagman
                    ,retry=10
-                   ,extra_lines=["max_retries=10"
-                             ,"accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                   ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             job_list.append(job)
             
@@ -2750,7 +2755,7 @@ def online_TAR(model
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
                              ,"accounting_group="+accounting_group
-                             ,"request_disk            = 64M"] )
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -2864,9 +2869,9 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                        ,log=log
                        ,getenv=True
                        ,dag=repeat_dagman
-                       ,extra_lines=["max_retries=10"
-                             ,"accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                       ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             repeat_job_list.append(repeat_job)
                
@@ -2879,7 +2884,8 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                            ,getenv=True
                            ,dag=repeat_dagman
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         repeat_final_job.add_parents(repeat_job_list)
         
