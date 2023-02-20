@@ -1211,7 +1211,7 @@ class DataSet(DataSetBase):
                 injectionFileDict[det] = [injectionFolder]
                                         
             elif inj_type == 'DataSet':
-                injectionFileDict[det] = [injectionFolder.datsPods]
+                injectionFileDict[det] = [injectionFolder.dataPods]
                                         
             else:
                 raise TypeError("Unknown type of injections")
