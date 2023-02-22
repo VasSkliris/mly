@@ -1376,8 +1376,7 @@ class DataSet(DataSetBase):
                                        ,duration = duration
                                        ,fs = 1
                                        ,size = len(file_)
-                                       ,start_from_sec=startingPoint
-                                       ,includeZeroLag=False)
+                                       ,start_from_sec=startingPoint)
                     for det in detectors:
                         print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
 
