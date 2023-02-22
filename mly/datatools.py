@@ -1378,7 +1378,10 @@ class DataSet(DataSetBase):
                                        ,size = len(file_)
                                        ,start_from_sec=startingPoint
                                        ,includeZeroLag=False)
-                    
+                    print("current test")
+                    print(ind)
+                    for det in detectors:
+                        print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
 
                     if size > len(file_):
                         print("Requested size is bigger that the noise sourse data"
@@ -1661,7 +1664,10 @@ class DataSet(DataSetBase):
                     #print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
-                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
+                    if noiseFormat == 'DataSet':
+                        gps_list.append(gps0[det]+ind[det][I]+(windowSize-duration)/2)
+                    else:
+                        gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
                 if injectionFolder != None:      
