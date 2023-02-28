@@ -1955,7 +1955,7 @@ class DataSet(DataSetBase):
         if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
         # if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
         #     kwargs['plugins'].append('snr')
-
+        
 
         newSet=DataSet.generator(**kwargs)
 

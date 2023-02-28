@@ -125,7 +125,7 @@ def assembleDataSet( masterDirectory
                                         ,'fs':fs
                                         ,'detectors' : 'V'
                                         ,'backgroundType' :'optimal'
-                                        ,'PSDm':32})
+                                        ,'PSDm':{'V':32}})
 
     return dataSet
 
