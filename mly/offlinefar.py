@@ -121,7 +121,7 @@ def assembleDataSet( masterDirectory
     dataSet = DataSet(podList)
 
     if 'V' not in detectors:
-        dataSet.stackDetector({ 'duration':duration
+        dataSet.stackDetector(**{ 'duration':duration
                                         ,'fs':fs
                                         ,'detectors' : 'V'
                                         ,'backgroundType' :'optimal'
