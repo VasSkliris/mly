@@ -100,7 +100,7 @@ def assembleDataSet( masterDirectory
     
     INDEX=internalLags(detectors = detectors             # The initials of the detectors you are going 
                      ,duration = 1             # The duration of the instances you use
-                     ,size = len(dataset_dict['H'])            # Size in seconds of the available segment
+                     ,size = len(dataset_dict[detectors[0]])            # Size in seconds of the available segment
                      ,fs=1          # Sample frequency
                      ,lags=lags
                      ,includeZeroLag=False) # Includes zero lag by defult !!!  
@@ -113,12 +113,19 @@ def assembleDataSet( masterDirectory
         strain=np.concatenate(list(dataset_dict[det][INDEX[det][b]].strain for det in detectors),axis=0)
         gps_=np.concatenate(list(dataset_dict[det][INDEX[det][b]].gps for det in detectors), axis=0).tolist()
 
-        pod=DataPod(strain, detectors='HLV',fs=1024, gps=gps_)
+        pod=DataPod(strain, detectors=detectors,fs=fs, gps=gps_)
         pod.addPlugIn(knownPlugIns('correlation_30'))
 
         podList.append(pod)
 
     dataSet = DataSet(podList)
+
+    if 'V' not in detectors:
+        dataSet.stackDetector({ 'duration':duration
+                                        ,'fs':fs
+                                        ,'detectors' : 'V'
+                                        ,'backgroundType' :'optimal'
+                                        ,'PSDm':32})
 
     return dataSet
 
