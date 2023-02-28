@@ -124,6 +124,7 @@ def assembleDataSet( masterDirectory
         dataSet.stackDetector(**{ 'duration':duration
                                         ,'fs':fs
                                         ,'detectors' : 'V'
+                                        ,'windowSize':windowSize
                                         ,'backgroundType' :'optimal'
                                         ,'PSDm':{'V':32}})
 
