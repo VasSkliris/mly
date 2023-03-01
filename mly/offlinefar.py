@@ -93,7 +93,7 @@ def assembleDataSet( masterDirectory
     t0=time.time()
     
     masterDirectory=check_masterDirectory_verifyFS(masterDirectory,detectors)
-    dataset_dict, duration, fs = check_dataSets_asinput(dataSets,detectors,windowSize, masterDirectory,verbose=False)
+    dataset_dict, duration, fs ,windowSize = check_dataSets_asinput(dataSets,detectors,windowSize, masterDirectory,verbose=False)
 
     lags=check_lags(lags)
     includeZeroLag=check_includeZeroLag(includeZeroLag)
