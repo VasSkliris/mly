@@ -1069,7 +1069,7 @@ class DataSet(DataSetBase):
 
         if windowSize == None: windowSize = duration*16
         if not isinstance(windowSize,int):
-            raise ValueError('windowSize needs to be an integral')
+            raise ValueError('windowSize needs to be a number')
         if windowSize < duration :
             raise ValueError('windowSize needs to be bigger than the duration')
         

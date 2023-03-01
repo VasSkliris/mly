@@ -31,6 +31,7 @@ from tensorflow.keras.models import load_model
 def assembleDataSet( masterDirectory
                     ,dataSets
                     , detectors
+                    , windowSize = 16
                     , batches = 1
                     , batchNumber=1
                     , lags=1
@@ -92,7 +93,7 @@ def assembleDataSet( masterDirectory
     t0=time.time()
     
     masterDirectory=check_masterDirectory_verifyFS(masterDirectory,detectors)
-    dataset_dict, duration, fs, windowSize = check_dataSets_asinput(dataSets,detectors, masterDirectory,verbose=False)
+    dataset_dict, duration, fs = check_dataSets_asinput(dataSets,detectors,windowSize, masterDirectory,verbose=False)
 
     lags=check_lags(lags)
     includeZeroLag=check_includeZeroLag(includeZeroLag)
