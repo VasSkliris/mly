@@ -3,7 +3,6 @@ import pandas as pd
 # Path sourcing and access to the ligo real data
 import sys
 import os
-sys.path.append("/home/vasileios.skliris/mly/")
 from mly.datatools import DataPod, DataSet
 from mly.validators import *
 from mly.checkingFunctions import *
@@ -32,6 +31,7 @@ from tensorflow.keras.models import load_model
 def assembleDataSet( masterDirectory
                     ,dataSets
                     , detectors
+                    , windowSize = 16
                     , batches = 1
                     , batchNumber=1
                     , lags=1
@@ -93,7 +93,7 @@ def assembleDataSet( masterDirectory
     t0=time.time()
     
     masterDirectory=check_masterDirectory_verifyFS(masterDirectory,detectors)
-    dataset_dict, duration, fs, windowSize = check_dataSets_asinput(dataSets,detectors, masterDirectory,verbose=False)
+    dataset_dict, duration, fs ,windowSize = check_dataSets_asinput(dataSets,detectors,windowSize, masterDirectory,verbose=False)
 
     lags=check_lags(lags)
     includeZeroLag=check_includeZeroLag(includeZeroLag)
@@ -101,7 +101,7 @@ def assembleDataSet( masterDirectory
     
     INDEX=internalLags(detectors = detectors             # The initials of the detectors you are going 
                      ,duration = 1             # The duration of the instances you use
-                     ,size = len(dataset_dict['H'])            # Size in seconds of the available segment
+                     ,size = len(dataset_dict[detectors[0]])            # Size in seconds of the available segment
                      ,fs=1          # Sample frequency
                      ,lags=lags
                      ,includeZeroLag=False) # Includes zero lag by defult !!!  
@@ -114,12 +114,20 @@ def assembleDataSet( masterDirectory
         strain=np.concatenate(list(dataset_dict[det][INDEX[det][b]].strain for det in detectors),axis=0)
         gps_=np.concatenate(list(dataset_dict[det][INDEX[det][b]].gps for det in detectors), axis=0).tolist()
 
-        pod=DataPod(strain, detectors='HLV',fs=1024, gps=gps_)
+        pod=DataPod(strain, detectors=detectors,fs=fs, gps=gps_)
         pod.addPlugIn(knownPlugIns('correlation_30'))
 
         podList.append(pod)
 
     dataSet = DataSet(podList)
+
+    if 'V' not in detectors:
+        dataSet.stackDetector(**{ 'duration':duration
+                                        ,'fs':fs
+                                        ,'detectors' : 'V'
+                                        ,'windowSize':windowSize
+                                        ,'backgroundType' :'optimal'
+                                        ,'PSDm':{'V':32}})
 
     return dataSet
 
@@ -196,139 +204,6 @@ def testModel(model
     return(result_pd)
               
               
-def fartestOffline(model
-                   ,masterDirectory
-                   ,dataSets
-                   ,detectors
-                   ,batches = 1
-                   ,lags=1
-                   ,includeZeroLag=False
-
-                   ,restriction=0
-                   ,labels={'type':'noise'}
-                   ,mapping= 2 * [{ "noise" : [1, 0],"signal": [0, 1]}]
-                   ,GPUs=-1
-                   ,destinationFile='./offlinefar/'):
-    
-    if isinstance(GPUs,(list,tuple)):
-        GPUs=str(GPUs)[1:-1]
-    else:
-        GPUs=str(GPUs)
-        
-    print(GPUs)
-    
-    
-#     for i in range(batches):
-        
-        
-#         with open(destinationFile+'test_'+str(i)+'.py','w+') as f:
-#             f.write('#! /usr/bin/env python3\n')
-#             f.write('import sys \n')
-#             #This path is used only for me to test it
-#             pwd=os.getcwd()
-#             if 'vasileios.skliris' in pwd:
-#                 f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
-
-#             f.write('from mly.validators import *\n\n')
-
-#             f.write("import time\n\n")
-#             f.write("t0=time.time()\n")
-                
-#             assemble=( "output = assembleDataSet(\n"
-#                      +24*" "+"masterDirectory = '"+str(masterDirectory)+"'\n"
-#                      +24*" "+",dataSets = "+str(dataSets)+"\n"
-#                      +24*" "+",detectors = '"+str(detectors)+"'\n"
-#                      +24*" "+",batches = "+str(batches)+"\n"
-#                      +24*" "+",batchNumber ="+str(i)+"\n"
-#                      +24*" "+",lags = "+str(lags)+"\n"
-#                      +24*" "+",includeZeroLag = "+str(includeZeroLag)+")\n")
-
-
-
-#             testmodel=( "TEST = testModel(\n"
-#                      +24*" "+"models = "+str(model)+"\n"
-#                      +24*" "+",dataSet = output \n"
-#                      +24*" "+",restriction = "+str(restriction)+"\n"
-#                      +24*" "+",labels = "+str(labels)+"\n"
-#                      +24*" "+",mapping = "+str(mapping)+")\n")
-
-#             f.write(assemble+'\n\n')
-#             f.write(testmodel+'\n\n')
-
-#             f.write("print(time.time()-t0)\n")
-        
-
-    
-    
-
-    t0=time.time()
-    iterable=list((masterDirectory
-                   ,dataSets
-                   ,detectors
-                   ,batches
-                   ,i # batchNumber
-                   ,lags
-                   ,includeZeroLag) for i in range(batches))
-
-    p = multiprocessing.Pool(batches)
-    outputs = p.starmap(assembleDataSet, iterable)
-    
-
-    if not isinstance(outputs,list): outputs=[outputs]
-    print(len(outputs))
-    print(len(outputs[0]))
-    print(len(outputs)*len(outputs[0]))
-    
-    if GPUs==-1:
-        
-        os.environ["CUDA_VISIBLE_DEVICES"] = GPUs
-        iterable=list((model
-                       ,outputs[i]
-                       ,restriction
-                       ,labels
-                       ,mapping) for i in range(0,batches))
-
-        pp = multiprocessing.Pool(batches)
-        dfs = pp.starmap(testModel, iterable)
-        
-    else:
-        
-
-        os.environ["CUDA_VISIBLE_DEVICES"] = GPUs
-
-        dfs=list(testModel(model
-                       ,outputs[i]
-                       ,restriction
-                       ,labels
-                       ,mapping) for i in range(0,batches))
-
-    df=pd.concat(dfs)
-    print("TOTAL TIME:", time.time()-t0," \n\n")
-
-
-    return df
-    
-
-    
-    
-# model1_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model1_32V_No5.h5" # Path to conincident model.
-# model2_path = "/home/vasileios.skliris/ml-validation/HLV_NET/Run_13/elevatedVirgo/model2_32V_No6.h5" # Path to coherence model.
-
-
-# dfs=fartestOffline(model=[[model1_path,model2_path],[['strain'],['strain','correlation']]]
-#                    ,masterDirectory= '/home/vasileios.skliris/masterdir'
-#                    ,dataSets=[1185592956,1185592956+1024]
-#                    ,detectors='HLV'
-#                    ,batches = 1 
-#                    ,lags=10
-#                    ,includeZeroLag=False
-#                    ,restriction=0.5
-#                    ,labels={'type':'noise'}
-#                    ,mapping= 2*[{ "noise" : [1, 0],"signal": [0, 1]}]
-#                    ,GPUs=1)
-
-    
-
 
 
 

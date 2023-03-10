@@ -386,14 +386,14 @@ class Validator:
         print("INFERENCE TIME:", inferencetime-generationtime)
         
         gps_times=DATA.exportGPS()
-
-        if len(scores_collection)==1:
+        
+        if len(np.array(scores_collection).shape)==1:
             scores_collection=np.expand_dims(np.array(scores_collection),0)
         else:
             scores_collection=np.array(scores_collection)
+
         scores_collection=np.transpose(scores_collection)
 
-        #print(scores_collection.shape,np.array(gps_times).shape)
         result=np.hstack((scores_collection,np.array(gps_times)))
 
         result_pd = pd.DataFrame(result ,columns = list('scores'+str(m+1) for m in range(len(trained_models)))
@@ -707,6 +707,7 @@ class Validator:
 
 
 def auto_FAR(model
+             # DEPRICATED NOT WORKING UNTIL UPDATE
              ,duration 
              ,fs
              ,detectors
@@ -1131,10 +1132,8 @@ def auto_FAR(model
         with open(path+dir_name+'/test_'+d['name'][i]+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            #This path is used only for me to test it
-            pwd=os.getcwd()
-            if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1191,7 +1190,8 @@ def auto_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         job_list.append(job)
 
@@ -1211,10 +1211,10 @@ def auto_FAR(model
                 
     with open(path+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        if 'vasileios.skliris' in pwd:
-            f4.write("import sys \n")
-            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("import sys \n")
+        
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+path+dir_name+"')\n")
         
@@ -1228,7 +1228,8 @@ def auto_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -1340,7 +1341,8 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
                        ,getenv=True
                        ,dag=repeat_dagman
                        ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             repeat_job_list.append(repeat_job)
                
@@ -1353,7 +1355,8 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
                            ,getenv=True
                            ,dag=repeat_dagman
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         repeat_final_job.add_parents(repeat_job_list)
         
@@ -1769,10 +1772,8 @@ def online_FAR(model
         with open('test_'+str(i)+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            #This path is used only for me to test it
-            pwd=os.getcwd()
-            #if 'vasileios.skliris' in pwd:
-            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
 
@@ -1831,20 +1832,16 @@ def online_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                         ,"accounting_group="+accounting_group
-                         ,"should_transfer_files=YES"
-                         ,"when_to_transfer_output=ON_SUCCESS"
-                         ,"success_exit_code=0"
-                         ,"request_disk            = 64M"] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         job_list.append(job)
             
     with open('finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('.')\n")
         
@@ -1858,7 +1855,8 @@ def online_FAR(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -2125,11 +2123,8 @@ def zeroLagSearch(model
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
-                #This path is used only for me to test it
-                pwd=os.getcwd()
-                #if 'vasileios.skliris' in pwd:
                 
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+                f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2170,16 +2165,18 @@ def zeroLagSearch(model
                    ,getenv=True
                    ,dag=dagman
                    ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             job_list.append(job)
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
+
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_far('"+destinationFile+dir_name+"')\n")
         
@@ -2193,7 +2190,8 @@ def zeroLagSearch(model
                ,getenv=True
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
     
@@ -2654,10 +2652,8 @@ def online_TAR(model
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
                 f.write('import sys \n')
-                #This path is used only for me to test it
-                pwd=os.getcwd()
-                #if 'vasileios.skliris' in pwd:
-                f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+                
+                f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2725,18 +2721,18 @@ def online_TAR(model
                    ,getenv=True
                    ,dag=dagman
                    ,retry=10
-                   ,extra_lines=["max_retries=10"
-                             ,"accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                   ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             job_list.append(job)
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        #if 'vasileios.skliris' in pwd:
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+
+        f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
+        
         f4.write("from mly.validators import *\n")
         f4.write("finalise_tar('"+destinationFile+dir_name+"')\n")
         
@@ -2751,7 +2747,7 @@ def online_TAR(model
                ,dag=dagman
                ,extra_lines=["accounting_group_user="+accounting_group_user
                              ,"accounting_group="+accounting_group
-                             ,"request_disk            = 64M"] )
+                             ,"request_disk            = 64M"])
     
     final_job.add_parents(job_list)
 
@@ -2865,9 +2861,9 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                        ,log=log
                        ,getenv=True
                        ,dag=repeat_dagman
-                       ,extra_lines=["max_retries=10"
-                             ,"accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                       ,extra_lines=["accounting_group_user="+accounting_group_user
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
             repeat_job_list.append(repeat_job)
                
@@ -2880,7 +2876,8 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                            ,getenv=True
                            ,dag=repeat_dagman
                            ,extra_lines=["accounting_group_user="+accounting_group_user
-                             ,"accounting_group="+accounting_group] )
+                             ,"accounting_group="+accounting_group
+                             ,"request_disk            = 64M"])
 
         repeat_final_job.add_parents(repeat_job_list)
         

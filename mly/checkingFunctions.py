@@ -182,7 +182,7 @@ def check_masterDirectory_verifyFS(masterDirectory, detectors):
         
         if not (os.path.isdir(masterDirectory)
                 and all(os.path.isdir(masterDirectory+det) for det in detectors)):
-            raise FileNotFound("Filesystem structure not correct")
+            raise FileNotFoundError("Filesystem structure not correct")
             
         fileSizes=list(len(dirlist(masterDirectory+det)) for det in detectors)
         result = 1
@@ -327,7 +327,7 @@ def check_models(models, returnTrainedModels=False, **kwargs):
     
 
 
-def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwargs):
+def check_dataSets_asinput(dataSets, detectors=None, windowSize=None, masterDirectory=None,**kwargs):
     
     if detectors==None or masterDirectory==None:
         raise ValueError("detectors and masterDirectory must be defined for this check.")
@@ -345,7 +345,6 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
 
     duration=firstfile[0].duration
     fs=firstfile[0].fs
-    windowSize=2*(firstfile[0].gps[0]-int(filelist[0].split('-')[0]))+duration
 
 
     dataset_dict={}
@@ -356,6 +355,8 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
             dataSets=[dataSets]
 
         if isinstance(dataSets,list):
+
+            # Case where we provide a gps interval
             if len(dataSets)==2 and all(isinstance(el,(int,float)) for el in dataSets):
                 filesToUse=[]
                 indecesToUse=[]
@@ -414,7 +415,7 @@ def check_dataSets_asinput(dataSets, detectors=None, masterDirectory=None,**kwar
                         theSet.add(subset)
                 else:
                     raise ValueError("No files passed to be used")
-
+            # Case where we provide a list of dataSets
             elif all(os.path.isfile(masterDirectory+"/"+det+"/"+el) for el in dataSets):
 
                 if len(dataSets)!=0 : 

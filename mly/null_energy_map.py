@@ -322,22 +322,22 @@ def signaltoskymap(
                       )
 
     probability_map = probability_map.numpy()
-    coherent_null_energy = coherent_null_energy.numpy()
-    incoherent_null_energy = incoherent_null_energy.numpy()
+#     coherent_null_energy = coherent_null_energy.numpy()
+#     incoherent_null_energy = incoherent_null_energy.numpy()
     
-    plt.figure()
-    hp.mollview(coherent_null_energy, coord='C')
-    plt.savefig("coherent_null_energy.png")
+#     plt.figure()
+#     hp.mollview(coherent_null_energy, coord='C')
+#     plt.savefig("coherent_null_energy.png")
     
-    plt.figure()
-    hp.mollview(incoherent_null_energy, coord='C')
-    plt.savefig("incoherent_null_energy.png")
+#     plt.figure()
+#     hp.mollview(incoherent_null_energy, coord='C')
+#     plt.savefig("incoherent_null_energy.png")
     
-    plt.figure()
-    hp.mollview(incoherent_null_energy, coord='C')
-    plt.savefig("probability_map.png")
+#     plt.figure()
+#     hp.mollview(incoherent_null_energy, coord='C')
+#     plt.savefig("probability_map.png")
     
-    print(f"Total Energy: {total_energy}")
+#     print(f"Total Energy: {total_energy}")
         
     return probability_map
 

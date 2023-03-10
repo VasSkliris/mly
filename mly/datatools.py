@@ -1069,7 +1069,7 @@ class DataSet(DataSetBase):
 
         if windowSize == None: windowSize = duration*16
         if not isinstance(windowSize,int):
-            raise ValueError('windowSize needs to be an integral')
+            raise ValueError('windowSize needs to be a number')
         if windowSize < duration :
             raise ValueError('windowSize needs to be bigger than the duration')
         
@@ -1211,7 +1211,7 @@ class DataSet(DataSetBase):
                 injectionFileDict[det] = [injectionFolder]
                                         
             elif inj_type == 'DataSet':
-                injectionFileDict[det] = [injectionFolder.datsPods]
+                injectionFileDict[det] = [injectionFolder.dataPods]
                                         
             else:
                 raise TypeError("Unknown type of injections")
@@ -1376,9 +1376,9 @@ class DataSet(DataSetBase):
                                        ,duration = duration
                                        ,fs = 1
                                        ,size = len(file_)
-                                       ,start_from_sec=startingPoint
-                                       ,includeZeroLag=False)
-                    
+                                       ,start_from_sec=startingPoint)
+                    for det in detectors:
+                        print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
 
                     if size > len(file_):
                         print("Requested size is bigger that the noise sourse data"
@@ -1661,7 +1661,10 @@ class DataSet(DataSetBase):
                     #print(det,back,len(back),type(back))
                     asd=back.asd(1,0.5)
                     asd_dict[det] = asd
-                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
+                    if noiseFormat == 'DataSet':
+                        gps_list.append(gps0[det]+ind[det][I]+(windowSize-duration)/2)
+                    else:
+                        gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
                 #If this dataset includes injections:            
                 if injectionFolder != None:      
@@ -1812,6 +1815,7 @@ class DataSet(DataSetBase):
             podPSD = []
             podCorrelations=[]
             SNR_new=[]
+            SNR_new_sq_sum=0
             psdPlugDict={}
             plugInToApply=[]
 
@@ -1835,27 +1839,47 @@ class DataSet(DataSetBase):
                 # Bandpassing
                 # strain=strain.bandpass(20,int(fs/2)-1)
                 # Whitenning the data with the asd of the noise
-                strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
+                whiten_strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
+                
                 #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
                 #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
                 # Crop data to the duration length
-                strain=strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
-                podstrain.append(strain.value.tolist())
-                
+                whiten_strain=whiten_strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+                podstrain.append(whiten_strain.value.tolist())
+
                 if 'snr' in plugins:
-                    # Adding snr value as plugin.
-                    # Calculating the new SNR which will be slightly different that the desired one.    
-                    inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
-                    SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
-                                           )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
-                        np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
-                                                 /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
+                    whiten_strain_median=strain.whiten(4,2,fduration=4,method = 'median'
+                            , highpass=20)[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+                    # This is strictly for duration 1 and fs 1024
+                    new_snr = np.sum(whiten_strain_median.value**2 -0.978**2)
+
+                    SNR_new.append(np.sqrt(max(new_snr,0)))
+                    SNR_new_sq_sum += new_snr
+
+                
+                # if 'snr' in plugins:
+                #     # Adding snr value as plugin.
+                #     # Calculating the new SNR which will be slightly different that the desired one.    
+                #     inj_fft_N=fft_cal[1:int(windowSize*fs/2)+1]
+                #     SNR_new.append(np.sqrt((1/windowSize #(fs/fs*windowsize
+                #                            )*4*np.sum( # 2 from integral + 2 from S=1/2 S1(one sided)
+                #         np.abs(inj_fft_N*inj_fft_N.conjugate())[windowSize*fl-1:windowSize*fm-1]
+                #                                  /PSD_dict[det][windowSize*fl-1:windowSize*fm-1])))
                     
-                    plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
+                #     plugInToApply.append(PlugIn('snr'+det,SNR_new[-1]))
 
                 if 'psd' in plugins:
                     podPSD.append(asd_dict[det]**2)
+
+            if 'snr' in plugins: 
+                
+                network_snr = np.sqrt(max(SNR_new_sq_sum,0))
+                SNR_new.append(network_snr)
+                plugInToApply.append(PlugIn('snr',SNR_new))
+
+
+
             
             if 'psd' in plugins:
                 plugInToApply.append(PlugIn('psd'
@@ -1929,9 +1953,9 @@ class DataSet(DataSetBase):
 
         if 'plugins' not in kwargs: kwargs['plugins']=[]
         if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
-        if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
-            kwargs['plugins'].append('snr')
-
+        # if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
+        #     kwargs['plugins'].append('snr')
+        
 
         newSet=DataSet.generator(**kwargs)
 
@@ -1940,9 +1964,9 @@ class DataSet(DataSetBase):
             self[i].detectors+=newSet[i].detectors
             self[i].gps+=newSet[i].gps
             if 'psd' in kwargs['plugins']: self[i].psd+=newSet[i].psd
-            if 'snr' in kwargs['plugins']:
-                for d in newSet[i].detectors:
-                    self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
+            # if 'snr' in kwargs['plugins']:
+            #     for d in newSet[i].detectors:
+            #         self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
             if 'correlation' in self[i].pluginDict:
                 self[i].addPlugIn(self[i].pluginDict['correlation'])   
 
@@ -2482,10 +2506,7 @@ def auto_gen(duration
             +str(d['size'][i])+'.py','w') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            #This path is used only for me to test it
-            #pwd=os.getcwd()
-            #if 'vasileios.skliris' in pwd:
-            f.write('sys.path.append(\'/home/vasileios.skliris/mly/\')\n')
+            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
 
@@ -2573,13 +2594,10 @@ def auto_gen(duration
                 f3.write(d['segment'][i][0]+' '+d['segment'][i][1]
                          +' '+str(d['size'][i])+' '
                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
-            
     with open(path+dir_name+'/final_gen.py','w') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        pwd=os.getcwd()
-        if 'vasileios.skliris' in pwd:
-            f4.write("import sys \n")
-            f4.write("sys.path.append('/home/vasileios.skliris/mly/')\n")
+        f4.write("import sys \n")
+        f4.write("sys.path.append('/home/"+accounting_group_user+"/mly/')\n")
         f4.write("from mly.datatools import *\n")
         f4.write("finalise_gen('"+path+dir_name+"')\n")
         
