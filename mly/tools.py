@@ -151,7 +151,7 @@ def circularTimeSlides(detectors,Nstep):
     return c
 
 
-def internalLags(detectors             # The initials of the detectors you are going 
+def internalLags(detectors            # The initials of the detectors you are going 
                  ,duration             # The duration of the instances you use
                  ,size                 # Size in seconds of the available segment
                  ,fs=None              # Sample frequency
@@ -178,24 +178,43 @@ def internalLags(detectors             # The initials of the detectors you are g
     start_from_sec : `int` or `float`
         Positive constant to start the indeces from that constant (seconds).
         Usually used to ignore first seconds
-    lags : `int`
+    lags : `tuple` , `int`
         The amount of circularTimeSlides table lines we want to be returned.
-        Usually we don't need all of them. Defaults to 1.
+        Usually we don't need all of them. Defaults to 1. 
     includeZeroLag : `bool`
         Option if we want to include zero-laged segments in the data.
     '''
     
     if fs==None: fs=1
     if start_from_sec==None: start_from_sec=0
-    if lags==None: lags=int(size/duration)
-        
+    
+    if lags==None: lags=(None,None)
+    
+    if isinstance(lags,int): lags = (0,lags)
+
+    # First lag
+    if lags[0] is None: 
+        first_lag = 0
+    else: 
+        first_lag = lags[0]
+
+    if includeZeroLag==False and first_lag==0:
+        first_lag=1
+
+    # Last lag
+    if (lags[1] is None or lags[1] > int(size/duration)):
+        last_lag = int(size/duration)
+    else: 
+        last_lag = lags[1]
+    
+    
+
     # The following function creates all the possible shifts for the available
     # detectors, size and duration
     C=circularTimeSlides(detectors,int(size/duration))
-    # Removing the zero lag
-    if includeZeroLag==False:
-        C=C[1:]  
-    C=C[:lags+1]
+
+    C=C[first_lag : last_lag ]
+    
     # Creation of indeces
     IND={}
     # The indeces are returned in a dictionary format for each detector
