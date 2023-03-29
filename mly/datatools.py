@@ -1076,9 +1076,9 @@ class DataSet(DataSetBase):
         # ---------------------------------------------------------------------------------------- #   
         # --- timeSlides ------------------------------------------------------------------------- #
 
-        if timeSlides == None: timeSlides = 0
-        if not (isinstance(timeSlides, int) and timeSlides >=0) :
-            raise ValueError('timeSlides has to be an integer equal or bigger than 0')
+        # if timeSlides == None: timeSlides = 0
+        # if not (isinstance(timeSlides, int) and timeSlides >=0) :
+        #     raise ValueError('timeSlides has to be an integer equal or bigger than 0')
 
         # ---------------------------------------------------------------------------------------- #   
         # --- startingPoint ---------------------------------------------------------------------- #
