@@ -20,9 +20,9 @@ setuptools.setup(
     ],
     install_requires=[
         "gwpy >= 0.13.1",
-        "tensorflow >= 2.8
+        "tensorflow >= 2.8",
         "numpy",
-        "sklearn"
+        "sklearn",
         "pandas"
     ]
 )
