@@ -444,8 +444,8 @@ def check_lags(lags=None,**kwargs):
         lags = 1
         
 
-    if not (isinstance(lags,int) and lags >= 0):
-        raise ValueError("lags must be an integer greater or equal to zero.")
+    if not (isinstance(lags,(int,tuple,list))):
+        raise ValueError("lags must be an integer greater or equal to zero or a tuple or list with two elements.")
         
     return(lags)
 
