@@ -22,7 +22,7 @@ setuptools.setup(
         "gwpy >= 0.13.1",
         "tensorflow >= 2.6",
         "numpy",
-        "sklearn",
+        "scikit-learn",
         "pandas"
     ]
 )
