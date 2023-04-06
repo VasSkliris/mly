@@ -15,7 +15,7 @@ class ΤestDataPodBase:
     # --> test calling an empty class
    
     @property
-    def TEST_CLASS(sefl):
+    def TEST_CLASS(self):
         return self._TEST_ARRAY
     
     # --> test different cases of calling
