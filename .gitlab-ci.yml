@@ -51,26 +51,26 @@ build:
 test:3.7:
   extends: [.test]
   image: python:3.7
-   script: 
-     - pytest -v
+  script: 
+      - pytest -v
 
 test:3.9:
   extends: [.test]
   image: python:3.9
-   script: 
-     - pytest -v
+  script: 
+      - pytest -v
 
 test:3.10:
   extends: [.test]
   image: python:3.10
-   script: 
-     - pytest -v
+  script: 
+      - pytest -v
 
 test:3.11:
   extends: [.test]
   image: python:3.11
-   script: 
-     - pytest -v
+  script: 
+      - pytest -v
 
 # -- lint -------------------
 #
