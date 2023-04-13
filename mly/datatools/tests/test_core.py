@@ -1,5 +1,10 @@
-import numpy as np
-from mly.core import *
+# -*- coding: utf-8 -*-
+import sys
+import os
+import pytest
+
+
+from ...datatools.core  import *
 
 class ΤestDataPodBase:
     

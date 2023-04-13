@@ -24,6 +24,7 @@ setuptools.setup(
         "numpy",
         "scikit-learn",
         "pandas"
+        "pytest"
     ]
 )
 

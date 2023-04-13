@@ -1,3 +1,10 @@
+import time
+import os
+
+
+
+from .datatools import *
+
 def generator(duration
                ,fs
                ,size
@@ -534,12 +541,7 @@ def generator(duration
         ignoreDetector=None
 
 
-    if backgroundType == 'optimal':
-        magic={1024: 2**(-21./16.), 2048: 2**(-23./16.), 4096: 2**(-25./16.), 8192: 2**(-27./16.)}
-        param = magic[fs]
-
-    elif backgroundType in ['sudo_real','real']:
-        param = 1
+    if backgroundType in ['sudo_real','real']:
         gps0 = {}
         if noiseFormat=='txtD':
 

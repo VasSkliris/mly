@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from gwpy.timeseries import TimeSeries
 from gwpy.segments import Segment, SegmentList
 import numpy as np
