@@ -23,7 +23,7 @@ setuptools.setup(
         "tensorflow >= 2.6",
         "numpy",
         "scikit-learn",
-        "pandas"
+        "pandas",
         "pytest"
     ]
 )
