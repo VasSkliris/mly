@@ -14,7 +14,7 @@ def test_simple():
 
     np.random.seed(150914)
 
-    dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV')
+    dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV',shuffle = False)
 
     # TEST 1
     for pod in dataset:
@@ -24,12 +24,12 @@ def test_simple():
 
 
 
-    dataset = generator(duration =1, fs =1024, size = 2, detectors = 'HLV')
+    dataset = generator(duration =1, fs =1024, size = 2, detectors = 'HLV',shuffle = False)
 
     # TEST 2
     for i, pod in enumerate(dataset):
         print(int(np.mean(pod.strain)*1e10))
-        assert int(np.mean(pod.strain)*1e10) == [13598079, -27487272][i]
+        assert int(np.mean(pod.strain)*1e10) == [-27487272, 13598079 ][i]
         assert dataset.exportData().shape == (2, 3, 1024)
 
 
