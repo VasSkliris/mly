@@ -1,15 +1,81 @@
 import time
 import os
 
+from pathlib import Path
+
 
 
 from .datatools import *
+
+
+
+def injection_initialization(injection_source, detectors):
+
+    '''Processing of the injection format in the generator
+
+    '''
+
+    if injection_source == None:
+        inj_type = None
+
+    # Path input
+    elif isinstance(injection_source, str): 
+
+        # directory with pods path
+        if os.path.isdir(injection_source):
+
+            if injection_source[-1] != "/": injection_source+="/" 
+
+            if all(os.path.isdir(injection_source+det) for det in detectors):
+
+                inj_type = 'oldtxt'
+            else:
+                inj_type = 'directory'
+
+        # dataPod or dataSet path
+        elif (os.path.isfile(injection_source) and injection_source[-4:]=='.pkl'):
+            with open(injection_source,'rb') as obj:
+                injection_source = pickle.load(obj)
+
+            if isinstance(injection_source,DataPod):
+                injection_source = 'DataPod'
+            
+            elif isinstance(ç,DataSet):
+                if len(injection_source) > 0:
+                    inj_type = 'DataSet'
+                else:
+                    raise ValueError("injection_source DataSet is empty")
+
+        else:
+            raise FileNotFoundError('Not valid directory for :'+injection_source)
+        
+    # DataSet                     
+    elif isinstance(injection_source,DataSet):
+
+        if len(injection_source) > 0:
+            inj_type = 'DataSet'
+        else:
+            raise ValueError("injection_source DataSet is empty")
+
+    # DataPod
+    elif isinstance(injection_source,DataPod):
+        inj_type = 'DataPod'
+
+    else:
+        raise TypeError('Not valid input for injection_source: ',injection_source 
+                    ,"\nIt has to be either a folder or a DataPod or DataSet object.")
+
+    return injection_source, inj_type
+
+
+
+
 
 def generator(duration
                ,fs
                ,size
                ,detectors
-               ,injectionFolder = None
+               ,injection_source = None
                ,labels = None
                ,backgroundType = None
                ,injectionSNR = None
@@ -52,7 +118,7 @@ def generator(duration
         For example if you wan to include Hanford, Livingston and Virgo
         you state it as 'HLV' or ['H','L','V'].
 
-    injectionFolder: str (path, optional)
+    injection_source: str (path, optional)
         The path to the directory with the injections. If not specified
         the generator will just generate noise instances, setting
         injectionSNR to 0.
@@ -169,7 +235,7 @@ def generator(duration
     """
     # Integration limits for the calculation of analytical SNR
     # These values are very important for the calculation
-
+    print(injection_initialization)
     fl, fm=20, int(fs/2)#
 
     profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
@@ -221,54 +287,9 @@ def generator(duration
         raise ValueError("size must be a possitive integer.")
 
     # ---------------------------------------------------------------------------------------- #   
-    # --- injectionFolder -------------------------------------------------------------------- #
+    # --- injection_source -------------------------------------------------------------------- #
 
-    if injectionFolder == None:
-        pass
-
-    # Path input
-    elif isinstance(injectionFolder, str): 
-
-        # directory with pods path
-        if os.path.isdir(injectionFolder):
-
-            if injectionFolder[-1] != "/": injectionFolder+="/" 
-
-            if all(os.path.isdir(injectionFolder+det) for det in detectors):
-
-                inj_type = 'oldtxt'
-            else:
-                inj_type = 'directory'
-
-        # dataPod or dataSet path
-        elif (os.path.isfile(injectionFolder) and injectionFolder[-4:]=='.pkl'):
-            with open(injectionFolder,'rb') as obj:
-                injectionFolder = pickle.load(obj)
-            if isinstance(injectionFolder,DataPod):
-                inj_type = 'DataPod'
-            elif isinstance(injectionFolder,DataSet):
-                if len(injectionFolder) > 0:
-                    inj_type = 'DataSet'
-                else:
-                    raise ValueError("injectionFolder DataSet is empty")
-
-        else:
-            raise FileNotFoundError('Not valid directory for :'+injectionFolder)
-    # DataSet                     
-    elif isinstance(injectionFolder,DataSet):
-
-        if len(injectionFolder) > 0:
-            inj_type = 'DataSet'
-        else:
-            raise ValueError("injectionFolder DataSet is empty")
-
-    # DataPod
-    elif isinstance(injectionFolder,DataPod):
-        inj_type = 'DataPod'
-
-    else:
-        raise Type('Not valid input for injectionFolder:'+injectionFolder
-                    ,"\nIt has to be either a folder or a DataPod or DataSet object.") 
+    injection_source, inj_type = injection_initialization(injection_source, detectors)
 
     # ---------------------------------------------------------------------------------------- #   
     # --- labels ----------------------------------------------------------------------------- #
@@ -295,12 +316,12 @@ def generator(duration
 
     # ---------------------------------------------------------------------------------------- #   
     # --- injectionSNR ----------------------------------------------------------------------- #
-    if injectionFolder == None :
+    if injection_source == None :
         injectionSNR = 0
-#         elif (injectionFolder != None and injectionSNR == None ):
+#         elif (injection_source != None and injectionSNR == None ):
 #             raise ValueError("If you want to use an injection for generation of"+
 #                              "data, you have to specify the SNR you want.")
-#         elif injectionFolder != None and (not (isinstance(injectionSNR,(int,float)) 
+#         elif injection_source != None and (not (isinstance(injectionSNR,(int,float)) 
 #                                           and injectionSNR >= 0)):
 #             raise ValueError("injectionSNR has to be a positive number")
 
@@ -486,19 +507,19 @@ def generator(duration
     noise_segDict={}
     for det in detectors:
 
-        if injectionFolder == None:
+        if injection_source == None:
             injectionFileDict[det] = None
         elif inj_type == 'oldtxt':
-            injectionFileDict[det] = dirlist(injectionFolder+'/' + det)
+            injectionFileDict[det] = dirlist(injection_source+'/' + det)
 
         elif inj_type == 'directory':
-            injectionFileDict[det] = dirlist(injectionFolder)
+            injectionFileDict[det] = dirlist(injection_source)
 
         elif inj_type == 'DataPod':
-            injectionFileDict[det] = [injectionFolder]
+            injectionFileDict[det] = [injection_source]
 
         elif inj_type == 'DataSet':
-            injectionFileDict[det] = [injectionFolder.dataPods]
+            injectionFileDict[det] = [injection_source.dataPods]
 
         else:
             raise TypeError("Unknown type of injections")
@@ -532,7 +553,7 @@ def generator(duration
     else: 
         injectionHRSS=None
 
-    if injectionFolder == None :
+    if injection_source == None :
         injectionHRSS = None
     # ------------------------------
     if 'ignoreDetector' in kwargs: 
@@ -745,7 +766,7 @@ def generator(duration
             maxDuration_=min(duration-disposition_,maxDuration)
 
         index_selection={}
-        if injectionFolder != None:
+        if injection_source != None:
             if differentSignals==True:
                 if maxDuration_ != duration:
                     for det in detectors: 
@@ -753,11 +774,11 @@ def generator(duration
                                                   len(injectionFileDict[detKeys[0]]))
 
                         if inj_type =='oldtxt':
-                            sampling_strain=np.loadtxt(injectionFolder+'/'
+                            sampling_strain=np.loadtxt(injection_source+'/'
                                                        +det+'/'+injectionFileDict[det][index_sample])
 
                         elif inj_type == 'directory':
-                            s_pod=DataPod.load(injectionFolder+
+                            s_pod=DataPod.load(injection_source+
                                                          '/'+injectionFileDict[det][index_sample])
                             sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
@@ -779,11 +800,11 @@ def generator(duration
                                                       len(injectionFileDict[detKeys[0]]))
 
                             if inj_type=='oldtxt':
-                                sampling_strain=np.loadtxt(injectionFolder+'/'
+                                sampling_strain=np.loadtxt(injection_source+'/'
                                                        +det+'/'+injectionFileDict[det][index_sample])
 
                             elif inj_type == 'directory':
-                                s_pod=DataPod.load(injectionFolder+
+                                s_pod=DataPod.load(injection_source+
                                                          '/'+injectionFileDict[det][index_sample])
                                 sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
@@ -811,16 +832,16 @@ def generator(duration
                     index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
 
                     if inj_type =='oldtxt':
-                        sampling_strain=np.loadtxt(injectionFolder+'/'
+                        sampling_strain=np.loadtxt(injection_source+'/'
                                                    +det+'/'+injectionFileDict[det][index_sample])
 
                     elif inj_type == 'directory':
-                        s_pod=DataPod.load(injectionFolder+
+                        s_pod=DataPod.load(injection_source+
                                                      '/'+injectionFileDict[det][index_sample])
                         sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
                     elif inj_type == 'DataPod':
-                        s_pod=injectionFolder
+                        s_pod=injection_source
                         sampling_strain=s_pod.strain[s_pod.detectors.index(det)]         
 
                     elif inj_type == 'DataSet':
@@ -833,16 +854,16 @@ def generator(duration
                         index_sample=np.random.randint(0,len(injectionFileDict[detKeys[0]]))
 
                         if inj_type =='oldtxt':
-                            sampling_strain=np.loadtxt(injectionFolder+'/'
+                            sampling_strain=np.loadtxt(injection_source+'/'
                                                        +det+'/'+injectionFileDict[det][index_sample])
 
                         elif inj_type == 'directory':
-                            s_pod=DataPod.load(injectionFolder+
+                            s_pod=DataPod.load(injection_source+
                                                          '/'+injectionFileDict[det][index_sample])
                             sampling_strain=s_pod.strain[s_pod.detectors.index(det)]
 
                         elif inj_type == 'DataPod':
-                            s_pod=injectionFolder
+                            s_pod=injection_source
                             sampling_strain=s_pod.strain[s_pod.detectors.index(det)]         
 
                         elif inj_type == 'DataSet':
@@ -949,21 +970,21 @@ def generator(duration
                     gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
 
             #If this dataset includes injections:            
-            if injectionFolder != None:      
+            if injection_source != None:      
 
                 # Calling the templates generated with PyCBC
-                # OLD inj=load_inj(injectionFolder,injectionFileDict[det][inj_ind], det) 
+                # OLD inj=load_inj(injection_source,injectionFileDict[det][inj_ind], det) 
                 if inj_type =='oldtxt':
-                    inj = np.loadtxt(injectionFolder+'/'
+                    inj = np.loadtxt(injection_source+'/'
                                      +det+'/'+injectionFileDict[det][index_selection[det]])
 
                 elif inj_type == 'directory':
-                    inj_pod=DataPod.load(injectionFolder+'/'+injectionFileDict[det][index_selection[det]])
+                    inj_pod=DataPod.load(injection_source+'/'+injectionFileDict[det][index_selection[det]])
                     inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
 
 
                 elif inj_type == 'DataPod':
-                    inj_pod=injectionFolder
+                    inj_pod=injection_source
                     inj=np.array(inj_pod.strain[inj_pod.detectors.index(det)])
 
                 elif inj_type == 'DataSet':
@@ -1182,7 +1203,7 @@ def generator(duration
                            ,gps = gps_list
                            ,duration = duration)
 
-        if injectionFolder!=None and inj_type in ['DataSet','DataPod','directory']:
+        if injection_source!=None and inj_type in ['DataSet','DataPod','directory']:
 
             for plkey in list(inj_pod.pluginDict.keys()):
                 if not (plkey in list(pod.pluginDict.keys())):
@@ -1225,3 +1246,5 @@ def generator(duration
         DATA.save(savePath+'/'+name,'pkl')
     else:
         return(DATA)
+
+
