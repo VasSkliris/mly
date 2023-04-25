@@ -3,6 +3,8 @@ import sys
 import os
 import pytest
 import numpy as np
+import time
+import tempfile
 
 from numpy.testing import assert_almost_equal
 from ...datatools.generator import *
@@ -55,34 +57,32 @@ def test_simple():
                                                 , 0.0013598079253561302 ][i])
         assert dataset.exportData().shape == (2, 3, 1024)
 
-# def test_inj(csg100_1):
-
-#     assert_almost_equal(np.mean(pod.strain),-1091)
 
 
 
 
-# def test_injection_initialization_oldtxt(tmp_path_factory, csg300_01, detectors = 'HLV'):
 
-#     np.random.seed(150914)
+def test_injection_initialization_oldtxt(tmpdir_factory, csg300_01, detectors = 'HLV'):
 
-#     inj_directory = tmp_path_factory.mktemp("my_injection", numbered=False)
-#     print(str(inj_directory))
-    
-#     for det in detectors:
+    np.random.seed(150914)
+    file = tempfile.NamedTemporaryFile()
+    filename = file.name
+    print('tempfiles',filename)
+    inj_directory = tmpdir_factory.mktemp("my_injection")
+    print(str(inj_directory))
+    for det in detectors:
         
-#         inj_subdirectory = tmp_path_factory.mktemp(det, numbered=False)
-#         file_path = inj_subdirectory / 'test_injection_01.txt'
-#         injection = csg300_01
-#         np.savetxt(str(file_path) , injection)
+        inj_subdirectory = inj_directory.mkdir(det)
+        file_path = inj_subdirectory / 'test_injection_01.txt'
+        injection = csg300_01
+        np.savetxt(str(file_path) , injection)
+
+    # dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV', injection_source = str(inj_directory) ,shuffle = False)
 
 
-#     dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV', injection_source = str(inj_directory) ,shuffle = False)
+    _, inj_type = injection_initialization(str(inj_directory), detectors)
 
-
-#     _, inj_type = injection_initialization(injection_source, detectors)
-
-#     assert inj_type == 'oldtxt'
+    assert inj_type == 'oldtxt'
 
 
 
