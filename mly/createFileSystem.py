@@ -14,7 +14,7 @@ from .simulateddetectornoise import *
 from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
 from .datatools import DataPod, DataSet
 
-from .checkingFunctions import *
+from .exceptions import *
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
