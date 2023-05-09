@@ -1,8 +1,6 @@
 .*
 *.pyc
 *.ipynb
-!/.gitignore
-!/.gitlab-ci.yml
 --*
 !/.__init__.py
 dist/

@@ -48,21 +48,21 @@ build:
     PYTEST_OPTIONS: "--pyargs mly"
 
 # actually run the tests for each python version we support
-test:3.6:
-  extends: [.test]
-  image: python:3.6
-
 test:3.7:
   extends: [.test]
   image: python:3.7
 
-test:3.8:
-  extends: [.test]
-  image: python:3.8
-
 test:3.9:
   extends: [.test]
   image: python:3.9
+
+test:3.10:
+  extends: [.test]
+  image: python:3.10
+
+test:3.11:
+  extends: [.test]
+  image: python:3.11
 
 # -- lint -------------------
 #

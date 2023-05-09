@@ -1,4 +1,3 @@
-from mly.checkingFunctions import *
 from math import ceil
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,7 +13,7 @@ import numpy as np
 from gwpy.timeseries import TimeSeries as gwTS
 
 from .projectwave import *
-from .checkingFunctions import *
+from .exceptions import *
 ##########################################################################
 
 ##########################################################################

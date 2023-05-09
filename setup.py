@@ -20,10 +20,13 @@ setuptools.setup(
     ],
     install_requires=[
         "gwpy >= 0.13.1",
-        "Keras >= 2.2.4",
-        "tensorflow >= 1.12.0",
-        "numpy >= 1.16.1",
-        "sklearn"
+        "tensorflow >= 2.6",
+        "numpy",
+        "scikit-learn",
+        "pandas",
+        "pytest",
+        "pycondor",
+        "pycbc"
     ]
 )
 

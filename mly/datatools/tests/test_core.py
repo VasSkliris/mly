@@ -1,5 +1,10 @@
-import numpy as np
-from mly.core import *
+# -*- coding: utf-8 -*-
+import sys
+import os
+import pytest
+
+
+from ...datatools.core  import *
 
 class ΤestDataPodBase:
     
@@ -15,7 +20,7 @@ class ΤestDataPodBase:
     # --> test calling an empty class
    
     @property
-    def TEST_CLASS(sefl):
+    def TEST_CLASS(self):
         return self._TEST_ARRAY
     
     # --> test different cases of calling

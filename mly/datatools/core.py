@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from gwpy.timeseries import TimeSeries
 from gwpy.segments import Segment, SegmentList
 import numpy as np
@@ -560,3 +562,6 @@ class DataSetBase:
             print("All good")
         return(check)
                       
+        
+# COMMON METHODS
+
