@@ -25,7 +25,8 @@ setuptools.setup(
         "scikit-learn",
         "pandas",
         "pytest",
-        "pycondor"
+        "pycondor",
+        "pycbc"
     ]
 )
 
