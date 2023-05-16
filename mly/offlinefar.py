@@ -5,7 +5,7 @@ import sys
 import os
 from mly.datatools import DataPod, DataSet
 from mly.validators import *
-from mly.checkingFunctions import *
+from mly.exception import *
 from mly.waveforms import cbc
 
 from mly.plugins import *
