@@ -138,11 +138,11 @@ class DataPod(DataPodBase):
             saving_format = 'pkl'
 
         if saving_format == 'pkl' and (saving_format in allowed_formats):
-            with open(finalName+'.pkl', 'wb') as output:
+            with open(name+'.pkl', 'wb') as output:
                 pickle.dump(self, output, 4)
 
         elif saving_format == 'txt' and (saving_format in allowed_formats):
-            np.savetxt(finalName+'.txt', self.strain)
+            np.savetxt(name+'.txt', self.strain)
 
         else:
             raise TypeError(saving_format+" is not supported.")
