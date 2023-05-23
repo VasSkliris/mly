@@ -12,7 +12,7 @@ from gwpy.io.kerberos import kinit
 
 from .simulateddetectornoise import *
 from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
-from .datatools import DataPod, DataSet
+from .datatools import DataPod, DataSet, generator
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
@@ -163,7 +163,7 @@ class Validator:
             else: 
                 injectionSNR=val
 
-            DATA=DataSet.generator(duration = duration
+            DATA= generator(duration = duration
                                    ,fs = fs
                                    ,size = size
                                    ,detectors = detectors
@@ -318,7 +318,7 @@ class Validator:
         preptime=time.time()
         print("PREP TIME:", preptime-t0)
         # Using a generator for the data to use for testing
-        DATA=DataSet.generator(duration=duration
+        DATA= generator(duration=duration
                                ,fs =fs
                                ,size=size
                                ,detectors=detectors
@@ -340,7 +340,7 @@ class Validator:
 
         for st in range(1,strides):
             print('stride:',st,st*(duration/strides))
-            DATA_=DataSet.generator(duration=duration
+            DATA_= generator(duration=duration
                        ,fs =fs
                        ,size=size
                        ,detectors=detectors
