@@ -2,4 +2,4 @@
 
 from .core import DataPodBase, DataSetBase
 from .datatools import DataPod, DataSet
-from .generator import generator
+from .generator import generator, stackDetector

@@ -720,29 +720,5 @@ class DataSet(DataSetBase):
         return goods
         
  
-    def stackDetector(self,**kwargs):
-        kwargs['size']=len(self)
-        if 'duration' not in kwargs: kwargs['duration']=self[0].duration
-        if 'fs' not in kwargs: kwargs['fs']=self[0].fs   
-        if 'detectors' not in kwargs: 
-            raise ValueError("You need to at least specify a detector")
 
-        if 'plugins' not in kwargs: kwargs['plugins']=[]
-        if 'psd' in self[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
-        # if 'snr'+self[0].detectors[0] in self[0].pluginDict and 'snr' not in kwargs['plugins']: 
-        #     kwargs['plugins'].append('snr')
-        
-
-        newSet=generator(**kwargs)
-
-        for i in range(len(self)):
-            self[i].strain=np.vstack((self[i].strain,newSet[i].strain))
-            self[i].detectors+=newSet[i].detectors
-            self[i].gps+=newSet[i].gps
-            if 'psd' in kwargs['plugins']: self[i].psd+=newSet[i].psd
-            # if 'snr' in kwargs['plugins']:
-            #     for d in newSet[i].detectors:
-            #         self[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
-            if 'correlation' in self[i].pluginDict:
-                self[i].addPlugIn(self[i].pluginDict['correlation'])   
 

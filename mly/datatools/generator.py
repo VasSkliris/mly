@@ -258,7 +258,6 @@ def generator(duration
     """
     # Integration limits for the calculation of analytical SNR
     # These values are very important for the calculation
-    print(injection_initialization)
     fl, fm=20, int(fs/2)#
 
     profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
@@ -2074,3 +2073,34 @@ def finalise_gen(path,generation=True,**kwargs):
             if (('.out' in file) or ('.py' in file)
                 or ('part_of' in file) or ('.sh' in file)):
                 os.system('rm '+path+file)
+
+
+
+
+def stackDetector(dataset,**kwargs):
+    kwargs['size']=len(dataset)
+    if 'duration' not in kwargs: kwargs['duration']=dataset[0].duration
+    if 'fs' not in kwargs: kwargs['fs']=dataset[0].fs   
+    if 'detectors' not in kwargs: 
+        raise ValueError("You need to at least specify a detector")
+
+    if 'plugins' not in kwargs: kwargs['plugins']=[]
+    if 'psd' in dataset[0].pluginDict and 'psd' not in kwargs['plugins']: kwargs['plugins'].append('psd')
+    # if 'snr'+dataset[0].detectors[0] in dataset[0].pluginDict and 'snr' not in kwargs['plugins']: 
+    #     kwargs['plugins'].append('snr')
+    
+
+    newSet=generator(**kwargs)
+
+    for i in range(len(dataset)):
+        dataset[i].strain=np.vstack((dataset[i].strain,newSet[i].strain))
+        dataset[i].detectors+=newSet[i].detectors
+        dataset[i].gps+=newSet[i].gps
+        if 'psd' in kwargs['plugins']: dataset[i].psd+=newSet[i].psd
+        # if 'snr' in kwargs['plugins']:
+        #     for d in newSet[i].detectors:
+        #         dataset[i].addPlugIn(newSet[i].pluginDict['snr'+d])        
+        if 'correlation' in dataset[i].pluginDict:
+            dataset[i].addPlugIn(dataset[i].pluginDict['correlation'])   
+            
+    return(dataset)

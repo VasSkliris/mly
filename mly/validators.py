@@ -12,7 +12,7 @@ from gwpy.io.kerberos import kinit
 
 from .simulateddetectornoise import *
 from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
-from .datatools import DataPod, DataSet, generator
+from .datatools import DataPod, DataSet , generator, stackDetector
 from gwpy.time import to_gps,from_gps
 from gwpy.segments import DataQualityFlag
 from gwpy.segments import Segment,SegmentList
@@ -187,7 +187,7 @@ class Validator:
 
             
             if 'stackDetectorDict' in kwargs:
-                DATA.stackDetector(**kwargs['stackDetectorDict'])
+                DATA = stackDetector(DATA, **kwargs['stackDetectorDict'])
                 
             #random.shuffle(DATA.dataPods)
 
@@ -361,7 +361,7 @@ class Validator:
         
 
         if 'stackDetectorDict' in kwargs:
-            DATA.stackDetector(**kwargs['stackDetectorDict'])
+            DATA = stackDetector(DATA, **kwargs['stackDetectorDict'])
         
         generationtime=time.time()
         print("GENERATION TIME:", generationtime-preptime)

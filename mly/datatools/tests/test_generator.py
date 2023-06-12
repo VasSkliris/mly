@@ -181,5 +181,23 @@ def test_create_file(tmp_path):
 
 
 
+def test_stackDetector():
 
-# def test_injection_initialization_DataPod() 
+    keys = { 
+                "duration": 1,
+                "fs": 1024,
+                "detectors" : "V",
+                "backgroundType" :"optimal",
+                "PSDm":{"V": 32}}
+
+    podlist= []
+    for i in range(10):
+
+        pod = DataPod(np.random.randn(2,1024),fs =1024,detectors = 'HL')
+        podlist.append(pod)
+
+    S = DataSet(podlist)
+
+    S = stackDetector(S,**keys)
+
+    assert(S[0].shape == (3,1024))

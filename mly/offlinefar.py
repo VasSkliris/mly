@@ -4,6 +4,7 @@ import pandas as pd
 import sys
 import os
 from mly.datatools import DataPod, DataSet
+from mly.datatools.generator import stackDetector
 from mly.validators import *
 from mly.exceptions import *
 from mly.waveforms import cbc
@@ -122,7 +123,7 @@ def assembleDataSet( masterDirectory
     dataSet = DataSet(podList)
 
     if 'V' not in detectors:
-        dataSet.stackDetector(**{ 'duration':duration
+        dataSet = stackDetector(dataSet, **{ 'duration':duration
                                         ,'fs':fs
                                         ,'detectors' : 'V'
                                         ,'windowSize':windowSize
