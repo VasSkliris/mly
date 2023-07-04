@@ -1,16 +1,17 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from math import ceil 
-from gwpy.timeseries import TimeSeries
-from gwpy.io.kerberos import kinit
-from gwpy.segments import DataQualityFlag
-from gwpy.segments import Segment,SegmentList
-from gwpy.time import to_gps
-from gwpy.time import from_gps
-from dqsegdb2.query import query_segments
 import os
-import time
-import pandas as pd
+
+# import matplotlib.pyplot as plt
+# from math import ceil 
+# from gwpy.timeseries import TimeSeries
+# from gwpy.io.kerberos import kinit
+# from gwpy.segments import DataQualityFlag
+# from gwpy.segments import Segment,SegmentList
+# from gwpy.time import to_gps
+# from gwpy.time import from_gps
+# from dqsegdb2.query import query_segments
+# import time
+# import pandas as pd
 ################################################################################
 
 def dirlist(filename,exclude=None):   

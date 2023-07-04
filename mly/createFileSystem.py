@@ -12,7 +12,7 @@ from gwpy.io.kerberos import kinit
 
 from .simulateddetectornoise import *
 from .tools import dirlist,  fromCategorical, correlate,internalLags,circularTimeSlides
-from .datatools import DataPod, DataSet
+from .datatools import DataPod, DataSet, generator
 
 from .exceptions import *
 from gwpy.time import to_gps,from_gps
@@ -151,7 +151,8 @@ def createFileSysem(duration
 
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kwargs[k]))       
+        if k not in ['accounting_group_user','accounting_group']:
+            kwstr+=(","+k+"="+str(kwargs[k]))       
         
     if backgroundType=='real':
         
@@ -188,17 +189,9 @@ def createFileSysem(duration
             segmentFileName = 'optimalNoise-No'+str(i+1)+'_'+str(size)
             
         with open(masterDirectory+'script_'+segmentFileName+'.py','w') as f:
-            f.write('#! /usr/bin/env python3\n')
-            f.write('import sys \n')
+            f.write('#! /usr/bin/env python\n')
 
-            usr=os.getcwd().split('/')[2]
-            if os.path.exists('/home/'+usr+'/mly'):
-                f.write("sys.path.append('/home/"+usr+"/mly')\n")
-            else:
-                f.write("sys.path.append('/home/mly/mly/')\n")
-
-
-            f.write('from mly.datatools import DataPod, DataSet\n\n')
+            f.write('from mly.datatools import DataPod, DataSet, generator\n\n')
             
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
@@ -206,7 +199,7 @@ def createFileSysem(duration
 
             if backgroundType == 'optimal':
                 for det in detectors:
-                    comand=( "SET = DataSet.generator(\n"
+                    comand=( "SET = generator(\n"
                              +24*" "+"duration = "+str(duration)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              +24*" "+",size = "+str(size)+"\n"
@@ -223,7 +216,7 @@ def createFileSysem(duration
             else:
                 #f.write("sys.path.append('"+date_list_path[:-1]+"')\n")
                 for det in detectors:
-                    comand=( "SET = DataSet.generator(\n"
+                    comand=( "SET = generator(\n"
                              +24*" "+"duration = "+str(duration)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              +24*" "+",size = "+str(size)+"\n"

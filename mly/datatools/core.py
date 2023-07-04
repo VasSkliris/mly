@@ -255,7 +255,7 @@ class DataPodBase:
                 self._detectors = detectors
             # ---> If not, an error occures.
             else:
-                raise IndexError("detectors must be as many as the strain")
+                raise IndexError(f"detectors ({len(detectors)}) must be as many as the strain inputs ({self.strain.shape[0]})")
 
     @property
     def gps(self):

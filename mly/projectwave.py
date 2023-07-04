@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from pycbc.waveform import get_td_waveform
 from pycbc.waveform import get_fd_waveform
 from pycbc.detector import Detector
-from pycbc.types.timeseries import TimeSeries
+from pycbc.types.timeseries import TimeSeries as PTimeSeries
 
 
 def projectWave(sourceWaveform
@@ -51,9 +51,10 @@ def projectWave(sourceWaveform
     if isinstance(destinationFile,str) and destinationFile[-1]!="/":
         destinationFile=destinationFile+"/"
     
-    # Making the polarisation data into TimeSeries objects
-    hp=TimeSeries(h[0],delta_t=1./fs,epoch=time)         
-    hc=TimeSeries(h[1],delta_t=1./fs,epoch=time) 
+    # Making the polarisation data into PTimeSeries objects
+
+    hp=PTimeSeries(h[0],delta_t=1./fs,epoch=time)         
+    hc=PTimeSeries(h[1],delta_t=1./fs,epoch=time) 
     
     
     hrss=np.sqrt(np.sum(h[0]**2+h[1]**2)/fs)

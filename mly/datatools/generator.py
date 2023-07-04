@@ -2092,10 +2092,18 @@ def stackDetector(dataset,**kwargs):
 
     newSet=generator(**kwargs)
 
+
     for i in range(len(dataset)):
         dataset[i].strain=np.vstack((dataset[i].strain,newSet[i].strain))
-        dataset[i].detectors+=newSet[i].detectors
+
+        if isinstance(dataset[i].detectors,str):
+            dataset[i].detectors = list(dataset[i].detectors) + newSet[i].detectors
+        else:
+            dataset[i].detectors = dataset[i].detectors + newSet[i].detectors
+
+
         dataset[i].gps+=newSet[i].gps
+
         if 'psd' in kwargs['plugins']: dataset[i].psd+=newSet[i].psd
         # if 'snr' in kwargs['plugins']:
         #     for d in newSet[i].detectors:
