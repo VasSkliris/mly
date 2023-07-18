@@ -379,7 +379,7 @@ class Validator:
                 dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
             if len(dataList)==1: dataList=dataList[0]
-            scores = 1.0 - trained_models[m].predict(dataList, batch_size=1, verbose=0)[:,columns[m]]
+            scores = 1.0 - trained_models[m](dataList, training=False).numpy()[:,columns[m]]
             scores_collection.append(scores.tolist())
             
         inferencetime=time.time()
