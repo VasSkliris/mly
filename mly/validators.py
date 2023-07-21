@@ -191,7 +191,6 @@ class Validator:
                 
             #random.shuffle(DATA.dataPods)
 
-
             result[loopname].append(val)
 
             
@@ -200,12 +199,12 @@ class Validator:
                 input_shape=trained_models[m].input_shape
                 if isinstance(input_shape,tuple): input_shape=[input_shape]
                 for i in range(len(models[1][m])):
-                    print(input_shape[i],models[1][m][i])
-                    print(DATA[0].__getattribute__(models[1][m][i]).shape)
+                    # print(input_shape[i],models[1][m][i])
+                    # print(DATA[0].__getattribute__(models[1][m][i]).shape)
                     dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
                 if len(dataList)==1: dataList=dataList[0]
-                scores = trained_models[m].predict(dataList, batch_size=1, verbose=0)[:,columns[m]]
+                scores = trained_models[m](dataList, training=False).numpy()[:,columns[m]]
 
                 if 'scores'+str(m+1) in list(result.keys()):
                     result['scores'+str(m+1)].append(scores.tolist())

@@ -366,7 +366,7 @@ def generator(duration
         # Loading noise using file paths of txt files (different for each detector)
         elif (isinstance(noiseSourceFile,list) 
               and len(noiseSourceFile)==len(detectors) 
-              and all(isisntance(path_,str) for path_ in noiseSourceFile)
+              and all(isinstance(path_,str) for path_ in noiseSourceFile)
               and all(path_[-4:]=='.txt' for path_ in noiseSourceFile)):
 
             noiseFormat='txtD'
@@ -702,8 +702,8 @@ def generator(duration
                                    ,fs = 1
                                    ,size = len(file_)
                                    ,start_from_sec=startingPoint)
-                for det in detectors:
-                    print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
+                #for det in detectors:
+                    #print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
 
                 if size > len(file_):
                     print("Requested size is bigger that the noise sourse data"
@@ -775,6 +775,7 @@ def generator(duration
 
     thetime = time.time()
     DATA=DataSet(name = name)
+
     for I in range(size):
 
 
