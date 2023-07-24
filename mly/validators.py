@@ -36,7 +36,7 @@ class Validator:
                        ,fs
                        ,size
                        ,detectors 
-                       ,injectionFolder = None
+                       ,injection_source = None
                        ,labels = {'type':'signal'}
                        ,backgroundType = None
                        ,injectionSNR = None
@@ -167,7 +167,7 @@ class Validator:
                                    ,fs = fs
                                    ,size = size
                                    ,detectors = detectors
-                                   ,injectionFolder = injectionFolder
+                                   ,injection_source = injection_source
                                    ,labels = labels
                                    ,backgroundType = backgroundType
                                    ,injectionSNR = injectionSNR
@@ -191,6 +191,7 @@ class Validator:
                 
             #random.shuffle(DATA.dataPods)
 
+            #DATA.save(savePath+'/setexample_'+str(val))
             result[loopname].append(val)
 
             
@@ -569,7 +570,7 @@ class Validator:
 #                                ,fs = fs
 #                                ,size = size
 #                                ,detectors = detectors
-#                                #,injectionFolder = injectionFolder
+#                                #,injection_source = injection_source
 #                                ,labels = labels
 #                                ,backgroundType = backgroundType
 #                                ,injectionSNR = 0
@@ -2224,7 +2225,7 @@ def online_TAR(model
              ,fs
              ,detectors
              ,size
-             ,injectionFolder
+             ,injection_source
              ,injectionSNR=None
              ,dates=None
              ,backgroundType = None
@@ -2663,7 +2664,7 @@ def online_TAR(model
                     command=( "TEST = Validator.accuracy(\n"
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                             +24*" "+",injection_source = '"+str(injection_source)+"'\n"
                              +24*" "+",injectionSNR = "+str(injectionSNR)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              #+24*" "+",size = "+str(size_)+"\n"
@@ -2684,7 +2685,7 @@ def online_TAR(model
                     command=( "TEST = Validator.accuracy(\n"
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                             +24*" "+",injection_source = '"+str(injection_source)+"'\n"
                              +24*" "+",injectionSNR = "+str(injectionSNR)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              #+24*" "+",size = "+str(size_)+"\n"

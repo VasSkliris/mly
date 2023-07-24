@@ -1278,7 +1278,7 @@ def auto_gen(duration
              ,fs
              ,detectors
              ,size
-             ,injectionFolder = None
+             ,injection_source = None
              ,labels = None
              ,backgroundType = None
              ,injectionSNR = None
@@ -1343,27 +1343,27 @@ def auto_gen(duration
 
 
     # ---------------------------------------------------------------------------------------- #
-    # --- injectionFolder -------------------------------------------------------------------- #
+    # --- injection_source -------------------------------------------------------------------- #
 
-    if injectionFolder == None:
+    if injection_source == None:
         pass
-    elif isinstance(injectionFolder, str):            
-        if (('/' in injectionFolder) and os.path.isdir(injectionFolder)):
-            injectionFolder_set = injectionFolder.split('/')[-1]
-        elif (('/' not in injectionFolder) and any('injections' in p for p in sys.path)):
+    elif isinstance(injection_source, str):            
+        if (('/' in injection_source) and os.path.isdir(injection_source)):
+            injection_source_set = injection_source.split('/')[-1]
+        elif (('/' not in injection_source) and any('injections' in p for p in sys.path)):
             for p in sys.path:
                 if ('injections' in p):
-                    injectionFolder_path = (p.split('injections')[0]+'injections'
-                        +'/'+injectionFolder)
-                    if os.path.isdir(injectionFolder_path):
-                        injectionFolder = "'"+injectionFolder_path+"'"
-                        injectionFolder_set = injectionFolder.split('/')[-1]
+                    injection_source_path = (p.split('injections')[0]+'injections'
+                        +'/'+injection_source)
+                    if os.path.isdir(injection_source_path):
+                        injection_source = "'"+injection_source_path+"'"
+                        injection_source_set = injection_source.split('/')[-1]
                     else:
                         raise FileNotFoundError('No such file or directory:'
-                                                +injectionFolder_path)
+                                                +injection_source_path)
 
         else:
-            raise FileNotFoundError('No such file or directory:'+injectionFolder) 
+            raise FileNotFoundError('No such file or directory:'+injection_source) 
     else:
         raise TypeError("cbcFolder has to be a string indicating a folder "
                         +"in MLyWorkbench or a full path to a folder")
@@ -1402,7 +1402,7 @@ def auto_gen(duration
     if not isinstance(injectionSNR, list):
         raise TypeError("InjectionSNR must be a list with SNR values of the sets. If you "
                         +"don't want injections just set the value to 0 for the sets")
-    if (any(snr != 0 for snr in injectionSNR)  and  injectionFolder == None):
+    if (any(snr != 0 for snr in injectionSNR)  and  injection_source == None):
         raise ValueError("If you want to use an injection for generation of"+
                          "data, you have to specify the SNR you want and no zero.")
     if not all((isinstance(snr,(int,float)) and snr >=0) for snr in injectionSNR):
@@ -1819,8 +1819,8 @@ def auto_gen(duration
             f.write("import time\n\n")
             f.write("t0=time.time()\n")
             
-            if injectionFolder!=None and injectionFolder[0]!="'":
-                injectionFolder = "'"+injectionFolder+"'"
+            if injection_source!=None and injection_source[0]!="'":
+                injection_source = "'"+injection_source+"'"
 
             if backgroundType == 'optimal':
                 comand=( "SET = generator(\n"
@@ -1828,7 +1828,7 @@ def auto_gen(duration
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
-                         +24*" "+",injectionFolder ="+str(injectionFolder)+"\n"
+                         +24*" "+",injection_source ="+str(injection_source)+"\n"
                          +24*" "+",labels = "+str(labels)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",injectionSNR = "+token_snr+"\n"
@@ -1846,7 +1846,7 @@ def auto_gen(duration
                          +24*" "+",fs = "+str(fs)+"\n"
                          +24*" "+",size = "+str(d['size'][i])+"\n"
                          +24*" "+",detectors = "+str(detectors)+"\n"
-                         +24*" "+",injectionFolder = "+str(injectionFolder)+"\n"
+                         +24*" "+",injection_source = "+str(injection_source)+"\n"
                          +24*" "+",labels = "+str(labels)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",injectionSNR = "+token_snr+"\n"
@@ -1887,8 +1887,8 @@ def auto_gen(duration
         f3.write('fs: '+str(fs)+'\n')
         f3.write('duration: '+str(duration)+'\n')
         f3.write('window: '+str(windowSize)+'\n')
-        if injectionFolder!=None:
-            f3.write('injectionFolder: '+str(injectionFolder)+'\n')
+        if injection_source!=None:
+            f3.write('injection_source: '+str(injection_source)+'\n')
         
         if backgroundType != 'optimal':
             f3.write('timeSlides: '+str(timeSlides)+'\n'+'\n')
