@@ -228,19 +228,7 @@ def EnergySkyMapsGRF(
     frequencies. Do the same for the other detectors and add together.
     '''
 
-    E_hanford = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][0])), noise_psd[0][0]), axis=0)
-
-    E_livingston = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][1])), noise_psd[0][1]), axis=0)
-    E_virgo = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][2])), noise_psd[0][2]), axis=0)
-
-#    print('E_hanford', E_hanford.shape)
-
-    totalEnergy = E_hanford + E_livingston + E_virgo
-
-    return (coherentNullEnergy, incoherentNullEnergy, totalEnergy)
+    return (coherentNullEnergy, incoherentNullEnergy)
 
 
 EnergySkyMapsGRF = tf.function(EnergySkyMapsGRF)
