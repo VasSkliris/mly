@@ -116,7 +116,7 @@ timeDelayShiftTensorflow = tf.function(timeDelayShiftTensorflow)
 
 #shape of the output of this fuction has changed to [num_pixels, 1]
 def antennaResponseRMS(num_pixels, theta, phi, detectors, GPS_time):
-
+    
     antenna_response_rms = np.zeros([num_pixels])
     for pixel_index in range(num_pixels):
 
@@ -229,7 +229,6 @@ EnergySkyMapsGRF = tf.function(EnergySkyMapsGRF)
 
 
 def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
-
     if len(detectors) < 3:
         dominant_polarisation_p = np.zeros([num_pixels, len(detectors)])
         dominant_polarisation_c = np.zeros([num_pixels, len(detectors)])
@@ -239,8 +238,9 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
 
             fp = np.zeros(len(detectors))
             fc = np.zeros(len(detectors))
-
+            
             for detector_index, detector in enumerate(detectors):
+                
                 fp[detector_index], fc[detector_index] = detector.antenna_pattern(
                     RA, dec, 0, GPS_time)
             
@@ -298,17 +298,19 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
 
 
 def timeDelayMap(num_pixels, theta, phi, detectors, GPS_time):
-
+    
     time_delay_map = np.zeros([num_pixels, len(detectors)])
     for pixel_index in range(num_pixels):
+        
         RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
         for detector_index, detector in enumerate(detectors):
             time_delay_map[pixel_index][detector_index] = - \
                 detector.time_delay_from_detector(
                     detectors[0], RA, dec, GPS_time)
-
+    
     return time_delay_map
+
 
 
 def EnergySkyMaps(
@@ -460,11 +462,10 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     gps_time = gps[0]
 
     #Setup detector array:
-    detectors = []
+    detectors_objects = []
     for initial in detector_initials:
-        detectors.append(Detector(initial))
+        detectors_objects.append(Detector(initial))
 
-    num_detectors = len(detector_initials)
 
     #Create theta and phi arrays:
     theta, phi = hp.pix2ang(nside, range(num_pixels), nest = True)
@@ -472,24 +473,25 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     #Create Antenna and TimeDelay maps:
     null_coefficient = nullCoefficient(num_pixels,
                                        theta, phi,
-                                       detectors,
+                                       detectors_objects,
                                        gps_time)
     
     antenna_response_rms = antennaResponseRMS(
-        num_pixels, theta, phi, detectors, gps_time)
-
-    time_delay_map = timeDelayMap(num_pixels, theta, phi, detectors, gps_time)
-
+        num_pixels, theta, phi, detectors_objects, gps_time)
+    
+    time_delay_map = timeDelayMap(num_pixels, theta, phi, detectors_objects, gps_time)
+    
     frequency_axis = np.fft.rfftfreq(fs, d=1/fs)
 
     # < ------------------------------------------
+    
     notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
 
     
     prob_map_total = []
     Lsky = []
     start = time.time()
-
+    
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
                             frequency_axis,
@@ -499,7 +501,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
                             fs, 
                             null_coefficient,
                             antenna_response_rms)
-
+    
     sky_null = sky_map[0]
     sky_inc = sky_map[1]
 
@@ -557,4 +559,9 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
 def skymap_plot_function(strain,data=None):
 
-    hp.mollview(data[0], coord = 'C', nest= True, title = "probability_map")
+    hp.mollview(data[0][0], coord = 'C', nest= True, title = "probability_map")
+
+def skymap_plugin(alpha = 0.30, beta=0.128, sigma = 64, nside =64):
+
+    return PlugIn('skymap', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+                       plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside)

@@ -29,9 +29,6 @@ from scipy.special import comb
 from urllib.error import HTTPError
 
 
-
-
-
 def injection_initialization(injection_source, detectors):
 
     '''Processing of the injection format in the generator
@@ -1206,7 +1203,7 @@ def generator(duration
             plugInToApply.append(PlugIn('snr',SNR_new))
 
         if 'uwstrain' in plugins:
-            uw_strain = PlugIn('uwstrain', unwhitened_strain)
+            uw_strain = PlugIn('uwstrain', np.array(unwhitened_strain))
             plugInToApply.append(uw_strain)
 
 
