@@ -233,7 +233,7 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
         dominant_polarisation_p = np.zeros([num_pixels, len(detectors)])
         dominant_polarisation_c = np.zeros([num_pixels, len(detectors)])
         for pixel_index in range(num_pixels):
-
+            
             RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
             fp = np.zeros(len(detectors))
@@ -459,7 +459,8 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
     detector_initials = list(det + '1' for det in detectors)
 
-    gps_time = gps[0]
+    #gps_time = gps[0]
+    gps_time = 1337069300
 
     #Setup detector array:
     detectors_objects = []
@@ -530,7 +531,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
     # print(len(c_est))
     # c_true = c_est - 0.05*np.sin(np.pi*c_est)
-    c_true = c_est**0.6  # --------> ???
+    c_true = c_est**1  # --------> ???
     #print('c_true', c_true)
 
     p_true = np.diff(c_true, prepend=0)
@@ -561,7 +562,7 @@ def skymap_plot_function(strain,data=None):
 
     hp.mollview(data[0][0], coord = 'C', nest= True, title = "probability_map")
 
-def skymap_plugin(alpha = 0.30, beta=0.128, sigma = 64, nside =64):
+def skymap_plugin(alpha = 0.30, beta=0.128, sigma = 64*1024, nside =128):
 
     return PlugIn('skymap', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
                        plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside)
