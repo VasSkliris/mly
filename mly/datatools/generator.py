@@ -344,9 +344,10 @@ def generator(duration
 
     # ---------------------------------------------------------------------------------------- #   
     # --- injectionSNR ----------------------------------------------------------------------- #
-    if injection_source == None :
+
+    if injection_source is None :
         injectionSNR = 0
-    
+
     input_injectionSNR=injectionSNR
 
 
@@ -519,6 +520,8 @@ def generator(duration
     else:
         processingWindow=((windowSize-duration)/2,(windowSize+duration)/2)
 
+    print('CHECKPOINT PW',processingWindow)
+    
 
     # --- disposition
 
@@ -602,13 +605,16 @@ def generator(duration
     # ------------------------------
     # --- injectionHRSS ------------
 
-    if 'injectionHRSS' in kwargs:
+    # I assume that whenever HRSS is used it is not going to be a noise case
+    if 'injectionHRSS' in kwargs and injection_source is not None:
         injectionHRSS = kwargs['injectionHRSS']
+
+        input_injectionHRSS=injectionHRSS
+
     else: 
         injectionHRSS=None
+        input_injectionHRSS = None
 
-    if injection_source == None :
-        injectionHRSS = None
     # ------------------------------
     if 'ignoreDetector' in kwargs: 
         ignoreDetector=kwargs['ignoreDetector']
@@ -814,6 +820,10 @@ def generator(duration
         if isinstance(input_injectionSNR,(list,tuple)):
             injectionSNR = np.random.uniform(input_injectionSNR[0],input_injectionSNR[1])
 
+        
+        if isinstance(input_injectionHRSS,(list,tuple)):
+            injectionHRSS = np.random.uniform(input_injectionHRSS[0],input_injectionHRSS[1])
+
         detKeys = list(injectionFileDict.keys())
 
         if single == True: luckyDet = np.random.choice(detKeys)
@@ -823,6 +833,7 @@ def generator(duration
 
         index_selection={}
         if injection_source != None:
+
             if differentSignals==True:
                 if maxDuration_ != duration:
                     for det in detectors: 
@@ -1021,7 +1032,7 @@ def generator(duration
                 asd=back.asd(1,0.5)
                 asd_dict[det] = asd
                 if noiseFormat == 'DataSet':
-                    gps_list.append(gps0[det]+ind[det][I]+processingWindow[0])
+                    gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
                 else:
                     gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
 
@@ -1120,14 +1131,15 @@ def generator(duration
 
                 if disp >= 0: 
                     inj = np.hstack((np.zeros(int(fs*processingWindow[0])),inj[disp:]
-                                         ,np.zeros(int(fs*processingWindow[0])+disp)))   
+                                         ,np.zeros(int(fs*(windowSize-processingWindow[1]))+disp))) 
                 if disp < 0: 
                     inj = np.hstack((np.zeros(int(fs*processingWindow[0])-disp),inj[:disp]
-                                         ,np.zeros(int(fs*processingWindow[0])))) 
+                                         ,np.zeros(int(fs*(windowSize-processingWindow[1]))))) 
 
 
                 # Calculating the one sided fft of the template,
                 # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+
                 inj_fft_0=(1/fs)*np.fft.fft(inj)
                 inj_fft_0_dict[det] = inj_fft_0
 
@@ -1168,7 +1180,6 @@ def generator(duration
 
         # Calculation of combined SNR    
         SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
-
         # Tuning injection amplitude to the SNR wanted
         podstrain = []
         podPSD = []
@@ -1190,6 +1201,7 @@ def generator(duration
                 inj_cal=0.0001*np.real(np.fft.ifft(fs*fft_cal)) 
             else:
                 inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
+                
             # Joining calibrated injection and background noise
             strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
             #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
@@ -1265,7 +1277,7 @@ def generator(duration
                 if not (plkey in list(pod.pluginDict.keys())):
                     pod.addPlugIn(inj_pod.pluginDict[plkey])
 
-        if 'hrss' in plugins: 
+        if 'hrss' in plugins or injectionHRSS!=None:
             if 'hrss' in inj_pod.pluginDict.keys():
                 if injectionHRSS!=None:
                     plugInToApply.append(PlugIn('hrss'
@@ -1275,7 +1287,7 @@ def generator(duration
                                             ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
 
             else:
-                print("Warning: Unable to calculate hrss, There was no hrss in the injection pod.")
+                raise ValueError("Unable to calculate or use hrss valye. There was no hrss in the injection pod.")
 
         for pl in plugInToApply:
             pod.addPlugIn(pl)
