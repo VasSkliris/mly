@@ -3,7 +3,7 @@ from .tools import *
 from .plugins import *
 import pylab
 import os
-
+import math
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -131,7 +131,7 @@ def projectWave(sourceWaveform
     elif crop!=None and pad==None:
             
         if isinstance(crop,int) and crop > 0:
-            crop = [ceil(crop/2), int(crop/2)]
+            crop = [math.ceil(crop/2), int(crop/2)]
             for det in detectors:    
                 signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
 
@@ -166,7 +166,7 @@ def projectWave(sourceWaveform
     elif crop==None and pad!=None:
 
         if isinstance(pad,int) and pad > 0:
-            pad = [ceil(pad/2), int(pad/2)]
+            pad = [math.ceil(pad/2), int(pad/2)]
             for det in detectors:    
                 signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
 

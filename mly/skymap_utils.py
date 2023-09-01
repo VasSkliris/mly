@@ -1,24 +1,18 @@
 # Construction of null-stream sky map using unwhitened strain data.
 
 from tqdm import tqdm
-#import tensorflow_probability as tfp
 import tensorflow as tf
 import time
-from scipy.stats import norm
 import healpy as hp
-import pycbc.psd
-import pycbc.noise
-from gwpy.timeseries import TimeSeries
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
-from pycbc.detector import Detector, get_available_detectors
-from pycbc.waveform import get_td_waveform
+from pycbc.detector import Detector
 from math import *
 import numpy as np
-from .projectwave import *
 from .plugins import *
 from .datatools import *
-import sys
+from scipy.signal import welch
+from scipy.signal import iirnotch, lfilter, butter
 
 # GPS > GPS, GMST > GMST, ra = RA, dec = declination
 
@@ -122,7 +116,7 @@ timeDelayShiftTensorflow = tf.function(timeDelayShiftTensorflow)
 
 #shape of the output of this fuction has changed to [num_pixels, 1]
 def antennaResponseRMS(num_pixels, theta, phi, detectors, GPS_time):
-
+    
     antenna_response_rms = np.zeros([num_pixels])
     for pixel_index in range(num_pixels):
 
@@ -228,58 +222,95 @@ def EnergySkyMapsGRF(
     frequencies. Do the same for the other detectors and add together.
     '''
 
-    E_hanford = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][0])), noise_psd[0][0]), axis=0)
-
-    E_livingston = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][1])), noise_psd[0][1]), axis=0)
-    E_virgo = tf.math.reduce_sum(tf.divide(tf.math.square(
-        tf.math.abs(shifted_strain[0][2])), noise_psd[0][2]), axis=0)
-
-#    print('E_hanford', E_hanford.shape)
-
-    totalEnergy = E_hanford + E_livingston + E_virgo
-
-    return (coherentNullEnergy, incoherentNullEnergy, totalEnergy)
+    return (coherentNullEnergy, incoherentNullEnergy)
 
 
 EnergySkyMapsGRF = tf.function(EnergySkyMapsGRF)
 
 
 def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
+    if len(detectors) < 3:
+        dominant_polarisation_p = np.zeros([num_pixels, len(detectors)])
+        dominant_polarisation_c = np.zeros([num_pixels, len(detectors)])
+        for pixel_index in range(num_pixels):
 
-    null_coefficient = np.zeros([num_pixels, 3])
-    for pixel_index in range(num_pixels):
+            RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
-        RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
+            fp = np.zeros(len(detectors))
+            fc = np.zeros(len(detectors))
+            
+            for detector_index, detector in enumerate(detectors):
+                
+                fp[detector_index], fc[detector_index] = detector.antenna_pattern(
+                    RA, dec, 0, GPS_time)
+            
+            
+            # add the angle on this following Fp2 and Fc2
+            Fp2 = np.square(fp[0]) + np.square(fp[1])
+            Fc2 = np.square(fc[0]) + np.square(fc[1])
+            
+            dot_product  = np.dot(fp, fc)
+            # dot_product  = np.dot(Fp2, Fc2)
+                  
+            # compute the dominant polarisation angle 
+            dpa = 1/4*(np.arctan2( (2*dot_product) , (Fp2 - Fc2)))
 
-        fp = np.zeros(len(detectors))
-        fc = np.zeros(len(detectors))
+            # Compute antenna response tensor for each pixel and detector
+            dominant_polarisation_p[pixel_index] = [np.cos(2*dpa)*fp[0] + sin(2*dpa)*fc[0], np.cos(2*dpa)*fp[1] + sin(2*dpa)*fc[1]]
+            dominant_polarisation_c[pixel_index] = [-np.sin(2*dpa)*fp[0] + cos(2*dpa)*fc[0], -np.sin(2*dpa)*fp[1] + cos(2*dpa)*fc[1]]
+            
+            if pixel_index ==0:
+                print('dp', dominant_polarisation_p[0][:3])
+                print('dc', dominant_polarisation_c[0][:3])
+            
+            if np.dot(dominant_polarisation_c[pixel_index], dominant_polarisation_c[pixel_index])> np.dot(dominant_polarisation_p[pixel_index], dominant_polarisation_p[pixel_index]):
+                temp = dominant_polarisation_p[pixel_index]
+                dominant_polarisation_p[pixel_index] = dominant_polarisation_c[pixel_index]
+                dominant_polarisation_c[pixel_index] = -temp
+            
+        null_coefficient = (np.divide((dominant_polarisation_p[:, 1], - dominant_polarisation_p[:, 0]), np.sqrt(np.square(dominant_polarisation_p[:, 0]) + np.square(dominant_polarisation_p[:, 1]))))
+        
+        null_coefficient = null_coefficient.T
+            
+            # norm_dominant_polarisation = np.linalg.norm(dominant_polarisation)
+        
+    else:
+        null_coeff = np.zeros([num_pixels, len(detectors)])
+        for pixel_index in range(num_pixels):
 
-        for detector_index, detector in enumerate(detectors):
-            fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                RA, dec, 0, GPS_time)
+            RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
-        cross_product = np.cross(fp, fc)
-        norm_cross_product = np.linalg.norm(cross_product)
-        null_coefficient[pixel_index] = (cross_product/(norm_cross_product))
+            fp = np.zeros(len(detectors))
+            fc = np.zeros(len(detectors))
+
+            for detector_index, detector in enumerate(detectors):
+                fp[detector_index], fc[detector_index] = detector.antenna_pattern(
+                    RA, dec, 0, GPS_time)
+
+            cross_product = np.cross(fp, fc)
+            norm_cross_product = np.linalg.norm(cross_product)
+            null_coeff[pixel_index] = (cross_product/(norm_cross_product))
+        
+        null_coefficient = null_coeff
 
     return null_coefficient
-# is it used?
+
 
 
 def timeDelayMap(num_pixels, theta, phi, detectors, GPS_time):
-
+    
     time_delay_map = np.zeros([num_pixels, len(detectors)])
     for pixel_index in range(num_pixels):
+        
         RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
         for detector_index, detector in enumerate(detectors):
             time_delay_map[pixel_index][detector_index] = - \
                 detector.time_delay_from_detector(
                     detectors[0], RA, dec, GPS_time)
-
+    
     return time_delay_map
+
 
 
 def EnergySkyMaps(
@@ -304,7 +335,7 @@ def EnergySkyMaps(
     noise_psd = tf.convert_to_tensor(noise_psd)
 
     #Run tensorflow graph:
-    coherentNullEnergy, incoherentNullEnergy, totalEnergy = EnergySkyMapsGRF(
+    coherentNullEnergy, incoherentNullEnergy = EnergySkyMapsGRF(
         strain,
         frequency_axis,
         noise_psd,
@@ -318,16 +349,90 @@ def EnergySkyMaps(
 
     coherentNullEnergy = np.array(coherentNullEnergy)
     incoherentNullEnergy = np.array(incoherentNullEnergy)
-    totalEnergy = np.array(totalEnergy)
+    
 
-    return (coherentNullEnergy, incoherentNullEnergy, totalEnergy)
+    return (coherentNullEnergy, incoherentNullEnergy)
+
+def bandpass_prior_to_notching(data, fs, f_min, f_max):
+    filter_order = 8
+    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
+    samples_to_crop = 1 * fs  # 2 seconds * fs samples/second
+
+    bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
+    for index in range(data.shape[0]):    
+        # Apply the filter
+        filtered_data = lfilter(b, a, data[index])
+        # Crop the first 2 seconds
+        cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
+        # Store the cropped data
+        bandpassed_data[index] = cropped_data
+        
+    return bandpassed_data
+
+def remove_line(data, fs, f_min, f_max, Q, factor):
+    
+    data = bandpass_prior_to_notching(data, fs, f_min, f_max)
+    
+    # FFT length chosen 4 times the sample frequency
+    Nfft = 4 * fs  
+    notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
+    originalPSD = []
+    notch_centre_bin = []
+
+    # Loop through the rows in the data (each row is a separate time series)
+    for i in range(data.shape[0]):
+        # Calculate the PSD of the signal
+        frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
+        originalPSD.append(psd)
+        smothBins = int(9 / (fs/Nfft))
+
+        median_psd = np.zeros_like(psd)
+        for bins in range(len(psd)):
+            start = max(0, bins - smothBins)
+            end = min(len(psd), bins + smothBins)
+            median_psd[bins] = np.median(psd[start:end])
+    
+        # Identify lines
+        line_centre_bin = []
+        line_width_bins = []
+        line_height = []
+        prev_bin = False
+        for j in range(len(psd)):
+            if (psd[j] > factor*median_psd[j]) and (frequencies[j] >= f_min) and (frequencies[j] <= f_max):
+                if prev_bin == False:
+                    width_bins = 1
+                    max_height = psd[j] / median_psd[j]
+                    centre_bin = j
+                else:
+                    width_bins = width_bins+1
+                    if psd[j] / median_psd[j] > max_height:
+                        max_height = psd[j] / median_psd[j]
+                        centre_bin = j
+                prev_bin = True
+            else:
+                if prev_bin==True:
+                    line_centre_bin.append(centre_bin)
+                    line_width_bins.append(width_bins)
+                    line_height.append(max_height)
+                    prev_bin = False
+        notch_centre_bin.append(line_centre_bin)
+
+        filtered_data = np.copy(data[i])
+        # Loop over frequencies and apply notch filter
+        for centre_bin in notch_centre_bin[i]:
+            # Create a notch filter
+            centre_frequency = frequencies[centre_bin]
+            b, a = iirnotch(centre_frequency, Q, fs)
+            # Apply the filter to data
+            filtered_data = lfilter(b, a, filtered_data)
+        notched_data[i] = filtered_data
+    w = int(notched_data.shape[1]/fs)
+    return notched_data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
 
 
 
 
-
-
-def skymap_gen_function(fs, uwstrain, noise_psd, gps
+def skymap_gen_function(fs, uwstrain, psd, gps, detectors
                         , alpha = None, beta=None, sigma=None
                         , nside = None
                         , **kwargs):
@@ -336,7 +441,7 @@ def skymap_gen_function(fs, uwstrain, noise_psd, gps
         print(alpha, beta, sigma)
         raise ValueError('alpha, beta and sigma must be defined')
     
-    sigma = fs/sigma
+    sigma = fs*sigma
     
     
     print(alpha, beta, sigma)
@@ -352,16 +457,15 @@ def skymap_gen_function(fs, uwstrain, noise_psd, gps
 
     # ---------------> Could we possibly save this somewhere and only load it?
 
-    detector_initials = ["H1", "L1", "V1"]
+    detector_initials = list(det + '1' for det in detectors)
 
     gps_time = gps[0]
 
     #Setup detector array:
-    detectors = []
+    detectors_objects = []
     for initial in detector_initials:
-        detectors.append(Detector(initial))
+        detectors_objects.append(Detector(initial))
 
-    num_detectors = len(detector_initials)
 
     #Create theta and phi arrays:
     theta, phi = hp.pix2ang(nside, range(num_pixels), nest = True)
@@ -369,39 +473,41 @@ def skymap_gen_function(fs, uwstrain, noise_psd, gps
     #Create Antenna and TimeDelay maps:
     null_coefficient = nullCoefficient(num_pixels,
                                        theta, phi,
-                                       detectors,
+                                       detectors_objects,
                                        gps_time)
     
     antenna_response_rms = antennaResponseRMS(
-        num_pixels, theta, phi, detectors, gps_time)
-
-    time_delay_map = timeDelayMap(num_pixels, theta, phi, detectors, gps_time)
-
+        num_pixels, theta, phi, detectors_objects, gps_time)
+    
+    time_delay_map = timeDelayMap(num_pixels, theta, phi, detectors_objects, gps_time)
+    
     frequency_axis = np.fft.rfftfreq(fs, d=1/fs)
 
     # < ------------------------------------------
-
+    
+    notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
 
     
     prob_map_total = []
-
+    Lsky = []
     start = time.time()
-
-    sky_map = EnergySkyMaps(uwstrain,
+    
+    sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
                             frequency_axis,
-                            noise_psd,
+                            psd,
                             num_pixels, 
                             len(detectors), 
                             fs, 
                             null_coefficient,
                             antenna_response_rms)
-
+    
     sky_null = sky_map[0]
     sky_inc = sky_map[1]
 
     L_sky = (1-(sky_null/sky_inc)) * (np.max(sky_null) - sky_null)
-    
+    Lsky.append(L_sky)
+
     prob_map = ((antenna_response_rms)**alpha) * np.exp(
                  -((np.amax(L_sky) - L_sky)/sigma)**beta)
 
@@ -436,6 +542,7 @@ def skymap_gen_function(fs, uwstrain, noise_psd, gps
     print('skymap generation time: ',time.time() - start)
 
     prob_map_total = np.array(prob_map_total)
+    Lsky_array = np.array(Lsky)
     
     # if isinstance(map_save, str):
     #     file_name = f'{map_save}.npy'
@@ -447,9 +554,14 @@ def skymap_gen_function(fs, uwstrain, noise_psd, gps
     #     hp.mollview(prob_map_total[0], coord = 'C', nest= None, title = "probability_map")
     #     #plt.savefig(f"prob_skymap_{time.time()}.png")
     
-    return(prob_map_total)
+    return(prob_map_total, Lsky_array)
 
 
 def skymap_plot_function(strain,data=None):
 
-    hp.mollview(data[0], coord = 'C', nest= True, title = "probability_map")
+    hp.mollview(data[0][0], coord = 'C', nest= True, title = "probability_map")
+
+def skymap_plugin(alpha = 0.30, beta=0.128, sigma = 64, nside =64):
+
+    return PlugIn('skymap', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+                       plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside)

@@ -29,9 +29,6 @@ from scipy.special import comb
 from urllib.error import HTTPError
 
 
-
-
-
 def injection_initialization(injection_source, detectors):
 
     '''Processing of the injection format in the generator
@@ -1138,6 +1135,7 @@ def generator(duration
 
         # Tuning injection amplitude to the SNR wanted
         podstrain = []
+        unwhitened_strain = []
         podPSD = []
         podCorrelations=[]
         SNR_new=[]
@@ -1158,7 +1156,8 @@ def generator(duration
             else:
                 inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
             # Joining calibrated injection and background noise
-            strain=TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
+            strain= TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
+            unwhitened_strain.append(strain.value.tolist())
             #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
             #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
             #print(strain.value.tolist())
@@ -1204,6 +1203,9 @@ def generator(duration
             SNR_new.append(network_snr)
             plugInToApply.append(PlugIn('snr',SNR_new))
 
+        if 'uwstrain' in plugins:
+            uw_strain = PlugIn('uwstrain', np.array(unwhitened_strain))
+            plugInToApply.append(uw_strain)
 
 
 
