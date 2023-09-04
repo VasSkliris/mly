@@ -439,13 +439,13 @@ class DataSet(DataSetBase):
                 raise TypeError("Inputs must be PlugIn objects")
                 
         for plugin in args:
-            plugAttributes=[]
             for at in plugin.attributes:
-                if at in dir(self.dataPods[0]):
-                    for pod in self.dataPods:
-                        pod.addPlugIn(plugin)
-                else:
-                    raise AttributeError(at+" is not part of DataPod instance")
+                if at not in dir(self.dataPods[0]):
+                    raise AttributeError(f"{at} is not part of DataPod instance so {plugin.name} cannot be added.")
+                
+        for plugin in args:
+            for pod in self.dataPods:
+                pod.addPlugIn(plugin)
 
             self.pluginDict[plugin.name]=plugin
             
