@@ -41,7 +41,7 @@ def test_simple():
 
     np.random.seed(150914)
 
-    dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV',shuffle = False)
+    dataset = generator(duration =1, fs =1024, size = 1, detectors = 'HLV',shuffle = False, whitening_method = 'welch')
 
     # TEST 1
     for pod in dataset:
@@ -49,7 +49,7 @@ def test_simple():
         assert dataset.exportData().shape == (1, 3, 1024)
 
 
-    dataset = generator(duration =1, fs =1024, size = 2, detectors = 'HLV',shuffle = False)
+    dataset = generator(duration =1, fs =1024, size = 2, detectors = 'HLV',shuffle = False, whitening_method = 'welch')
 
     # TEST 2
     for i, pod in enumerate(dataset):
@@ -188,7 +188,8 @@ def test_stackDetector():
                 "fs": 1024,
                 "detectors" : "V",
                 "backgroundType" :"optimal",
-                "PSDm":{"V": 32}}
+                "PSDm":{"V": 32},
+                "whitening_method":'welch'}
 
     podlist= []
     for i in range(10):
