@@ -243,6 +243,12 @@ def generator(duration
         You can specify here plugins that are included in plugins.known_plug_ins variable.
         Those plugins will automaticly be added into the dataset returned.
 
+    processingWindow : tuple/list
+        Specify here where in the data window to search for gravitational wave signal. Data outside 
+        this window is used for estimating the power spectrum.
+        
+    whitening_method : {'median','welch'} 
+        The whitening method for any whitening, it accepts any gwpy methods.
 
     Returns
     -------
@@ -335,14 +341,11 @@ def generator(duration
 
     # ---------------------------------------------------------------------------------------- #   
     # --- injectionSNR ----------------------------------------------------------------------- #
-    if injection_source == None :
+
+    if injection_source is None :
         injectionSNR = 0
-#         elif (injection_source != None and injectionSNR == None ):
-#             raise ValueError("If you want to use an injection for generation of"+
-#                              "data, you have to specify the SNR you want.")
-#         elif injection_source != None and (not (isinstance(injectionSNR,(int,float)) 
-#                                           and injectionSNR >= 0)):
-#             raise ValueError("injectionSNR has to be a positive number")
+
+    input_injectionSNR=injectionSNR
 
 
     # ---------------------------------------------------------------------------------------- #   
@@ -484,6 +487,38 @@ def generator(duration
 
     #print(frames,channels)
 
+    
+    # --- whitening_method -------------------------------------------- #
+
+    if 'whitening_method' in kwargs:
+        whitening_method = kwargs['whitening_method']
+    else: 
+        whitening_method = 'median'
+        
+    # --- processingWindow -------------------------------------------- #
+    
+    if 'processingWindow' in kwargs:
+        
+        processingWindow = kwargs['processingWindow']
+        
+        if isinstance(processingWindow,(tuple,list)):
+
+            if processingWindow[0]<0 or processingWindow[1]<0:
+                raise ValueError('Expected positive values for the processing window.')
+
+            if processingWindow[0]>windowSize or processingWindow[1]>windowSize:
+                raise ValueError('Expected processing window to lie within data window.')
+
+            if processingWindow[0]!=processingWindow[1]-duration:
+                raise ValueError('Expected processing window to have same length as duration.')
+
+        else: 
+            raise TypeError('Processing window needs to be tuple or list within windowSize interval')
+    else:
+        processingWindow=((windowSize-duration)/2,(windowSize+duration)/2)
+
+    print('CHECKPOINT PW',processingWindow)
+    
 
     # --- disposition
 
@@ -567,13 +602,16 @@ def generator(duration
     # ------------------------------
     # --- injectionHRSS ------------
 
-    if 'injectionHRSS' in kwargs:
+    # I assume that whenever HRSS is used it is not going to be a noise case
+    if 'injectionHRSS' in kwargs and injection_source is not None:
         injectionHRSS = kwargs['injectionHRSS']
+
+        input_injectionHRSS=injectionHRSS
+
     else: 
         injectionHRSS=None
+        input_injectionHRSS = None
 
-    if injection_source == None :
-        injectionHRSS = None
     # ------------------------------
     if 'ignoreDetector' in kwargs: 
         ignoreDetector=kwargs['ignoreDetector']
@@ -699,8 +737,6 @@ def generator(duration
                                    ,fs = 1
                                    ,size = len(file_)
                                    ,start_from_sec=startingPoint)
-                #for det in detectors:
-                    #print("det",gps0[det]+np.array(ind[det])+(windowSize-duration)/2)
 
                 if size > len(file_):
                     print("Requested size is bigger that the noise sourse data"
@@ -777,6 +813,13 @@ def generator(duration
 
 
         t0=time.time()
+        
+        if isinstance(input_injectionSNR,(list,tuple)):
+            injectionSNR = np.random.uniform(input_injectionSNR[0],input_injectionSNR[1])
+
+        
+        if isinstance(input_injectionHRSS,(list,tuple)):
+            injectionHRSS = np.random.uniform(input_injectionHRSS[0],input_injectionHRSS[1])
 
         detKeys = list(injectionFileDict.keys())
 
@@ -787,6 +830,7 @@ def generator(duration
 
         index_selection={}
         if injection_source != None:
+
             if differentSignals==True:
                 if maxDuration_ != duration:
                     for det in detectors: 
@@ -959,7 +1003,7 @@ def generator(duration
                 # Calculating the ASD so tha we can use it for whitening later
                 asd=back.asd(1,0.5)                 
                 asd_dict[det] = asd
-                gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
+                gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
                 back_dict[det] = back.value
 
             elif backgroundType == 'real':
@@ -985,9 +1029,9 @@ def generator(duration
                 asd=back.asd(1,0.5)
                 asd_dict[det] = asd
                 if noiseFormat == 'DataSet':
-                    gps_list.append(gps0[det]+ind[det][I]+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
                 else:
-                    gps_list.append(gps0[det]+ind[det][I]/fs+(windowSize-duration)/2)
+                    gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
 
             #If this dataset includes injections:            
             if injection_source != None:      
@@ -1083,15 +1127,16 @@ def generator(duration
 
 
                 if disp >= 0: 
-                    inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)),inj[disp:]
-                                         ,np.zeros(int(fs*(windowSize-duration)/2)+disp)))   
+                    inj = np.hstack((np.zeros(int(fs*processingWindow[0])),inj[disp:]
+                                         ,np.zeros(int(fs*(windowSize-processingWindow[1]))+disp))) 
                 if disp < 0: 
-                    inj = np.hstack((np.zeros(int(fs*(windowSize-duration)/2)-disp),inj[:disp]
-                                         ,np.zeros(int(fs*(windowSize-duration)/2)))) 
+                    inj = np.hstack((np.zeros(int(fs*processingWindow[0])-disp),inj[:disp]
+                                         ,np.zeros(int(fs*(windowSize-processingWindow[1]))))) 
 
 
                 # Calculating the one sided fft of the template,
                 # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
+
                 inj_fft_0=(1/fs)*np.fft.fft(inj)
                 inj_fft_0_dict[det] = inj_fft_0
 
@@ -1132,7 +1177,6 @@ def generator(duration
 
         # Calculation of combined SNR    
         SNR0=np.sqrt(np.sum(np.asarray(list(SNR0_dict.values()))**2))
-
         # Tuning injection amplitude to the SNR wanted
         podstrain = []
         unwhitened_strain = []
@@ -1155,6 +1199,7 @@ def generator(duration
                 inj_cal=0.0001*np.real(np.fft.ifft(fs*fft_cal)) 
             else:
                 inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
+                
             # Joining calibrated injection and background noise
             strain= TimeSeries(back_dict[det]+inj_cal,sample_rate=fs,t0=0).astype('float64')
             unwhitened_strain.append(strain.value.tolist())
@@ -1164,18 +1209,18 @@ def generator(duration
             # Bandpassing
             # strain=strain.bandpass(20,int(fs/2)-1)
             # Whitenning the data with the asd of the noise
-            whiten_strain=strain.whiten(4,2,fduration=4,method = 'welch', highpass=20)#,asd=asd_dict[det])
+            whiten_strain=strain.whiten(4,2,fduration=4,method = whitening_method, highpass=20)#,asd=asd_dict[det])
 
             #print(det,len(strain),np.prod(np.isfinite(strain)),len(strain)-np.sum(np.isfinite(strain)))
             #print(det,len(strain),'zeros',len(np.where(strain.value==0.0)[0]))
 
             # Crop data to the duration length
-            whiten_strain=whiten_strain[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+            whiten_strain=whiten_strain[int((processingWindow[0])*fs):int((processingWindow[1])*fs)]
             podstrain.append(whiten_strain.value.tolist())
 
             if 'snr' in plugins:
-                whiten_strain_median=strain.whiten(4,2,fduration=4,method = 'median'
-                        , highpass=20)[int(((windowSize-duration)/2)*fs):int(((windowSize+duration)/2)*fs)]
+                whiten_strain_median=strain.whiten(4,2,fduration=4,method = whitening_method
+                        , highpass=20)[int((processingWindow[0])*fs):int((processingWindow[1])*fs)]
                 # This is strictly for duration 1 and fs 1024
                 new_snr = np.sum(whiten_strain_median.value**2 -0.978**2)
 
@@ -1234,7 +1279,7 @@ def generator(duration
                 if not (plkey in list(pod.pluginDict.keys())):
                     pod.addPlugIn(inj_pod.pluginDict[plkey])
 
-        if 'hrss' in plugins: 
+        if 'hrss' in plugins or injectionHRSS!=None:
             if 'hrss' in inj_pod.pluginDict.keys():
                 if injectionHRSS!=None:
                     plugInToApply.append(PlugIn('hrss'
@@ -1244,7 +1289,7 @@ def generator(duration
                                             ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
 
             else:
-                print("Warning: Unable to calculate hrss, There was no hrss in the injection pod.")
+                raise ValueError("Unable to calculate or use hrss valye. There was no hrss in the injection pod.")
 
         for pl in plugInToApply:
             pod.addPlugIn(pl)
@@ -1501,14 +1546,28 @@ def auto_gen(duration
     # If noise is optimal it is much more simple
     if backgroundType == 'optimal':
 
-        d={'size' : num_of_sets*[size]
-           , 'start_point' : num_of_sets*[startingPoint]
-           , 'set' : snr_list
-           , 'name' : list(name+'_'+str(snr_list[i]) for i in range(num_of_sets))}
+        if isinstance(snr_list[0],(int,float,str)):
 
-        print('These are the details of the datasets to be generated: \n')
-        for i in range(len(d['size'])):
-            print(d['size'][i], d['start_point'][i] ,d['name'][i])
+            d={'size' : num_of_sets*[size]
+            , 'start_point' : num_of_sets*[startingPoint]
+            , 'set' : snr_list
+            , 'name' : list(name+'_'+str(snr_list[i]) for i in range(num_of_sets))}
+
+            print('These are the details of the datasets to be generated: \n')
+            for i in range(len(d['size'])):
+                print(d['size'][i], d['start_point'][i] ,d['name'][i])
+
+        elif isinstance(snr_list[0],(list,tuple)):
+
+            d={'size' : num_of_sets*[size]
+            , 'start_point' : num_of_sets*[startingPoint]
+            , 'set' : snr_list
+            , 'name' : list(name+'_'+str(snr_list[i][0])+'to'+str(snr_list[i][1]) for i in range(num_of_sets))}
+
+            print('These are the details of the datasets to be generated: \n')
+            for i in range(len(d['size'])):
+                print(d['size'][i], d['start_point'][i] ,d['name'][i])
+
                            
     # If noise is using real noise segments it is complicated   
     else:
@@ -1802,7 +1861,10 @@ def auto_gen(duration
     
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kwargs[k]))           
+        if isinstance(kwargs[k],str):
+            kwstr+=(","+k+"='"+str(kwargs[k])+"'")
+        else:
+            kwstr+=(","+k+"="+str(kwargs[k])) 
 
     for i in range(len(d['size'])):
 
@@ -1810,7 +1872,6 @@ def auto_gen(duration
             +str(d['size'][i])+'.py','w') as f:
             f.write('#! /usr/bin/env python3\n')
             f.write('import sys \n')
-            f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
 
@@ -1834,6 +1895,7 @@ def auto_gen(duration
                          +24*" "+",labels = "+str(labels)+"\n"
                          +24*" "+",backgroundType = '"+str(backgroundType)+"'\n"
                          +24*" "+",injectionSNR = "+token_snr+"\n"
+                         +24*" "+",windowSize = "+str(windowSize)+"\n"
                          +24*" "+",name = '"+str(d['name'][i])+"_"+str(d['size'][i])+"'\n"
                          +24*" "+",savePath ='"+path+dir_name+"'\n"
                          +24*" "+",single = "+str(single)+"\n"
@@ -1901,7 +1963,6 @@ def auto_gen(duration
     with open(path+dir_name+'/final_gen.py','w') as f4:
         f4.write("#! /usr/bin/env python3\n")
         f4.write("import sys \n")
-        f4.write("sys.path.append('/home/"+accounting_group_user+"/mly/')\n")
         f4.write("from mly.datatools import *\n")
         f4.write("finalise_gen('"+path+dir_name+"')\n")
         

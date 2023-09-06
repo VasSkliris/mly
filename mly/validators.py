@@ -1125,7 +1125,13 @@ def auto_FAR(model
     
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kwargs[k]))   
+        if isinstance(kwargs[k],str):
+            argument = "'"+kwargs[k]+"'"
+        else:
+            argument = kwargs[k]
+        
+    kwstr+=(","+k+"="+str(argument))        
+
         
     for i in range(len(d['size'])):
 
@@ -1758,7 +1764,13 @@ def online_FAR(model
 
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kwargs[k]))        
+        if isinstance(kwargs[k],str):
+            argument = "'"+kwargs[k]+"'"
+        else:
+            argument = kwargs[k]
+
+    kwstr+=(","+k+"="+str(argument))        
+
 
     for i in range(len(sizeList)):
         #target_size+=size_
@@ -1990,9 +2002,13 @@ def zeroLagSearch(model
     
     kwstr=""
     for k in kwargs:
-        kwstr+=(","+k+"="+str(kwargs[k]))       
+        if isinstance(kwargs[k],str):
+            argument = "'"+kwargs[k]+"'"
+        else:
+            argument = kwargs[k]
 
-    
+    kwstr+=(","+k+"="+str(argument))        
+
     det_flags = {'H1': 'H1:DMT-ANALYSIS_READY:1'
                    ,'L1': 'L1:DMT-ANALYSIS_READY:1'
                    ,'V1': 'V1:ITF_SCIENCE:1'}
@@ -2639,7 +2655,12 @@ def online_TAR(model
 
         kwstr=""
         for k in kwargs:
-            kwstr+=(","+k+"="+str(kwargs[k]))        
+            if isinstance(kwargs[k],str):
+                argument = "'"+kwargs[k]+"'"
+            else:
+                argument = kwargs[k]
+
+        kwstr+=(","+k+"="+str(argument))        
 
         for i in range(len(sizeList)):
             #target_size+=size_
