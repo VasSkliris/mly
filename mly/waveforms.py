@@ -340,6 +340,95 @@ def csg(
 
     return (hp, hc)
 
+def csg_Q(
+        frequency,
+        q,
+        phase=None,
+        fs=None,
+        sigma=None,
+        alpha=None,
+        amplitude=None):
+
+    """
+    Parameters
+    ----------
+
+    frequency: int/float
+        The frequency of the oscilator.
+
+    q: int/float
+        The Q factor value, Q =  sqrt(2)π * f * tau
+        Where f is the frequency and tau is the decay time of the exponential.
+        Here Q is specified and tau derived based on f and Q.
+
+    phase: int/float - (0,2π] , optional
+        The phase of the oscilator. If not specified the default is a random phase.
+
+    fs: int , optional
+        The sample frequency of the timeseries to be generated. If not specified
+        the default is 1.
+
+    sigma: int/float, optional
+        The standar deviation of the gaussian envelope. If not specified the default
+        is 5. This scales along with tau, so it creates enough duration to include at
+        least x sgima values.
+
+    alpha: int/float, optional (0,2π]
+        Angle that used to like elpticity. We use it here only for comparison reasons 
+        (https://arxiv.org/pdf/1409.2435.pdf) It seems to be wrong. 
+
+    amplitude: int/float , optional
+        The maximum amplitude of the singal. If not specied
+        the default is 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        A numpy array with size fs*duration
+
+    Notes
+    -----
+
+    The alpha parameter is wrong implemented but we keep it the same for
+    equal comparison reasons.
+    
+    """
+    if not frequency >= 0:
+        raise ValueError('Frequency must be a positive number')
+
+    if phase is None:
+        phase = np.random.rand() * 2 * np.pi
+    elif not (isinstance(phase, (int, float)) and 0 <= phase <= 2 * np.pi):
+        raise ValueError('phase must be a number between zero and 2pi.')
+
+    if fs is None:
+        fs = 1
+    elif not (isinstance(fs, int) and fs >= 1):
+        raise ValueError('sample frequency must be an integer bigger than 1.')
+
+    if sigma is None:
+        sigma = 5
+    if not (sigma > 0):
+        raise ValueError('Sigma must be positive')
+
+    if alpha is None:
+        alpha = np.random.rand() * 2 * np.pi
+
+    if amplitude is None:
+        amplitude = 1
+    elif not (isinstance(amplitude, (int, float))):
+        raise ValueError('amplitude must be a number')
+    
+    tau = q/(np.sqrt(2)*np.pi*frequency)
+    
+    duration = tau*sigma
+    t = np.arange(-duration/2, duration/2, 1 / fs)
+
+    hp = np.sin(alpha) * (amplitude/np.sqrt( q*(1-np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.sin(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
+    hc = np.cos(alpha) * (amplitude/np.sqrt( q*(1+np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.cos(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
+
+    return(hp,hc)
+
 
 def ringdown(
         frequency,
