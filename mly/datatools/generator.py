@@ -263,7 +263,6 @@ def generator(duration
     # These values are very important for the calculation
     fl, fm=20, int(fs/2)#
 
-    profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
 
     # Labels used in saving file
     #lab={10:'X', 100:'C', 1000:'M', 10000:'XM',100000:'CM'}  
@@ -617,6 +616,24 @@ def generator(duration
         ignoreDetector=kwargs['ignoreDetector']
     else:
         ignoreDetector=None
+
+
+    # ------- profile ------
+
+    if 'profile' in kwargs: 
+        if isinstance(kwargs['profile'],list) and len(kwargs['profile'])>= len(detectors):
+            profile = {}
+            for d, detector in enumerate(detectors):
+                profile[detector] = kwargs['profile'][d]
+            
+        else:
+            
+            raise ValueError("Profile needs to be defined for all the detectors.")
+    else:
+
+        profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
+    
+    print('profile', profile)
 
 
     if backgroundType in ['sudo_real','real']:
