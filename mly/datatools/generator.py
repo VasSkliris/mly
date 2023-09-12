@@ -56,11 +56,11 @@ def injection_initialization(injection_source, detectors):
         elif (os.path.isfile(injection_source) and injection_source[-4:]=='.pkl'):
             with open(injection_source,'rb') as obj:
                 injection_source = pickle.load(obj)
-
-            if isinstance(injection_source,DataPod):
-                injection_source = 'DataPod'
             
-            elif isinstance(ç,DataSet):
+            if isinstance(injection_source,DataPod):
+                inj_type = 'DataPod'
+
+            elif isinstance(injection_source,DataSet):
                 if len(injection_source) > 0:
                     inj_type = 'DataSet'
                 else:
@@ -153,9 +153,11 @@ def generator(duration
         depending the detector. If 'real' is chosen, a source of real detector
         noise will need to be specified from noiseSourceFile.
 
-    injectionSNR: float/int
+    injectionSNR: float/int/list/tuple/callable
         The Signal to Noise Ration of the injection used for the instances.
-        All injections are calibrated to be in that SNR value.
+        All injections are calibrated to be in that SNR value. A range can 
+        be used as also a function with no parameters tha just generates values.
+        This is usefull for distributions of events.
 
     noiseSourceFile: {gps intervals, path, txt file, numpy.ndarray}
         The source of real noise. There are many options to provide source 
@@ -516,7 +518,7 @@ def generator(duration
     else:
         processingWindow=((windowSize-duration)/2,(windowSize+duration)/2)
 
-    print('CHECKPOINT PW',processingWindow)
+    #print('CHECKPOINT PW',processingWindow)
     
 
     # --- disposition
@@ -560,7 +562,7 @@ def generator(duration
     noise_segDict={}
     for det in detectors:
 
-        if injection_source == None:
+        if injection_source is None:
             injectionFileDict[det] = None
         elif inj_type == 'oldtxt':
             injectionFileDict[det] = dirlist(injection_source+'/' + det)
@@ -834,9 +836,17 @@ def generator(duration
         if isinstance(input_injectionSNR,(list,tuple)):
             injectionSNR = np.random.uniform(input_injectionSNR[0],input_injectionSNR[1])
 
+        elif callable(input_injectionSNR):
+            injectionSNR = input_injectionSNR()
+
+
         
         if isinstance(input_injectionHRSS,(list,tuple)):
             injectionHRSS = np.random.uniform(input_injectionHRSS[0],input_injectionHRSS[1])
+
+        elif callable(input_injectionHRSS):
+            injectionHRSS = input_injectionHRSS()
+
 
         detKeys = list(injectionFileDict.keys())
 
@@ -1204,11 +1214,15 @@ def generator(duration
         psdPlugDict={}
         plugInToApply=[]
 
+
+
         for det in detectors:
             if injectionHRSS!=None:
-                fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]         
+                fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]     
+    
             else:
                 fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
+
             # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
             if ignoreDetector ==None:
                 inj_cal=np.real(np.fft.ifft(fs*fft_cal)) 
