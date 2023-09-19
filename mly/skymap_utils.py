@@ -325,7 +325,6 @@ def EnergySkyMaps(
     antenna_response_rms
 ):
     #incorporate this to the EnergySkymaps function
-
     #Convert to tensorflow tensors:
     frequency_axis = tf.convert_to_tensor(frequency_axis)
     strain = tf.convert_to_tensor(strain)

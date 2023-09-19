@@ -36,7 +36,7 @@ class Validator:
                        ,fs
                        ,size
                        ,detectors 
-                       ,injectionFolder = None
+                       ,injection_source = None
                        ,labels = {'type':'signal'}
                        ,backgroundType = None
                        ,injectionSNR = None
@@ -167,7 +167,7 @@ class Validator:
                                    ,fs = fs
                                    ,size = size
                                    ,detectors = detectors
-                                   ,injectionFolder = injectionFolder
+                                   ,injection_source = injection_source
                                    ,labels = labels
                                    ,backgroundType = backgroundType
                                    ,injectionSNR = injectionSNR
@@ -191,7 +191,7 @@ class Validator:
                 
             #random.shuffle(DATA.dataPods)
 
-
+            #DATA.save(savePath+'/setexample_'+str(val))
             result[loopname].append(val)
 
             
@@ -200,12 +200,12 @@ class Validator:
                 input_shape=trained_models[m].input_shape
                 if isinstance(input_shape,tuple): input_shape=[input_shape]
                 for i in range(len(models[1][m])):
-                    print(input_shape[i],models[1][m][i])
-                    print(DATA[0].__getattribute__(models[1][m][i]).shape)
+                    # print(input_shape[i],models[1][m][i])
+                    # print(DATA[0].__getattribute__(models[1][m][i]).shape)
                     dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
                 if len(dataList)==1: dataList=dataList[0]
-                scores = trained_models[m].predict(dataList, batch_size=1, verbose=0)[:,columns[m]]
+                scores = trained_models[m](dataList, training=False).numpy()[:,columns[m]]
 
                 if 'scores'+str(m+1) in list(result.keys()):
                     result['scores'+str(m+1)].append(scores.tolist())
@@ -379,7 +379,7 @@ class Validator:
                 dataList.append(DATA.exportData(models[1][m][i],shape=input_shape[i]))
 
             if len(dataList)==1: dataList=dataList[0]
-            scores = 1.0 - trained_models[m].predict(dataList, batch_size=1, verbose=0)[:,columns[m]]
+            scores = 1.0 - trained_models[m](dataList, training=False).numpy()[:,columns[m]]
             scores_collection.append(scores.tolist())
             
         inferencetime=time.time()
@@ -570,7 +570,7 @@ class Validator:
 #                                ,fs = fs
 #                                ,size = size
 #                                ,detectors = detectors
-#                                #,injectionFolder = injectionFolder
+#                                #,injection_source = injection_source
 #                                ,labels = labels
 #                                ,backgroundType = backgroundType
 #                                ,injectionSNR = 0
@@ -2225,7 +2225,7 @@ def online_TAR(model
              ,fs
              ,detectors
              ,size
-             ,injectionFolder
+             ,injection_source
              ,injectionSNR=None
              ,dates=None
              ,backgroundType = None
@@ -2664,7 +2664,7 @@ def online_TAR(model
                     command=( "TEST = Validator.accuracy(\n"
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                             +24*" "+",injection_source = '"+str(injection_source)+"'\n"
                              +24*" "+",injectionSNR = "+str(injectionSNR)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              #+24*" "+",size = "+str(size_)+"\n"
@@ -2685,7 +2685,7 @@ def online_TAR(model
                     command=( "TEST = Validator.accuracy(\n"
                              +24*" "+"models = "+str(model)+"\n"
                              +24*" "+",duration = "+str(duration)+"\n"
-                             +24*" "+",injectionFolder = '"+str(injectionFolder)+"'\n"
+                             +24*" "+",injection_source = '"+str(injection_source)+"'\n"
                              +24*" "+",injectionSNR = "+str(injectionSNR)+"\n"
                              +24*" "+",fs = "+str(fs)+"\n"
                              #+24*" "+",size = "+str(size_)+"\n"
