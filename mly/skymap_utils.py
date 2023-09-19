@@ -115,19 +115,19 @@ timeDelayShiftTensorflow = tf.function(timeDelayShiftTensorflow)
 
 
 #shape of the output of this fuction has changed to [num_pixels, 1]
-def antennaResponseRMS(num_pixels, theta, phi, detectors, GPS_time):
+def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
     
     antenna_response_rms = np.zeros([num_pixels])
     for pixel_index in range(num_pixels):
 
-        RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
+        #RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
         fp = np.zeros(len(detectors))
         fc = np.zeros(len(detectors))
 
         for detector_index, detector in enumerate(detectors):
             fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                RA, dec, 0, GPS_time)
+                RA[pixel_index], dec[pixel_index], 0, GPS_time)
 #        print('fp', fp.shape)
 #        print('fc', fc.shape)
         totalResponse = np.square(np.abs(fp)) + np.square(np.abs(fc))
@@ -228,13 +228,13 @@ def EnergySkyMapsGRF(
 EnergySkyMapsGRF = tf.function(EnergySkyMapsGRF)
 
 
-def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
+def nullCoefficient(num_pixels, RA, dec, detectors, GPS_time):
     if len(detectors) < 3:
         dominant_polarisation_p = np.zeros([num_pixels, len(detectors)])
         dominant_polarisation_c = np.zeros([num_pixels, len(detectors)])
         for pixel_index in range(num_pixels):
-
-            RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
+            
+            #RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
             fp = np.zeros(len(detectors))
             fc = np.zeros(len(detectors))
@@ -242,7 +242,7 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
             for detector_index, detector in enumerate(detectors):
                 
                 fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                    RA, dec, 0, GPS_time)
+                    RA[pixel_index], dec[pixel_index], 0, GPS_time)
             
             
             # add the angle on this following Fp2 and Fc2
@@ -278,14 +278,14 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
         null_coeff = np.zeros([num_pixels, len(detectors)])
         for pixel_index in range(num_pixels):
 
-            RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
+            #RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
             fp = np.zeros(len(detectors))
             fc = np.zeros(len(detectors))
 
             for detector_index, detector in enumerate(detectors):
                 fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                    RA, dec, 0, GPS_time)
+                    RA[pixel_index], dec[pixel_index], 0, GPS_time)
 
             cross_product = np.cross(fp, fc)
             norm_cross_product = np.linalg.norm(cross_product)
@@ -297,17 +297,17 @@ def nullCoefficient(num_pixels, theta, phi, detectors, GPS_time):
 
 
 
-def timeDelayMap(num_pixels, theta, phi, detectors, GPS_time):
+def timeDelayMap(num_pixels, RA, dec, detectors, GPS_time):
     
     time_delay_map = np.zeros([num_pixels, len(detectors)])
     for pixel_index in range(num_pixels):
         
-        RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
+        #RA, dec = earthtoRAdec(phi[pixel_index], theta[pixel_index], GPS_time)
 
         for detector_index, detector in enumerate(detectors):
             time_delay_map[pixel_index][detector_index] = - \
                 detector.time_delay_from_detector(
-                    detectors[0], RA, dec, GPS_time)
+                    detectors[0], RA[pixel_index], dec[pixel_index], GPS_time)
     
     return time_delay_map
 
@@ -353,7 +353,7 @@ def EnergySkyMaps(
     return (coherentNullEnergy, incoherentNullEnergy)
 
 def bandpass_prior_to_notching(data, fs, f_min, f_max):
-    filter_order = 8
+    filter_order = 10
     b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
     samples_to_crop = 1 * fs  # 2 seconds * fs samples/second
 
@@ -459,6 +459,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     detector_initials = list(det + '1' for det in detectors)
 
     gps_time = gps[0]
+    #gps_time = 1337069300
 
     #Setup detector array:
     detectors_objects = []
@@ -468,17 +469,23 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
     #Create theta and phi arrays:
     theta, phi = hp.pix2ang(nside, range(num_pixels), nest = True)
+    RA = phi
+    dec = np.pi/2 - theta
+    print(type(theta))
+    print(type(phi))
+    print(type(RA))
+    print(type(dec))
 
     #Create Antenna and TimeDelay maps:
     null_coefficient = nullCoefficient(num_pixels,
-                                       theta, phi,
+                                       RA, dec,
                                        detectors_objects,
                                        gps_time)
     
     antenna_response_rms = antennaResponseRMS(
-        num_pixels, theta, phi, detectors_objects, gps_time)
+        num_pixels, RA, dec, detectors_objects, gps_time)
     
-    time_delay_map = timeDelayMap(num_pixels, theta, phi, detectors_objects, gps_time)
+    time_delay_map = timeDelayMap(num_pixels, RA, dec, detectors_objects, gps_time)
     
     frequency_axis = np.fft.rfftfreq(fs, d=1/fs)
 
@@ -529,7 +536,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
     # print(len(c_est))
     # c_true = c_est - 0.05*np.sin(np.pi*c_est)
-    c_true = c_est**0.6  # --------> ???
+    c_true = c_est**0.7  # --------> ???
     #print('c_true', c_true)
 
     p_true = np.diff(c_true, prepend=0)
@@ -553,14 +560,16 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     #     hp.mollview(prob_map_total[0], coord = 'C', nest= None, title = "probability_map")
     #     #plt.savefig(f"prob_skymap_{time.time()}.png")
     
-    return(prob_map_total, Lsky_array)
+    return(prob_map_total, Lsky_array, antenna_response_rms)
 
 
 def skymap_plot_function(strain,data=None):
 
     hp.mollview(data[0][0], coord = 'C', nest= True, title = "probability_map")
+    hp.mollview(data[1][0], coord = 'C', nest = True, title = 'Lsky_map')
 
-def skymap_plugin(alpha = 0.30, beta=0.128, sigma = 64, nside =64):
 
-    return PlugIn('skymap', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64):
+
+    return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
                        plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside)
