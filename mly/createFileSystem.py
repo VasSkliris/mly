@@ -190,6 +190,8 @@ def createFileSysem(duration
             
         with open(masterDirectory+'script_'+segmentFileName+'.py','w') as f:
             f.write('#! /usr/bin/env python\n')
+            f.write('import os\n')
+            f.write('os.environ["GWDATAFIND_SERVER"]="datafind.ldas.cit:80"\n')
 
             f.write('from mly.datatools import DataPod, DataSet, generator\n\n')
             

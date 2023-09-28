@@ -265,7 +265,6 @@ def generator(duration
     # These values are very important for the calculation
     fl, fm=20, int(fs/2)#
 
-
     # Labels used in saving file
     #lab={10:'X', 100:'C', 1000:'M', 10000:'XM',100000:'CM'}  
 
@@ -494,7 +493,7 @@ def generator(duration
     if 'whitening_method' in kwargs:
         whitening_method = kwargs['whitening_method']
     else: 
-        whitening_method = 'median'
+        whitening_method = 'welch'
         
     # --- processingWindow -------------------------------------------- #
     
@@ -1567,8 +1566,8 @@ def auto_gen(duration
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
    
     # The number of sets to be generated.
@@ -2080,8 +2079,8 @@ def finalise_gen(path,generation=True,**kwargs):
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
     
     if merging_flag==False and generation==True:

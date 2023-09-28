@@ -1120,8 +1120,8 @@ def auto_FAR(model
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
     kwstr=""
     for k in kwargs:
@@ -1305,8 +1305,8 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
                         
     if generation==False: return
     
@@ -1386,9 +1386,10 @@ def finalise_far(path,generation=True,forceMerging=False,**kwargs):
                     with open(path+farTests[k],'rb') as obj:
                         part_of_test = pickle.load(obj)
                 except EOFError:
+
                     continue
                     
-                finaltest = finaltest.append(part_of_test)
+                finaltest = pd.concat([finaltest,part_of_test])
                 print(k)
 
         finaltest = finaltest.sort_values(by=['total'],ascending = False)
@@ -1688,8 +1689,8 @@ def online_FAR(model
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
 
 
@@ -1783,8 +1784,8 @@ def online_FAR(model
 
         with open('test_'+str(i)+'.py','w+') as f:
             f.write('#! /usr/bin/env python3\n')
-            f.write('import sys \n')
-            
+            f.write('import sys, os \n')
+            f.write("os.environ['GWDATAFIND_SERVER']='datafind.ldas.cit:80'\n")
             f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
 
             f.write('from mly.validators import *\n\n')
@@ -1997,8 +1998,8 @@ def zeroLagSearch(model
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
     kwstr=""
     for k in kwargs:
@@ -2576,8 +2577,8 @@ def online_TAR(model
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
     
 
 
@@ -2672,9 +2673,10 @@ def online_TAR(model
             
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
                 f.write('#! /usr/bin/env python3\n')
-                f.write('import sys \n')
+                f.write('import sys, os \n')
                 
                 f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
+                f.write("os.environ['GWDATAFIND_SERVER']='datafind.ldas.cit:80'\n")
 
                 f.write('from mly.validators import *\n\n')
 
@@ -2750,7 +2752,8 @@ def online_TAR(model
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
         f4.write("#! /usr/bin/env python3\n")
-        f4.write("import sys \n")
+        f4.write("import sys, os \n")
+        f.write("os.environ['LO']='"+accounting_group_user+"'\n")
 
         f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         
@@ -2841,8 +2844,8 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
     if 'accounting_group' in kwargs:
         accounting_group=kwargs['accounting_group']
     else:
-        accounting_group='ligo.dev.o3.burst.grb.xoffline'
-        print("Accounting group set to 'ligo.dev.o3.burst.grb.xoffline")
+        accounting_group='ligo.dev.o4.burst.allsky.mlyonline'
+        print("Accounting group set to 'ligo.dev.o4.burst.allsky.mlyonline")
                         
     if generation==False: return
     
