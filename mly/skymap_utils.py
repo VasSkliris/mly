@@ -140,6 +140,51 @@ def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
 
     return antenna_response_rms
 
+def mask_window_tf(data_length, fs, start_time, end_time, ramp_duration):
+    """
+    Creates a windowed mask for a given time series.
+    
+    Parameters:
+    - data_length: Length of the data series.
+    - fs: Sampling frequency.
+    - start_time: Starting time of the window.
+    - end_time: Ending time of the window.
+    - ramp_duration: Duration of the ramp (smooth transition) in the window.
+    
+    Returns:
+    - A windowed mask with values between 0 and 1.
+    """
+    tnp = tf.experimental.numpy
+    pi = tnp.pi 
+    PI_HALF = pi / 2
+
+    # Convert times to indices and ensure they are float32
+    window_start_idx = tf.cast((start_time - ramp_duration) * fs, tf.float32)
+    window_end_idx = tf.cast((end_time + ramp_duration) * fs, tf.float32)
+    start_idx = tf.cast(start_time * fs, tf.float32)
+    end_idx = tf.cast(end_time * fs, tf.float32)
+    
+    indices = tf.range(data_length, dtype=tf.float32)
+    
+    # Create the rolling mask for the main windowed region
+    main_mask = tf.where((indices >= start_idx) & (indices < end_idx), 1., indices * 0.)
+    
+    # Create the ramp-up transition
+    ramp_up = 0.5 * (1 + tf.math.sin(-PI_HALF + (indices - window_start_idx) / (start_idx - window_start_idx) * pi))
+    mask_on = tf.where((indices >= window_start_idx) & (indices < start_idx), ramp_up, 0.)
+
+    # Create the ramp-down transition
+    ramp_down = 0.5 * (1 + tf.math.sin(PI_HALF + (indices - end_idx) / (window_end_idx - end_idx) * pi))
+    mask_off = tf.where((indices >= end_idx) & (indices < window_end_idx), ramp_down, 0.)
+
+    # Combine the masks
+    windowed_data = main_mask + mask_on + mask_off
+
+    return windowed_data
+
+
+mask_window_tf = tf.function(mask_window_tf)
+
 
 #this is a tensorflow graph
 def EnergySkyMapsGRF(
@@ -151,7 +196,8 @@ def EnergySkyMapsGRF(
     antenna_response_rms,
     num_pixels,
     num_detectors,
-    fs
+    fs,
+    window_parameter = None
 ):
     """
     THIS FUNCTION IS A TENSORFLOW GRAPH AND CONVERTS APPLE TO ORANGE 
@@ -197,6 +243,33 @@ def EnergySkyMapsGRF(
     #Calculating spectral density of background noise
     noise_psd = tf.math.reduce_sum(tf.math.multiply(
         tf.math.square(null_coefficient), noise_psd), axis=1)
+    
+    if window_parameter is not None:
+        print('activate window', window_parameter)
+        start_time, end_time, ramp_duration = window_parameter
+        
+        # data_shape = tf.shape(strain)
+        # num_det = data_shape[1]
+        # data_len = data_shape[2]
+        
+        # Apply mask_window_tf function on strain data
+        windowed_data = mask_window_tf(fs, fs, start_time, end_time, ramp_duration)
+        print('windowed_data', windowed_data.shape)
+        print ('strain shape', strain.shape)
+        print('start_time_util', start_time)
+        print('end_time_until', start_time)
+    
+        
+        # Reshape windowed_data to match the shape of strain
+        windowed_data_reshaped = tf.reshape(windowed_data, [1, 1, -1])
+        #window_shape_broadcast = tf.broadcast_to(windowed_data_reshaped, data_shape)
+        
+        #print('window_shape_broadcast', window_shape_broadcast.shape)
+        
+        strain = tf.math.multiply(tf.cast(windowed_data_reshaped, dtype = tf.float64), strain)
+        print('windowed_strain', strain)
+    else:
+        print('window not activated', window_parameter)
 
     #Calculate shifted positions using phase correction:
     shifted_strain = tf.math.divide(timeDelayShiftTensorflow(
@@ -322,7 +395,8 @@ def EnergySkyMaps(
     num_detectors,
     fs,
     null_coefficient,
-    antenna_response_rms
+    antenna_response_rms,
+    window_parameter = None
 ):
     #incorporate this to the EnergySkymaps function
     #Convert to tensorflow tensors:
@@ -343,7 +417,8 @@ def EnergySkyMaps(
         antenna_response_rms,
         num_pixels,
         num_detectors,
-        fs
+        fs,
+        window_parameter = window_parameter
     )
 
     coherentNullEnergy = np.array(coherentNullEnergy)
@@ -434,13 +509,14 @@ def remove_line(data, fs, f_min, f_max, Q, factor):
 def skymap_gen_function(fs, uwstrain, psd, gps, detectors
                         , alpha = None, beta=None, sigma=None
                         , nside = None
+                        , window_parameter = None
                         , **kwargs):
 
     if alpha is None or beta is None or sigma is None:
         print(alpha, beta, sigma)
         raise ValueError('alpha, beta and sigma must be defined')
     
-    sigma = fs*sigma
+    #sigma = fs*sigma
     
     
     print(alpha, beta, sigma)
@@ -471,10 +547,10 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     theta, phi = hp.pix2ang(nside, range(num_pixels), nest = True)
     RA = phi
     dec = np.pi/2 - theta
-    print(type(theta))
-    print(type(phi))
-    print(type(RA))
-    print(type(dec))
+    # print(type(theta))
+    # print(type(phi))
+    # print(type(RA))
+    # print(type(dec))
 
     #Create Antenna and TimeDelay maps:
     null_coefficient = nullCoefficient(num_pixels,
@@ -494,10 +570,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
 
     
-    prob_map_total = []
-    Lsky = []
     start = time.time()
-    
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
                             frequency_axis,
@@ -506,48 +579,48 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
                             len(detectors), 
                             fs, 
                             null_coefficient,
-                            antenna_response_rms)
+                            antenna_response_rms,
+                            window_parameter = window_parameter)
     
     sky_null = sky_map[0]
     sky_inc = sky_map[1]
 
-    L_sky = (1-(sky_null/sky_inc)) * (np.max(sky_null) - sky_null)
-    Lsky.append(L_sky)
+    Lsky = (1-(sky_null/sky_inc)) * (np.max(sky_null) - sky_null)
 
     prob_map = ((antenna_response_rms)**alpha) * np.exp(
-                 -((np.amax(L_sky) - L_sky)/sigma)**beta)
+                 -((np.amax(Lsky) - Lsky)/sigma)**beta)
 
 
     prob_map = (prob_map)/np.sum(prob_map)
-    # print('prob_map', prob_map)
+    print('prob_map', prob_map)
 
-    pixel_index = np.argsort(prob_map)[::-1]
-    # print('pixel_index', pixel_index)
+#     pixel_index = np.argsort(prob_map)[::-1]
+#     # print('pixel_index', pixel_index)
 
-    sorted_pixels = prob_map[pixel_index]
-    # print('sorted_pixels', sorted_pixels)
+#     sorted_pixels = prob_map[pixel_index]
+#     # print('sorted_pixels', sorted_pixels)
 
-    unsorted_pixels = np.argsort(pixel_index)
-    # print('unsorted_pixels', unsorted_pixels)
+#     unsorted_pixels = np.argsort(pixel_index)
+#     # print('unsorted_pixels', unsorted_pixels)
 
-    # print('z', z)
-    c_est = np.cumsum(sorted_pixels)
-    # print('c_est', c_est)
+#     # print('z', z)
+#     c_est = np.cumsum(sorted_pixels)
+#     # print('c_est', c_est)
 
-    # print(len(c_est))
-    # c_true = c_est - 0.05*np.sin(np.pi*c_est)
-    c_true = c_est**0.7  # --------> ???
-    #print('c_true', c_true)
+#     # print(len(c_est))
+#     # c_true = c_est - 0.05*np.sin(np.pi*c_est)
+#     c_true = c_est**1  # --------> ???
+#     #print('c_true', c_true)
 
-    p_true = np.diff(c_true, prepend=0)
-    # print('p_true', p_true)    
+#     p_true = np.diff(c_true, prepend=0)
+#     # print('p_true', p_true)    
 
-    corrected_map = p_true[unsorted_pixels]
-    # print('corrected_map', corrected_map)
-    prob_map_total.append(corrected_map)
-    print('skymap generation time: ',time.time() - start)
+#     corrected_map = p_true[unsorted_pixels]
+#     # print('corrected_map', corrected_map)
+#     #prob_map_total.append(corrected_map)
+#     print('skymap generation time: ',time.time() - start)
 
-    prob_map_total = np.array(prob_map_total)
+    prob_map_total = np.array(prob_map)
     Lsky_array = np.array(Lsky)
     
     # if isinstance(map_save, str):
@@ -569,7 +642,81 @@ def skymap_plot_function(strain,data=None):
     hp.mollview(data[1][0], coord = 'C', nest = True, title = 'Lsky_map')
 
 
-def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64):
+def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_parameter = None):
 
     return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
-                       plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside)
+                       plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside, window_parameter = window_parameter)
+
+
+
+def compute_prob_map_from_lsky(lsky_array, antenna_rms_array, alpha, beta, sigma):
+    
+    """
+    lsky_array: it is a numpy array of likelihood maps computed from EnergySkyMaps function.
+    
+    antenna_rms_array: it is a numpy array of the root mean squared values of antenna response computed from antennaResponseRMS function.
+    
+    alpha, beta, sigma: hyper parameter, scaler value.
+    
+    """
+    
+    prob_maps = []
+    max_prob = []
+    for Lsky, antenna_response_rms in zip(lsky_array, antenna_rms_array):
+        prob_map = (antenna_response_rms**alpha) * np.exp(-((np.amax(Lsky) - Lsky)/sigma)**beta)
+        prob_map = prob_map - np.min(prob_map)
+        prob_map = prob_map/np.sum(prob_map)
+        prob_maps.append(prob_map)
+        max_prob.append(np.max(prob_map))
+    #np.save('prob_map_array', np.array(prob_maps))
+    return np.array(prob_maps), np.array(max_prob)
+# Outputs of this functions are also numpy arrays.
+
+
+
+
+def compute_containment_and_search_area(prob_array, inj_pixel_array, thresholds=[0.9, 0.5]):
+    
+    """
+    prob_array: it is a numpy array of probability maps computed from Lsky_array.
+    
+    inj_pixel_array: this is an numpy array of injection pixel for synthetic injections
+    
+    thresholds: it is a dictionary of two scaler threshold values which defines the containment regions.
+    
+    
+    """
+    
+    # Comnpute area of each pixel in square degrees
+    pixel_area = (4 * np.pi * (180/np.pi)**2) / len(prob_array[0])  
+    
+    # Initialise dictionaries to store results
+    containment_results = {thresh: [] for thresh in thresholds}
+    search_area = []
+    containment_area = {thresh: [] for thresh in thresholds}
+    search_prob = []
+    
+    for prob_map, inj_pixel_value in zip(prob_array, inj_pixel_array):        
+        sorted_indices = np.argsort(prob_map)[::-1]
+        cum_sum = np.cumsum(prob_map[sorted_indices]) / np.sum(prob_map)  # Normalize cum_sum
+        search_area.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], 1,0)) * pixel_area)
+        search_prob.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], prob_map,0)))
+        
+        for thresh in thresholds:
+            # Identify containment region
+            index_containment = np.argmax(cum_sum >= thresh)
+            containment_region = sorted_indices[:index_containment + 1]
+            
+            # Check if the probability at the injection pixel is within the containment region
+            is_in_containment = prob_map[inj_pixel_value] >= prob_map[containment_region[-1]]
+            
+            # Compute search area for the containment region
+            containment_region_area = len(containment_region) * pixel_area
+
+            
+            containment_results[thresh].append(is_in_containment)
+            containment_area[thresh].append(containment_region_area)
+    
+    return containment_results, search_area, containment_area, np.array(search_prob)
+
+#outputs of the function are also in mumpy arrays.
