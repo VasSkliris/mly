@@ -50,14 +50,26 @@ def check_windowSize(windowSize, duration):
     return windowSize
 
 def check_dates(dates):
-    
+
     from gwpy.time import to_gps
     # For the occation where a segment is passed
-    if len(dates)==1: dates=dates[0]
+    if len(dates)==2: 
+        pass
+
+    elif len(dates)==1:
+        dates=dates[0]
+
+    elif len(dates)>2:  
+        dates = [dates[0][0], dates[-1][1]]
+
+    else:
+
+        raise ValueError(f"dates have a not comforming format, type: {type(dates)} , length: {len(dates)}, values: {dates}")
     
     gps_start = to_gps(dates[0]) if isinstance(dates[0],str) else dates[0]
     gps_end = to_gps(dates[1]) if isinstance(dates[1],str) else dates[1]
     
+    print('gpses ',gps_start,gps_end)
     if gps_start > gps_end:
         raise ValueError("Not valid date.")
     else:

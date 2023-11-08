@@ -7,6 +7,7 @@ import os
 # import random
 # import copy
 # from math import ceil
+import subprocess
 from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
 
@@ -28,6 +29,7 @@ from gwpy.segments import Segment,SegmentList
 # from tensorflow.keras.models import load_model, Sequential, Model
 from pycondor import Job, Dagman
 
+which_python = subprocess.check_output('which python', shell=True, text=True)
 
 def getSegments(
               duration 
@@ -54,8 +56,7 @@ def getSegments(
               
     observingSegments=[]
     for d in range(len(detectors)):
-        main_seg=query_segments(observingFlags[0][detectors[d]+'1']
-                ,gps_start,gps_end)['active']
+        main_seg=query_segments(observingFlags[0][detectors[d]+'1'] ,gps_start,gps_end)['active']
         for obs in observingFlags[1:]:
             try:
                 main_seg = main_seg & query_segments(obs[0][detectors[d]+'1']
@@ -189,7 +190,7 @@ def createFileSysem(duration
             segmentFileName = 'optimalNoise-No'+str(i+1)+'_'+str(size)
             
         with open(masterDirectory+'script_'+segmentFileName+'.py','w') as f:
-            f.write('#! /usr/bin/env python\n')
+            f.write('#!'+which_python+'\n')
             f.write('import os\n')
             f.write('os.environ["GWDATAFIND_SERVER"]="datafind.ldas.cit:80"\n')
 

@@ -99,13 +99,15 @@ def assembleDataSet( masterDirectory
     lags=check_lags(lags)
     includeZeroLag=check_includeZeroLag(includeZeroLag)
     
-    
+
     INDEX=internalLags(detectors = detectors             # The initials of the detectors you are going 
                      ,duration = 1             # The duration of the instances you use
                      ,size = len(dataset_dict[detectors[0]])            # Size in seconds of the available segment
                      ,fs=1          # Sample frequency
                      ,lags=lags
                      ,includeZeroLag=False) # Includes zero lag by defult !!!  
+
+
     
     batchSize= int(len(INDEX[detectors[0]])/batches)
         

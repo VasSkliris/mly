@@ -9,8 +9,8 @@ import time
 import gwdatafind
 import pickle
 import random
-import copy
-import string
+import subprocess
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,6 +27,8 @@ from dqsegdb2.query import query_segments
 from scipy.stats import pearsonr
 from scipy.special import comb
 from urllib.error import HTTPError
+
+which_python = subprocess.check_output('which python', shell=True, text=True)
 
 
 def injection_initialization(injection_source, detectors):
@@ -634,7 +636,7 @@ def generator(duration
 
         profile = {'H' :'aligo','L':'aligo','V':'avirgo','K':'KAGRA_Early','I':'aligo'}
     
-    print('profile', profile)
+    print('profiles', profile)
 
 
     if backgroundType in ['sudo_real','real']:
@@ -1055,7 +1057,7 @@ def generator(duration
                 asd=back.asd(1,0.5)
                 asd_dict[det] = asd
                 if noiseFormat == 'DataSet':
-                    gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
+                    gps_list.append(gps0[det]+ind[det][I]+processingWindow[0])
                 else:
                     gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
 
@@ -1900,7 +1902,7 @@ def auto_gen(duration
 
         with open(path+dir_name+'/'+'gen_'+d['name'][i]+'_'
             +str(d['size'][i])+'.py','w') as f:
-            f.write('#! /usr/bin/env python3\n')
+            f.write('#!'+which_python+'\n')
             f.write('import sys \n')
 
             f.write('from mly.datatools import DataPod, DataSet\n\n')
@@ -1991,7 +1993,7 @@ def auto_gen(duration
                          +' '+str(d['size'][i])+' '
                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
     with open(path+dir_name+'/final_gen.py','w') as f4:
-        f4.write("#! /usr/bin/env python3\n")
+        f4.write('#!'+which_python+'\n')
         f4.write("import sys \n")
         f4.write("from mly.datatools import *\n")
         f4.write("finalise_gen('"+path+dir_name+"')\n")

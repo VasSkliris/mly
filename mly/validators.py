@@ -4,8 +4,8 @@ import pickle
 import os
 import sys
 import time
-import random
-import copy
+import subprocess
+
 from math import ceil
 from dqsegdb2.query import query_segments
 from gwpy.io.kerberos import kinit
@@ -26,6 +26,7 @@ from matplotlib.mlab import psd
 from tensorflow.keras.models import load_model, Sequential, Model
 from pycondor import Job, Dagman
 
+which_python = subprocess.check_output('which python', shell=True, text=True)
 
 ################################################################################
 ################################################################################
@@ -1136,7 +1137,7 @@ def auto_FAR(model
     for i in range(len(d['size'])):
 
         with open(path+dir_name+'/test_'+d['name'][i]+'.py','w+') as f:
-            f.write('#! /usr/bin/env python3\n')
+            f.write('#!'+which_python+'\n')
             f.write('import sys \n')
             
             f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -1216,7 +1217,7 @@ def auto_FAR(model
                          +str(d['start_point'][i])+'_'+d['name'][i]+'\n')
                 
     with open(path+dir_name+'/finalise_test.py','w+') as f4:
-        f4.write("#! /usr/bin/env python3\n")
+        f4.write('#!'+which_python+'\n')
         f4.write("import sys \n")
         
         f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -1783,7 +1784,7 @@ def online_FAR(model
 
 
         with open('test_'+str(i)+'.py','w+') as f:
-            f.write('#! /usr/bin/env python3\n')
+            f.write('#!'+which_python+'\n')
             f.write('import sys, os \n')
             f.write("os.environ['GWDATAFIND_SERVER']='datafind.ldas.cit:80'\n")
             f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -1851,7 +1852,7 @@ def online_FAR(model
         job_list.append(job)
             
     with open('finalise_test.py','w+') as f4:
-        f4.write("#! /usr/bin/env python3\n")
+        f4.write('#!'+which_python+'\n')
         f4.write("import sys \n")
         
         f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -2138,7 +2139,7 @@ def zeroLagSearch(model
                    
             _size=int(new_sim_seg[i][1]-new_sim_seg[i][0]-windowSize)# I removed duration when I introduced strides
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
-                f.write('#! /usr/bin/env python3\n')
+                f.write('#!'+which_python+'\n')
                 f.write('import sys \n')
                 
                 f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -2188,8 +2189,7 @@ def zeroLagSearch(model
             job_list.append(job)
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
-        f4.write("#! /usr/bin/env python3\n")
-
+        f4.write('#!'+which_python+'\n')
         f4.write("import sys \n")
         
         f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -2672,7 +2672,7 @@ def online_TAR(model
             if sizeList[i]<=0: continue
             
             with open(destinationFile+dir_name+'/test_'+str(i)+'.py','w+') as f:
-                f.write('#! /usr/bin/env python3\n')
+                f.write('#!'+which_python+'\n')
                 f.write('import sys, os \n')
                 
                 f.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
@@ -2751,9 +2751,9 @@ def online_TAR(model
             job_list.append(job)
             
     with open(destinationFile+dir_name+'/finalise_test.py','w+') as f4:
-        f4.write("#! /usr/bin/env python3\n")
+        f4.write('#!'+which_python+'\n')
         f4.write("import sys, os \n")
-        f.write("os.environ['LO']='"+accounting_group_user+"'\n")
+        f4.write("os.environ['LOGNAME']='"+accounting_group_user+"'\n")
 
         f4.write('sys.path.append(\'/home/'+accounting_group_user+'/mly/\')\n')
         
