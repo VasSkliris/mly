@@ -511,8 +511,8 @@ def generator(duration
             if processingWindow[0]>windowSize or processingWindow[1]>windowSize:
                 raise ValueError('Expected processing window to lie within data window.')
 
-            if processingWindow[0]!=processingWindow[1]-duration:
-                raise ValueError('Expected processing window to have same length as duration.')
+            if np.isclose(processingWindow[1]-processingWindow[0],duration, atol = 1-9):
+                raise ValueError('Expected processing window to have same length as duration. Difference by '+str(processingWindow[1]-duration-processingWindow[0]))
 
         else: 
             raise TypeError('Processing window needs to be tuple or list within windowSize interval')
@@ -740,8 +740,7 @@ def generator(duration
                     if podi==0:
                         for det in detectors:
                             noise_segDict[det] = [file_[podi].strain[detectors.index(det)]]
-
-                            gps0[det]=float(file_[podi].gps[detectors.index(det)])
+                                
                             if len(file_[podi].strain[detectors.index(det)])!=windowSize*fs:
                                 raise ValueError("Noise source data are not in the shape expected.")
 
@@ -749,7 +748,8 @@ def generator(duration
                         for det in detectors:
                             noise_segDict[det].append(file_[podi].strain[detectors.index(det)])
 
-
+                for di, det in enumerate(detectors):
+                    gps0[det] = np.asarray(file_.exportGPS())[:,di].astype('float')
 
                 ind=internalLags(detectors = detectors
                                    ,lags = timeSlides
@@ -782,7 +782,7 @@ def generator(duration
                                            , frames[detectors[d]]
                                            , noiseSourceFile[d][0]
                                            , noiseSourceFile[d][1])
-
+                        print(urls)
                         noise_segDict[detectors[d]]=TimeSeries.read(urls
                                                                     , channels[detectors[d]]
                                                                     , start =noiseSourceFile[d][0]
@@ -1057,7 +1057,7 @@ def generator(duration
                 asd=back.asd(1,0.5)
                 asd_dict[det] = asd
                 if noiseFormat == 'DataSet':
-                    gps_list.append(gps0[det]+ind[det][I]+processingWindow[0])
+                    gps_list.append(gps0[det][I]+processingWindow[0])
                 else:
                     gps_list.append(gps0[det]+ind[det][I]/fs+processingWindow[0])
 

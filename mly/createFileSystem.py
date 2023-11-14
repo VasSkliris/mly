@@ -146,7 +146,11 @@ def createFileSysem(duration
     log = masterDirectory+'condor/log'
     submit = masterDirectory+'condor/submit'
 
-    dagman = Dagman(name='createFileSystemDagman',
+    if 'dagman_name' in kwargs:
+        dagman_name = kwargs['dagman_name']
+    else: 
+        dagman_name = 'createFileSystemDagman'
+    dagman = Dagman(name = dagman_name,
             submit=submit)
     job_list=[]
 
