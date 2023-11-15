@@ -156,7 +156,7 @@ def createFileSysem(duration
 
     kwstr=""
     for k in kwargs:
-        if k not in ['accounting_group_user','accounting_group']:
+        if k not in ['accounting_group_user','accounting_group','dagman_name']:
             kwstr+=(","+k+"="+str(kwargs[k]))       
         
     if backgroundType=='real':
