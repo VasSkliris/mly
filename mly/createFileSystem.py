@@ -245,13 +245,13 @@ def createFileSysem(duration
         os.system('chmod 777 '+masterDirectory+'script_'+segmentFileName+'.py' )
         job = Job(name=segmentFileName
                   ,executable=masterDirectory+'script_'+segmentFileName+'.py' 
+                   ,retry = 5
                    ,submit=submit
                    ,error=error
                    ,output=output
                    ,log=log
                    ,getenv=True
                    ,dag=dagman
-                   ,retry=10
                    ,request_disk = '50M'
                    ,extra_lines=["accounting_group_user="+accounting_group_user
                                  ,"accounting_group="+accounting_group] )
