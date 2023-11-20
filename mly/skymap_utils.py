@@ -6,6 +6,8 @@ import time
 import healpy as hp
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
+from ligo.skymap import io, plot
+import time 
 from pycbc.detector import Detector
 from math import *
 import numpy as np
@@ -658,6 +660,10 @@ def compute_prob_map_from_lsky(lsky_array, antenna_rms_array, alpha, beta, sigma
     
     alpha, beta, sigma: hyper parameter, scaler value.
     
+    
+    RETURN:
+    Outputs of this functions are also numpy arrays.
+    
     """
     
     prob_maps = []
@@ -670,7 +676,7 @@ def compute_prob_map_from_lsky(lsky_array, antenna_rms_array, alpha, beta, sigma
         max_prob.append(np.max(prob_map))
     #np.save('prob_map_array', np.array(prob_maps))
     return np.array(prob_maps), np.array(max_prob)
-# Outputs of this functions are also numpy arrays.
+
 
 
 
@@ -683,6 +689,9 @@ def compute_containment_and_search_area(prob_array, inj_pixel_array, thresholds=
     inj_pixel_array: this is an numpy array of injection pixel for synthetic injections
     
     thresholds: it is a dictionary of two scaler threshold values which defines the containment regions.
+    
+    RETURN:
+    Outputs of the function are also in mumpy arrays.
     
     
     """
@@ -719,4 +728,61 @@ def compute_containment_and_search_area(prob_array, inj_pixel_array, thresholds=
     
     return containment_results, search_area, containment_area, np.array(search_prob)
 
-#outputs of the function are also in mumpy arrays.
+
+
+
+def ligo_plot_format(probmap, projection='astro hours mollweide', nested=True,
+                     cmap='viridis', xlabel='Right Ascension', ylabel='Declination',
+                     title='GW Prob_Sky Map', save=False, inj_locations=None):
+    """
+    Function to format and display a LIGO skymap plot.
+
+    Parameters:
+    - probmap: A HEALPix probability map to be plotted.
+    - projection: The projection type for the plot.
+    - nested: Boolean indicating if the HEALPix data is in 'nested' format.
+    - cmap: The colormap for the plot.
+    - xlabel: Label for the x-axis.
+    - ylabel: Label for the y-axis.
+    - title: The title for the plot.
+    - save: Boolean to determine whether to save the plot or not.
+    - inj_locations: Array of injection locations in (RA, Dec) format.
+    """
+    # Create a new figure and subplot with a Mollweide projection
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(111, projection=projection)
+
+    # Plot the sky map
+    img = ax.imshow_hpx(probmap, nested=nested, cmap=cmap)
+
+    # Add a color bar
+    cbar = fig.colorbar(img, ax=ax, orientation='horizontal', fraction=0.046, pad=0.04)
+    #cbar.set_label('Probability')  # Uncomment this line if you want to set a label for the color bar
+
+    # Add grid lines
+    ax.grid(True, which='major', color='white', linestyle='-', linewidth=0.5)
+
+    # Set labels for the axes
+    ax.text(0, 0, xlabel, ha='center', va='center', transform=ax.transAxes)  # Adjust the position of the xlabel
+    ax.set_ylabel(ylabel)
+
+    # Set the title
+    ax.set_title(title)
+    
+    # Plot injection locations if provided
+    if inj_locations is not None:
+        for ra, dec in inj_locations:
+            # Convert RA and Dec to radians for plotting
+            ra_rad = np.radians(ra)
+            dec_rad = np.radians(dec)
+            ax.plot(ra_rad, dec_rad, 'ro')  # 'ro' for red circle markers
+
+
+    # Check if the plot should be saved
+    if save:
+        filename = f"skyplot_{int(time.time())}.png"
+        plt.savefig(filename)
+        print(f"Plot saved as {filename}")
+
+    # Show the plot
+    plt.show()
