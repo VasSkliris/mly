@@ -79,10 +79,15 @@ def check_observingFlags(observingFlags=None, **kwargs):
             
     if (observingFlags == None and 'observingFlags' in kwargs):
         obsrevingFlags = kwargs['observingFlags']
+        
+        print('Selected observing flags: ',observingFlags)
+
     elif (observingFlags == None and 'observingFlags' not in kwargs):
         observingFlags = [{'H1': 'H1:DMT-ANALYSIS_READY:1'
                           ,'L1': 'L1:DMT-ANALYSIS_READY:1'
                           ,'V1': 'V1:ITF_SCIENCE:1'}]
+
+        print('Selected observing flags set to default: ',observingFlags)
         
     if isinstance(observingFlags,dict):
         observingFlags = [observingFlags]

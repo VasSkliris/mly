@@ -56,10 +56,10 @@ def getSegments(
               
     observingSegments=[]
     for d in range(len(detectors)):
-        main_seg=query_segments(observingFlags[0][detectors[d]+'1'] ,gps_start,gps_end)['active']
+        main_seg=query_segments(observingFlags[0][detectors[d]] ,gps_start,gps_end)['active']
         for obs in observingFlags[1:]:
             try:
-                main_seg = main_seg & query_segments(obs[0][detectors[d]+'1']
+                main_seg = main_seg & query_segments(obs[0][detectors[d]]
                                                      ,gps_start,gps_end)['active']
             except KeyError:
                 pass
@@ -68,7 +68,7 @@ def getSegments(
 
             for exc in excludedFlags:
                 try:
-                    main_seg = main_seg & ~query_segments(exc[detectors[d]+'1']
+                    main_seg = main_seg & ~query_segments(exc[detectors[d]]
                                                           ,gps_start,gps_end)['active']
                 except KeyError:
                      pass

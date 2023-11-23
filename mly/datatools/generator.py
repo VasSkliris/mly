@@ -774,43 +774,43 @@ def generator(duration
         elif noiseFormat=='gwdatafind':
             for d in range(len(detectors)):
 
-                for trial in range(1):
-                    try:
-                        t0=time.time()
-                        conn=gwdatafind.connect()
-                        urls=conn.find_urls(detectors[d]
-                                           , frames[detectors[d]]
-                                           , noiseSourceFile[d][0]
-                                           , noiseSourceFile[d][1])
-                        print(urls)
-                        noise_segDict[detectors[d]]=TimeSeries.read(urls
-                                                                    , channels[detectors[d]]
-                                                                    , start =noiseSourceFile[d][0]
-                                                                    , end =noiseSourceFile[d][1]
-                                                                   ).resample(fs).astype('float64').value#[fs:-fs].value
-                        # Added [fs:fs] because there was and edge effect
+                # for trial in range(1):
+                #     try:
+                t0=time.time()
+                conn=gwdatafind.connect()
+                urls=conn.find_urls(detectors[d]
+                                    , frames[detectors[d]]
+                                    , noiseSourceFile[d][0]
+                                    , noiseSourceFile[d][1])
 
-                        print("\n time to get "+detectors[d]+" data : "+str(time.time()-t0))
+                noise_segDict[detectors[d]]=TimeSeries.read(urls
+                                                            , channels[detectors[d]]
+                                                            , start =noiseSourceFile[d][0]
+                                                            , end =noiseSourceFile[d][1]
+                                                            ).resample(fs).astype('float64').value#[fs:-fs].value
+                # Added [fs:fs] because there was and edge effect
 
-                        if (len(np.where(noise_segDict[detectors[d]]==0.0)[0])
-                            ==len(noise_segDict[detectors[d]])):
-                            raise ValueError("Detector "+detectors[d]+" is full of zeros")
-                        elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
-                            print("WARNING : "+str(
-                                len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
-                                  +" zeros were replased with the average of the array")
-                        print("Success on getting the "+str(detectors[d])+" data.")
-                        break
+                print("\n time to get "+detectors[d]+" data : "+str(time.time()-t0))
 
-                    except Exception as e:
-                        print(e.__class__,e)
-                        print("/n")
-                        print("Failed getting the "+str(detectors[d])+" data.\n")
+                if (len(np.where(noise_segDict[detectors[d]]==0.0)[0])
+                    ==len(noise_segDict[detectors[d]])):
+                    raise ValueError("Detector "+detectors[d]+" is full of zeros")
+                elif len(np.where(noise_segDict[detectors[d]]==0.0)[0])!=0:
+                    print("WARNING : "+str(
+                        len(np.where(noise_segDict[detectors[d]]==0.0)[0]))
+                            +" zeros were replased with the average of the array")
+                print("Success on getting the "+str(detectors[d])+" data.")
+                    #     break
 
-                        #waiting=140+120*np.random.rand()
-                        #os.system("sleep "+str(waiting))
-                        #print("waiting "+str(waiting)+"s")
-                        continue
+                    # except Exception as e:
+                    #     print(e.__class__,e)
+                    #     print("/n")
+                    #     print("Failed getting the "+str(detectors[d])+" data.\n")
+
+                    #     #waiting=140+120*np.random.rand()
+                    #     #os.system("sleep "+str(waiting))
+                    #     #print("waiting "+str(waiting)+"s")
+                    #     continue
 
                 gps0[detectors[d]] = float(noiseSourceFile[d][0])
 
