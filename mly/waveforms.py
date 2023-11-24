@@ -940,8 +940,17 @@ def cbc(duration
        ,destinationDirectory=None
        ,aproximant='IMRPhenomD'
        ,frequencyRestriction=True
-       ,test=False):
-    
+       ,test=False
+       ,spin1=None
+       ,spin2=None
+       ,inclination = None
+       ,coa_phase = None
+       ,declination=None # random and uniformal
+       ,rightAscension=None # random and uniformal
+       ,polarisationAngle=None # random and uniformal
+       ,time=None
+       ,crop=None):
+
     """Creation of cbc signals using aproximants.
 
     Parameters
@@ -991,6 +1000,15 @@ def cbc(duration
 
         None
     """
+    if spin1 is None: spin1 = 2 * np.random.rand() - 1
+    if spin2 is None: spin2 = 2 * np.random.rand() - 1
+    if inclination is None: inclination = np.pi*np.random.rand()
+    if coa_phase is None: coa_phase = np.pi*np.random.rand()
+    #if declination is None: # randmised withing projectWave
+    #if rightAscension is None: # randmised withing projectWave
+    #if polarisationAngle is None: # randmised withing projectWave
+    if time is None: time = 0
+    if crop is None: crop = 'same'
 
     check_duration(duration)
     check_fs(fs)
@@ -1038,8 +1056,8 @@ def cbc(duration
                                              ,mass2=j
                                              ,spin1z=spin1
                                              ,spin2z=spin2
-                                             ,inclination=np.pi*np.random.rand()
-                                             ,coa_phase=2*np.pi*np.random.rand()
+                                             ,inclination=inclination
+                                             ,coa_phase=coa_phase
                                              ,distance=100
                                              ,delta_t=1.0/fs
                                              ,f_lower=minFrequencyEstimation(i,j,duration) 
@@ -1055,11 +1073,11 @@ def cbc(duration
                     pod=projectWave( h
                                     ,detectors
                                     ,fs
-                                    ,declination=None # random and uniformal
-                                    ,rightAscension=None # random and uniformal
-                                    ,polarisationAngle=None # random and uniformal
-                                    ,time=0
-                                    ,crop='same'
+                                    ,declination=declination 
+                                    ,rightAscension=rightAscension 
+                                    ,polarisationAngle=polarisationAngle
+                                    ,time=time
+                                    ,crop=crop
                                     ,outputFormat='datapod')
                     originalLen = len(pod.strain[0])
                     pod.strain = pod.strain[:, originalLen - int(duration*fs):]
