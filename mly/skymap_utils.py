@@ -8,6 +8,8 @@ import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import time 
 import ligo.skymap.plot
+from ligo.skymap import io, plot
+from ligo.skymap.plot.marker import earth
 
 import time 
 from pycbc.detector import Detector
@@ -788,56 +790,48 @@ def compute_prob_map_from_lsky(lsky_array, antenna_rms_array, alpha, beta, sigma
 
 
 
-
-
-def compute_containment_and_search_area(prob_array, inj_pixel_array, thresholds=[0.9, 0.5]):
-    
+def compute_containment_and_search_area(prob_array, inj_pixel_array=None, thresholds=[0.9, 0.5]):
     """
-    prob_array: it is a numpy array of probability maps computed from Lsky_array.
-    
-    inj_pixel_array: this is an numpy array of injection pixel for synthetic injections
-    
-    thresholds: it is a dictionary of two scaler threshold values which defines the containment regions.
+    prob_array: numpy array of probability maps computed from Lsky_array.
+    inj_pixel_array: (optional) numpy array of injection pixel for synthetic injections
+    thresholds: dictionary of two scaler threshold values defining containment regions.
     
     RETURN:
-    Outputs of the function are also in mumpy arrays.
-    
-    
+    Outputs of the function are numpy arrays.
     """
     
-    # Comnpute area of each pixel in square degrees
     pixel_area = (4 * np.pi * (180/np.pi)**2) / len(prob_array[0])  
-    
-    # Initialise dictionaries to store results
     containment_results = {thresh: [] for thresh in thresholds}
     search_area = []
     containment_area = {thresh: [] for thresh in thresholds}
     search_prob = []
     
-    for prob_map, inj_pixel_value in zip(prob_array, inj_pixel_array):        
+    for index, prob_map in enumerate(prob_array):
         sorted_indices = np.argsort(prob_map)[::-1]
         cum_sum = np.cumsum(prob_map[sorted_indices]) / np.sum(prob_map)  # Normalize cum_sum
-        search_area.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], 1,0)) * pixel_area)
-        search_prob.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], prob_map,0)))
+        
+        if inj_pixel_array is not None:
+            inj_pixel_value = inj_pixel_array[index]
+            search_area.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], 1,0)) * pixel_area)
+            search_prob.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], prob_map,0)))
+        else:
+            search_area.append(None)
+            search_prob.append(None)
         
         for thresh in thresholds:
-            # Identify containment region
             index_containment = np.argmax(cum_sum >= thresh)
             containment_region = sorted_indices[:index_containment + 1]
-            
-            # Check if the probability at the injection pixel is within the containment region
-            is_in_containment = prob_map[inj_pixel_value] >= prob_map[containment_region[-1]]
-            
-            # Compute search area for the containment region
             containment_region_area = len(containment_region) * pixel_area
-
             
-            containment_results[thresh].append(is_in_containment)
+            if inj_pixel_array is not None:
+                is_in_containment = prob_map[inj_pixel_value] >= prob_map[containment_region[-1]]
+                containment_results[thresh].append(is_in_containment)
+            else:
+                containment_results[thresh].append(None)
+
             containment_area[thresh].append(containment_region_area)
     
     return containment_results, search_area, containment_area, np.array(search_prob)
-
-
 
 
 
