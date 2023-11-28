@@ -325,7 +325,7 @@ def csg(
     if ellipticity is None:
         ellipticity = 0
     if not (isinstance(ellipticity, (float, int)) and 0 <= ellipticity <= 1):
-        raise ValueError('Elliptisity must be a numeber in the interval [0,1]')
+        raise ValueError('Ellipticity must be a number in the interval [0,1]')
 
     if amplitude is None:
         amplitude = 1
@@ -334,9 +334,9 @@ def csg(
 
     t = np.arange(0, duration, 1 / fs)
     hp = np.sin(2 * np.pi * frequency * t + phase) * \
-        np.exp(-((t - duration / 2) / (duration / sigma))**2)
-    hc = np.cos(2 * np.pi * frequency * t + phase) * np.exp(-((t - \
-                duration / 2) / (duration / sigma))**2) * np.sqrt(1 - ellipticity**2)
+         np.exp(-((t - duration / 2) / (duration / sigma))**2)
+    hc = np.cos(2 * np.pi * frequency * t + phase) * \
+         np.exp(-((t - duration / 2) / (duration / sigma))**2) * np.sqrt(1 - ellipticity**2)
 
     return (hp, hc)
 
@@ -1094,7 +1094,10 @@ def cbc(duration
                     # If destinationDirectory defined , we save the pod
                     if destinationDirectory is not None:
                         # Creation of a name
-                        name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(_rep)
+                        if i<=j:
+                            name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(_rep)
+                        else:
+                            name='cbc_'+str(int(j))+'_'+str(int(i))+'_repNo'+str(_rep)
                         pod.save(destinationDirectory+name)
                     else:
                         pod.plot()
@@ -1104,3 +1107,63 @@ def cbc(duration
                         print(count, 'File ' + name + ' is successfully saved')
     if test:
         print(count)
+
+
+
+
+def gaussian(
+        duration,
+        fs,
+        peakTime,
+        tau,
+        hrss=None):
+
+    """
+    Parameters
+    ----------
+
+    duration: int/float
+        The duration [s] of the timeseries.
+
+    fs: int 
+        The sample frequency [Hz] of the timeseries.
+
+    peakTime: int/float
+        The location of the Gaussian peak [s] relative to the start of the timeseries.
+
+    tau: float
+        The width [s] of the Gaussian pulse.
+
+    hrss: float, optional
+        The root-sum-square amplitude of the waveform. If not specified the default is 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        A numpy array with size fs*duration
+
+    """
+    if not duration > 0:
+        raise ValueError('duration must be a positive number')
+
+    if fs is None:
+        raise ValueError('sample frequency not supplied.')
+    elif not (isinstance(fs, int) and fs >= 1):
+        raise ValueError('sample frequency must be an integer greater than or equal to 1.')
+
+    if hrss is None:
+        sigma = 1
+    if not (hrss > 0):
+        raise ValueError('hrss must be positive')
+
+    # ---- Make vector of time stamps.
+    t = np.arange(0, duration, 1/fs)
+
+    # ---- Peak amplitude.
+    hpeak = hrss * pow(2/(np.pi*pow(tau,2)),1/4);
+
+    # ---- Plus and cross polarisations.
+    hp = hpeak * np.exp( - pow(t-peakTime,2) / pow(tau,2));
+    hc = np.zeros_like(hp);
+
+    return(hp,hc)
