@@ -4,6 +4,7 @@ from tqdm import tqdm
 import tensorflow as tf
 import time
 import healpy as hp
+from healpy.newvisufunc import projview, newprojplot
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import time 
@@ -433,43 +434,157 @@ def EnergySkyMaps(
 
     return (coherentNullEnergy, incoherentNullEnergy)
 
-def bandpass_prior_to_notching(data, fs, f_min, f_max):
-    filter_order = 10
-    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
-    samples_to_crop = 1 * fs  # 2 seconds * fs samples/second
 
+
+
+def bandpass(data, fs, f_min, f_max, filter_order=10):
+
+    # ---- Construct bandpass filter.
+    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
+
+    # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
+    #      each end to avoid filter transients. 
+    samples_to_crop = 1 * fs  # 1 second at each end
     bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
     for index in range(data.shape[0]):    
-        # Apply the filter
+        # ---- Apply the filter.
         filtered_data = lfilter(b, a, data[index])
-        # Crop the first 2 seconds
-        cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
-        # Store the cropped data
-        bandpassed_data[index] = cropped_data
+        # ---- Crop the ends and store.
+        bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
+        # # Crop the ends
+        # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
+        # # Store the cropped data
+        # bandpassed_data[index] = cropped_data
         
     return bandpassed_data
 
-def remove_line(data, fs, f_min, f_max, Q, factor):
+
+
+def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
+
+    # data  FORMAT? Timeseries data.
+    # fs  Integer. Sample rate [Hz] of timeseries data.
+    # f_min  Float. Minimum frequency [Hz] for bandpassing.
+    # f_max  Float. Maximum frequency [Hz] for bandpassing.
+    # Q  Float. Notch filter quality factor. Default 30.0.
+    # factor  Float. Minimum line height above median PSD. Default 10.0.
+    # smoothing  Float. Width [Hz] for smoothing. Default 9.0.
+
+    # ---- Parameters for line removal.
+    smoothingWindowHz = smoothing
+    minLineHeightFactor = factor
     
-    data = bandpass_prior_to_notching(data, fs, f_min, f_max)
+    # ---- FFT length. 
+    Nfft = 4 * fs    # FFT resolution 0.25 Hz
+
+    # ---- Bandpass the data.
+    data = bandpass(data, fs, f_min, f_max)
     
-    # FFT length chosen 4 times the sample frequency
+    confirmed_clean = False
+
+    while confirmed_clean == False:
+
+        notch_centre_bin = []
+        notch_width_bins = []
+        notch_height     = []  # really depth ...
+
+        # ---- Check all timeseries for lines.
+
+        # ---- Loop through the rows in the data (each row is a separate time series).
+        for ifo in range(data.shape[0]):
+
+            # ---- Compute the PSD of the data.
+            frequency, psd = welch(data[ifo], fs=fs, nperseg=Nfft)
+        
+            # ---- Construct and plot the "smoothed" PSD.
+            smoothingWindowBins = int(smoothingWindowHz / (fs/Nfft))
+            median_psd = np.zeros_like(psd)
+            for bins in range(len(psd)):
+                start = max(0, bins - smoothingWindowBins)
+                end = min(len(psd), bins + smoothingWindowBins)
+                median_psd[bins] = np.median(psd[start:end])
+            
+            # ---- Identify lines.
+            line_centre_bin = []
+            line_width_bins = []
+            line_height     = []
+            prev_bin = False
+            for j in range(len(psd)):
+                if (psd[j] > minLineHeightFactor*median_psd[j]) and (frequency[j] >= f_min) and (frequency[j] <= f_max):
+                    #print(frequency[j])
+                    if prev_bin==False:
+                        width_bins = 1
+                        max_height = psd[j] / median_psd[j]
+                        centre_bin = j
+                    else:
+                        width_bins = width_bins+1
+                        if psd[j] / median_psd[j] > max_height:
+                            max_height = psd[j] / median_psd[j]
+                            centre_bin = j
+                    prev_bin = True
+                else:
+                    if prev_bin==True:
+                        line_centre_bin.append(centre_bin)
+                        line_width_bins.append(width_bins)
+                        line_height.append(max_height)
+                        prev_bin = False
+            notch_centre_bin.append(line_centre_bin)
+            notch_width_bins.append(line_width_bins)
+            notch_height.append(line_height)
+
+        # ---- Remove the lines.
+        confirmed_clean = True
+        for ifo in range(data.shape[0]):
+            frequencies_to_remove = frequency[notch_centre_bin[ifo]]
+            if notch_centre_bin[ifo]:
+                print('notches found for detector',ifo,':')
+                print(notch_centre_bin[ifo])
+                confirmed_clean = False # resets to loop again if any lines found
+            # ---- Copy the original data.
+            filtered_data = np.copy(data[ifo])
+            # ---- Loop over frequencies and apply notch filter.
+            for f0 in frequencies_to_remove:
+                # ---- Create and apply a notch filter.
+                b, a = iirnotch(f0, Q, fs)
+                filtered_data = lfilter(b, a, filtered_data)
+            # ---- Replace background timeseries in the pod.
+            data[ifo] = filtered_data            
+
+    # ---- Return central 1 second of notched data.
+    w = int(data.shape[1]/fs)
+    # print('w =',w)
+    # print('original shape of notched data:',notched_data.shape)
+    data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    # print('shape of notched data:',notched_data.shape)
+    return data
+
+def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
+    
+    # print('shape of raw data:',data.shape)
+
+    data = bandpass(data, fs, f_min, f_max)
+    
+    # print('shape of bandpassed data:',data.shape)
+
+    # FFT length chosen 4 times the sample frequency (FFT resolution 0.25 Hz)
     Nfft = 4 * fs  
     notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
-    originalPSD = []
+    # originalPSD = []
     notch_centre_bin = []
 
     # Loop through the rows in the data (each row is a separate time series)
     for i in range(data.shape[0]):
-        # Calculate the PSD of the signal
-        frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
-        originalPSD.append(psd)
-        smothBins = int(9 / (fs/Nfft))
 
+        # Calculate the PSD of the data.
+        frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
+        # originalPSD.append(psd)
+
+        # Calculate the smoothed PSD.
+        smoothBins = int(9 / (fs/Nfft))
         median_psd = np.zeros_like(psd)
         for bins in range(len(psd)):
-            start = max(0, bins - smothBins)
-            end = min(len(psd), bins + smothBins)
+            start = max(0, bins - smoothBins)
+            end = min(len(psd), bins + smoothBins)
             median_psd[bins] = np.median(psd[start:end])
     
         # Identify lines
@@ -501,13 +616,18 @@ def remove_line(data, fs, f_min, f_max, Q, factor):
         # Loop over frequencies and apply notch filter
         for centre_bin in notch_centre_bin[i]:
             # Create a notch filter
-            centre_frequency = frequencies[centre_bin]
-            b, a = iirnotch(centre_frequency, Q, fs)
+            b, a = iirnotch(frequencies[centre_bin], Q, fs)
             # Apply the filter to data
             filtered_data = lfilter(b, a, filtered_data)
         notched_data[i] = filtered_data
+
+    # ---- Return central 1 second of notched data.
     w = int(notched_data.shape[1]/fs)
-    return notched_data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    # print('w =',w)
+    # print('original shape of notched data:',notched_data.shape)
+    notched_data = notched_data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    # print('shape of notched data:',notched_data.shape)
+    return notched_data
 
 
 
@@ -574,6 +694,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     # < ------------------------------------------
     
     notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
+    # notched_strain = remove_lines(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
 
     
     start = time.time()
@@ -746,6 +867,41 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
         marker=ligo.skymap.plot.reticle(),
         markersize=30,
         markeredgewidth=3)
+
+
+
+
+def mly_skymap_plot(skymap,nest=True,title=None,RA=None,declination=None):
+        
+    """
+    Function to plot an MLy sky map.
+
+    Parameters
+    ----------
+    skymap: A HEALPix probability map to be plotted.
+    nest: Boolean indicating if the HEALPix data is in 'nested' format. Default true.
+    title: String. The title for the plot. Default None (no title).
+    RA: Float. Right ascension [rad] to mark. Default None (no marker).
+    Declination: Float. Declination [rad] to mark.  Default None (no marker).   
+    """
+
+    hp.projview(
+        skymap,
+        coord=['C'],
+        graticule=True,
+        graticule_labels=True,
+        title = title,
+        nest = nest,
+        flip = 'astro',
+        #unit="cbar label",
+        cb_orientation="horizontal",
+        projection_type="mollweide")
+
+    # ---- Add marker at specified location, if any.
+    if (RA is not None) and (declination is not None):
+        if RA >= np.pi:
+            RA = RA- 2*np.pi
+        newprojplot(theta=(np.pi/2)-declination, phi=RA, marker="o", color="r", markersize=10);
 
 
 
