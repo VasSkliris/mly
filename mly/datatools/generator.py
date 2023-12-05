@@ -575,7 +575,7 @@ def generator(duration
             injectionFileDict[det] = [injection_source]
 
         elif inj_type == 'DataSet':
-            injectionFileDict[det] = [injection_source.dataPods]
+            injectionFileDict[det] = injection_source.dataPods
 
         else:
             raise TypeError("Unknown type of injections")

@@ -57,6 +57,7 @@ def projectWave(sourceWaveform
     hc=PTimeSeries(h[1],delta_t=1./fs,epoch=time) 
     
     
+    
     hrss=np.sqrt(np.sum(h[0]**2+h[1]**2)/fs)
     
     # Checking the detectors input
@@ -101,8 +102,8 @@ def projectWave(sourceWaveform
     for det in detectors:
         detector_dict[det]=Detector(det)
         # Calculation of time delay using as a reference the first detector
-        dt = detector_dict[det].time_delay_from_detector(detector_dict[detectors[0]]
-                                                         ,rightAscension
+        dt = detector_dict[det].time_delay_from_earth_center(
+                                                          rightAscension
                                                          ,declination
                                                          ,time)
         shift_dict[det]=dt
@@ -111,12 +112,14 @@ def projectWave(sourceWaveform
         signal = np.array(detector_dict[det].project_wave(hp, hc
                                                          ,rightAscension
                                                          ,declination
-                                                         ,polarisationAngle))
+                                                         ,polarisationAngle
+                                                         ,method='constant'))
         signal_dict[det]= np.array(signal)
         
         
     # There is a one pixel inconsistency sometimes and we make sure all signals have the same length
     if not all(len(signal_dict[det])==len(signal_dict[detectors[0]]) for det in detectors):
+        print('PIXEL INCONSISTENCY',list(len(signal_dict[det]) for det in detectors))
         maxlen=max(list(len(signal_dict[det]) for det in detectors))
         for det in detectors:
             if len(signal_dict[det])<maxlen: 

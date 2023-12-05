@@ -1024,6 +1024,9 @@ def cbc(duration
     count = 0
     M_min, M_max = massRange[0], massRange[1]
     # we repeat rep times the same combination of m1,m2
+
+    # Will be used only if the pods need to be returned as DataSet
+    podlist = []
     for _rep in range(rep):
         # loop over m1
         for i in np.arange(M_min, M_max, massStep):
@@ -1082,7 +1085,13 @@ def cbc(duration
                     originalLen = len(pod.strain[0])
                     pod.strain = pod.strain[:, originalLen - int(duration*fs):]
                     pod.duration = duration
-                    
+                    pod.m1 = i
+                    pod.m2 = j
+                    pod.spin1 = spin1
+                    pod.spin2 = spin2
+                    pod.inclination = inclination
+                    pod.coa_phase = coa_phase
+
                     # Cropping the result when bigger than desired
                     if len(pod.strain[0]) > fs * duration:
                         croppedStrain = list(
@@ -1091,20 +1100,27 @@ def cbc(duration
                         pod.strain = croppedStrain
                         pod.duration = duration
 
+                    if i<=j:
+                        name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(_rep)
+                    else:
+                        name='cbc_'+str(int(j))+'_'+str(int(i))+'_repNo'+str(_rep)
+                        
                     # If destinationDirectory defined , we save the pod
                     if destinationDirectory is not None:
                         # Creation of a name
-                        if i<=j:
-                            name='cbc_'+str(int(i))+'_'+str(int(j))+'_repNo'+str(_rep)
-                        else:
-                            name='cbc_'+str(int(j))+'_'+str(int(i))+'_repNo'+str(_rep)
                         pod.save(destinationDirectory+name)
                     else:
-                        pod.plot()
+                        podlist.append(pod)
 
                     # printing a statement to verify that the script is running
                     if count % 100 == 0:
+                        name='cbc_'+str(int(j))+'_'+str(int(i))+'_repNo'+str(_rep)
                         print(count, 'File ' + name + ' is successfully saved')
+
+    if destinationDirectory is None and not test:
+        return DataSet(podlist)
+
+
     if test:
         print(count)
 

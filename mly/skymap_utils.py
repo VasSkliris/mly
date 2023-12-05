@@ -134,7 +134,7 @@ def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
 
         for detector_index, detector in enumerate(detectors):
             fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                RA[pixel_index], dec[pixel_index], 0, GPS_time)
+                RA[pixel_index], dec[pixel_index], 0, GPS_time)  
 #        print('fp', fp.shape)
 #        print('fc', fc.shape)
         totalResponse = np.square(np.abs(fp)) + np.square(np.abs(fc))
@@ -261,10 +261,10 @@ def EnergySkyMapsGRF(
         
         # Apply mask_window_tf function on strain data
         windowed_data = mask_window_tf(fs, fs, start_time, end_time, ramp_duration)
-        print('windowed_data', windowed_data.shape)
-        print ('strain shape', strain.shape)
-        print('start_time_util', start_time)
-        print('end_time_until', start_time)
+        # print('windowed_data', windowed_data.shape)
+        # print ('strain shape', strain.shape)
+        # print('start_time_util', start_time)
+        # print('end_time_until', start_time)
     
         
         # Reshape windowed_data to match the shape of strain
@@ -274,13 +274,13 @@ def EnergySkyMapsGRF(
         #print('window_shape_broadcast', window_shape_broadcast.shape)
         
         strain = tf.math.multiply(tf.cast(windowed_data_reshaped, dtype = tf.float64), strain)
-        print('windowed_strain', strain)
+        #print('windowed_strain', strain)
     else:
         print('window not activated', window_parameter)
 
     #Calculate shifted positions using phase correction:
     shifted_strain = tf.math.divide(timeDelayShiftTensorflow(
-        strain, frequency_axis, time_delay), fs)
+        strain, frequency_axis, time_delay), fs) #WHY divide by fs?
 
     #Calculate null_energy by multiplying detectors antenna response with time shifted_strain
     null_stream_components = tf.math.multiply(null_coefficient, shifted_strain)
@@ -322,7 +322,7 @@ def nullCoefficient(num_pixels, RA, dec, detectors, GPS_time):
             for detector_index, detector in enumerate(detectors):
                 
                 fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                    RA[pixel_index], dec[pixel_index], 0, GPS_time)
+                    RA[pixel_index], dec[pixel_index], 0, GPS_time)  
             
             
             # add the angle on this following Fp2 and Fc2
@@ -336,12 +336,12 @@ def nullCoefficient(num_pixels, RA, dec, detectors, GPS_time):
             dpa = 1/4*(np.arctan2( (2*dot_product) , (Fp2 - Fc2)))
 
             # Compute antenna response tensor for each pixel and detector
-            dominant_polarisation_p[pixel_index] = [np.cos(2*dpa)*fp[0] + sin(2*dpa)*fc[0], np.cos(2*dpa)*fp[1] + sin(2*dpa)*fc[1]]
+            dominant_polarisation_p[pixel_index] = [ np.cos(2*dpa)*fp[0] + sin(2*dpa)*fc[0],  np.cos(2*dpa)*fp[1] + sin(2*dpa)*fc[1]]
             dominant_polarisation_c[pixel_index] = [-np.sin(2*dpa)*fp[0] + cos(2*dpa)*fc[0], -np.sin(2*dpa)*fp[1] + cos(2*dpa)*fc[1]]
             
-            if pixel_index ==0:
-                print('dp', dominant_polarisation_p[0][:3])
-                print('dc', dominant_polarisation_c[0][:3])
+            # if pixel_index ==0:
+            #     print('dp', dominant_polarisation_p[0][:3])
+            #     print('dc', dominant_polarisation_c[0][:3])
             
             if np.dot(dominant_polarisation_c[pixel_index], dominant_polarisation_c[pixel_index])> np.dot(dominant_polarisation_p[pixel_index], dominant_polarisation_p[pixel_index]):
                 temp = dominant_polarisation_p[pixel_index]
@@ -365,7 +365,7 @@ def nullCoefficient(num_pixels, RA, dec, detectors, GPS_time):
 
             for detector_index, detector in enumerate(detectors):
                 fp[detector_index], fc[detector_index] = detector.antenna_pattern(
-                    RA[pixel_index], dec[pixel_index], 0, GPS_time)
+                    RA[pixel_index], dec[pixel_index], 0, GPS_time)  
 
             cross_product = np.cross(fp, fc)
             norm_cross_product = np.linalg.norm(cross_product)
@@ -551,11 +551,11 @@ def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
             data[ifo] = filtered_data            
 
     # ---- Return central 1 second of notched data.
-    w = int(data.shape[1]/fs)
-    # print('w =',w)
-    # print('original shape of notched data:',notched_data.shape)
-    data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    # print('shape of notched data:',notched_data.shape)
+    # w = int(data.shape[1]/fs)
+    # # print('w =',w)
+    # # print('original shape of notched data:',notched_data.shape)
+    # data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    # # print('shape of notched data:',notched_data.shape)
     return data
 
 def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
@@ -621,31 +621,30 @@ def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
             filtered_data = lfilter(b, a, filtered_data)
         notched_data[i] = filtered_data
 
-    # ---- Return central 1 second of notched data.
-    w = int(notched_data.shape[1]/fs)
-    # print('w =',w)
-    # print('original shape of notched data:',notched_data.shape)
-    notched_data = notched_data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    # print('shape of notched data:',notched_data.shape)
+    # # ---- Return central 1 second of notched data.
+    # w = int(notched_data.shape[1]/fs)
+    # # print('w =',w)
+    # # print('original shape of notched data:',notched_data.shape)
+    # # print('shape of notched data:',notched_data.shape)
     return notched_data
 
 
 
 
-def skymap_gen_function(fs, uwstrain, psd, gps, detectors
+def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors
                         , alpha = None, beta=None, sigma=None
                         , nside = None
                         , window_parameter = None
                         , **kwargs):
 
     if alpha is None or beta is None or sigma is None:
-        print(alpha, beta, sigma)
+        #print(alpha, beta, sigma)
         raise ValueError('alpha, beta and sigma must be defined')
     
     #sigma = fs*sigma
     
     
-    print(alpha, beta, sigma)
+    #print(alpha, beta, sigma)
     if nside is None:
         nside = 64
     
@@ -673,30 +672,39 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     theta, phi = hp.pix2ang(nside, range(num_pixels), nest = True)
     RA = phi
     dec = np.pi/2 - theta
-    # print(type(theta))
-    # print(type(phi))
-    # print(type(RA))
-    # print(type(dec))
 
     #Create Antenna and TimeDelay maps:
     null_coefficient = nullCoefficient(num_pixels,
                                        RA, dec,
                                        detectors_objects,
                                        gps_time)
+
+    #print('nc shape:',null_coefficient.shape)
     
-    antenna_response_rms = antennaResponseRMS(
-        num_pixels, RA, dec, detectors_objects, gps_time)
+    antenna_response_rms = antennaResponseRMS(num_pixels
+                                              , RA, dec
+                                              , detectors_objects
+                                              , gps_time)
     
-    time_delay_map = timeDelayMap(num_pixels, RA, dec, detectors_objects, gps_time)
+    #print('ar shape:',antenna_response_rms.shape)
+
+    time_delay_map = timeDelayMap(num_pixels
+                                  , RA, dec
+                                  , detectors_objects
+                                  , gps_time)
     
+    #print('td shape:',time_delay_map.shape)
+
     frequency_axis = np.fft.rfftfreq(fs, d=1/fs)
 
     # < ------------------------------------------
     
     notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
-    # notched_strain = remove_lines(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
 
-    
+    w = int(notched_strain.shape[1]/fs)
+
+    notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+
     start = time.time()
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
@@ -719,7 +727,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
 
 
     prob_map = (prob_map)/np.sum(prob_map)
-    print('prob_map', prob_map)
+    #print('prob_map', prob_map)
 
 #     pixel_index = np.argsort(prob_map)[::-1]
 #     # print('pixel_index', pixel_index)
@@ -750,23 +758,7 @@ def skymap_gen_function(fs, uwstrain, psd, gps, detectors
     prob_map_total = np.array(prob_map)
     Lsky_array = np.array(Lsky)
     
-    # if isinstance(map_save, str):
-    #     file_name = f'{map_save}.npy'
-
-    #     np.save(file_name, prob_map_total)
-    
-    # if plot_map is True:
-    #     plt.figure()
-    #     hp.mollview(prob_map_total[0], coord = 'C', nest= None, title = "probability_map")
-    #     #plt.savefig(f"prob_skymap_{time.time()}.png")
-    
     return(prob_map_total, Lsky_array, antenna_response_rms)
-
-
-# def skymap_plot_function(strain,data=None):
-
-#     hp.mollview(data[0][0], coord = 'C', nest= True, title = "probability_map")
-#     hp.mollview(data[1][0], coord = 'C', nest = True, title = 'Lsky_map')
 
 def skymap_plot_function(strain,data=None):
         
@@ -910,11 +902,11 @@ def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_p
 
     if injection:
 
-        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors'],
                         plotFunction=skymap_plot_function_with_inj, plotAttributes=['strain','RA','declination'], alpha = alpha, beta = beta, sigma = sigma, nside = nside, window_parameter = window_parameter)
     else:
         
-        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors'],
                         plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside, window_parameter = window_parameter)
 
 

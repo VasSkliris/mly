@@ -2949,3 +2949,112 @@ def finalise_tar(path,generation=True,forceMerging=False,**kwargs):
                 or ('part_of' in file) or ('No' in file) or ('test' in file) or ('.sh' in file) or ('10000' in file)):
                 os.system('rm '+path+file)
         
+
+
+def evaluate_dataset(models
+                    ,data_source
+                    ,plugins=None
+                    ,mapping=None
+                    ,**kwargs):
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- model ------------------------------------------------------------------------------ #
+    # 
+    # This first input has a complicated format in the rare case of trying
+    # to test two models in parallel but with different subset of the data as input.
+    #
+    # Case of one model as it was before
+    if not isinstance(models,list):
+        models=[[models],[None]]
+    # Case where all models have all data to use
+    if isinstance(models,list) and not all(isinstance(m,list) for m in models):
+        models=[models,len(models)*[None]]
+    # Case where index is not given for all models.
+    if len(models[0])!=len(models[1]):
+        raise ValueError('You have to define input index for all maodels')
+    # Case somebody doesn't put the right amount of indexes for the data inputs. 
+
+    if not (isinstance(models,list) and all(isinstance(m,list) for m in models)):
+        raise TypeError('models have to be a list of two sublists. '
+                        +'First list has the models and the second has the'
+                        +' indexes of the data each one uses following the order strain, extra1, extra2...'
+                        +'[model1,model2,model3],[[0,1],[0,2],[2]]')
+
+    # models[0] becomes the trained models list
+    trained_models=[]
+    for model in models[0]:  
+        if isinstance(model,str):
+            if os.path.isfile(model):    
+                trained_models.append(load_model(model))
+            else:
+                raise FileNotFoundError("No model file in "+model)
+        else:
+            trained_models.append(model) 
+
+    # ---------------------------------------------------------------------------------------- #    
+    # --- mappings --------------------------------------------------------------------------- #
+    # 
+    # Mappings are a way to make sure the model has the same translation for the
+    # labels as we have. All models trained in mly will have a mapping defined
+    # during the data formating in the model training.
+    
+
+    if len(trained_models)==1 and isinstance(mapping,dict):
+        mapping=[mapping]
+    elif len(trained_models)!=1 and isinstance(mapping,dict):
+        mapping=len(trained_models)*[mapping]
+    if isinstance(mapping,list) and all(isinstance(m,dict) for m in mapping):
+        pass
+    else:
+        
+        raise TypeError('Mappings have to be a list of dictionaries for each model.')
+
+    columns=[]
+    for m in range(len(trained_models)):
+        columns.append(fromCategorical('signal',mapping=mapping[m],column=True))
+
+    # ---------------------------------------------------------------------------------------- #
+
+    if isinstance(data_source,str) and (os.path.isfile(data_source) and injection_source[-4:]=='.pkl'):
+        import pickle
+        with open(data_source,'rb') as obj:
+            injection_source = pickle.load(obj)
+        
+    if isinstance(data_source,DataPod):
+        data_source = DataSet([data_source])
+
+    elif isinstance(data_source,DataSet):
+        if len(data_source) > 0:
+            pass
+        else:
+            raise ValueError("injection_source DataSet is empty")
+
+    else:
+        raise FileNotFoundError('Not valid directory for :'+injection_source)
+
+    result_list=[]
+    scores_collection=[]
+
+    for m in range(len(trained_models)):
+        dataList=[]
+        input_shape=trained_models[m].input_shape
+        if isinstance(input_shape,tuple): input_shape=[input_shape]
+        for i in range(len(models[1][m])):
+            print(data_source[0].__getattribute__(models[1][m][i]).shape)
+            dataList.append(data_source.exportData(models[1][m][i],shape=input_shape[i]))
+
+        if len(dataList)==1: dataList=dataList[0]
+        scores = trained_models[m](dataList, training=False).numpy()[:,columns[m]]
+        scores_collection.append(scores.tolist())
+        
+    if len(np.array(scores_collection).shape)==1:
+        scores_collection=np.expand_dims(np.array(scores_collection),0)
+    else:
+        scores_collection=np.array(scores_collection)
+
+    total_score = np.multiply(scores_collection[0],scores_collection[1])
+
+    for i, pod in enumerate(data_source):
+        pod.score = total_score[i]
+
+    return total_score
