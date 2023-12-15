@@ -840,6 +840,11 @@ def generator(duration
         elif callable(input_injectionSNR):
             injectionSNR = input_injectionSNR()
 
+        elif input_injectionSNR=='same':
+            injectionSNR = 'same'
+            print('INJECTION SNR SET TO SAME')
+
+
 
         
         if isinstance(input_injectionHRSS,(list,tuple)):
@@ -1222,7 +1227,10 @@ def generator(duration
                 fft_cal=(injectionHRSS/hrss0)*inj_fft_0_dict[det]     
     
             else:
-                fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
+                if injectionSNR=='same':
+                    fft_cal=inj_fft_0_dict[det] 
+                else:
+                    fft_cal=(injectionSNR/SNR0)*inj_fft_0_dict[det] 
 
             # Norm default is 'backwards' which means that it normalises with 1/N during IFFT and not duriong FFT
             if ignoreDetector ==None:
@@ -1317,8 +1325,12 @@ def generator(duration
                     plugInToApply.append(PlugIn('hrss'
                                             ,genFunction=inj_pod.hrss*(injectionHRSS/hrss0)))
                 else:
-                    plugInToApply.append(PlugIn('hrss'
-                                            ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
+                    if injectionSNR == 'same':
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss))
+                    else:                        
+                        plugInToApply.append(PlugIn('hrss'
+                                                ,genFunction=inj_pod.hrss*(injectionSNR/SNR0)))
 
             else:
                 raise ValueError("Unable to calculate or use hrss valye. There was no hrss in the injection pod.")

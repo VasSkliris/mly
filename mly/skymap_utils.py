@@ -631,7 +631,7 @@ def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
 
 
 
-def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors
+def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
                         , alpha = None, beta=None, sigma=None
                         , nside = None
                         , window_parameter = None
@@ -723,7 +723,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors
     Lsky = (1-(sky_null/sky_inc)) * (np.max(sky_null) - sky_null)
 
     prob_map = ((antenna_response_rms)**alpha) * np.exp(
-                 -((np.amax(Lsky) - Lsky)/sigma)**beta)
+                 -((np.amax(Lsky) - Lsky)/(sigma/np.sqrt(PE['bandwidth'])))**beta)
 
 
     prob_map = (prob_map)/np.sum(prob_map)
@@ -902,11 +902,11 @@ def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_p
 
     if injection:
 
-        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors','PE'],
                         plotFunction=skymap_plot_function_with_inj, plotAttributes=['strain','RA','declination'], alpha = alpha, beta = beta, sigma = sigma, nside = nside, window_parameter = window_parameter)
     else:
         
-        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors'],
+        return PlugIn('sky_map', genFunction=skymap_gen_function , attributes= ['strain','fs', 'uwstrain', 'psd', 'gps', 'detectors','PE'],
                         plotFunction=skymap_plot_function, plotAttributes=['strain'], alpha = alpha, beta = beta, sigma = sigma, nside = nside, window_parameter = window_parameter)
 
 

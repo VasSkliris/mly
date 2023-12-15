@@ -7,6 +7,7 @@ import math
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from math import ceil
 
 from pycbc.waveform import get_td_waveform
 from pycbc.waveform import get_fd_waveform
@@ -53,8 +54,12 @@ def projectWave(sourceWaveform
     
     # Making the polarisation data into PTimeSeries objects
 
-    hp=PTimeSeries(h[0],delta_t=1./fs,epoch=time)         
-    hc=PTimeSeries(h[1],delta_t=1./fs,epoch=time) 
+    sidePad = ceil( fs * 0.032) # 32 ms
+    hp = np.hstack((np.zeros(sidePad), h[0], np.zeros(sidePad)))
+    hc = np.hstack((np.zeros(sidePad), h[1], np.zeros(sidePad)))
+
+    hp=PTimeSeries(hp,delta_t=1./fs,epoch=time)         
+    hc=PTimeSeries(hp,delta_t=1./fs,epoch=time) 
     
     
     
@@ -129,67 +134,67 @@ def projectWave(sourceWaveform
     for det in detectors:    
         signal_dict[det]=timeDelayShift(signal_dict[det],shift_dict[det],fs)
         
-    if crop==None and pad==None:
-        pass
-    elif crop!=None and pad==None:
+    # if crop==None and pad==None:
+    #     pass
+    # elif crop!=None and pad==None:
             
-        if isinstance(crop,int) and crop > 0:
-            crop = [math.ceil(crop/2), int(crop/2)]
-            for det in detectors:    
-                signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
+    #     if isinstance(crop,int) and crop > 0:
+    #         crop = [math.ceil(crop/2), int(crop/2)]
+    #         for det in detectors:    
+    #             signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
 
-        elif isinstance(crop,(list,tuple)) and all(el>0 for el in crop):
-            for det in detectors:    
-                signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
+    #     elif isinstance(crop,(list,tuple)) and all(el>0 for el in crop):
+    #         for det in detectors:    
+    #             signal_dict[det] = signal_dict[det] [crop[0]:-crop[1]]
 
-        elif crop == "same":
+    #     elif crop == "same":
 
-            originalSize = max(len(hp),len(hc))
+    #         originalSize = max(len(hp),len(hc))
             
-            for det in detectors:   
+    #         for det in detectors:   
                 
-                if originalSize - len(signal_dict[det]) >= 0:
-                    rightPad = int((originalSize - len(signal_dict[det]))/2)
-                    leftPad = int(originalSize - len(signal_dict[det])) - rightPad
+    #             if originalSize - len(signal_dict[det]) >= 0:
+    #                 rightPad = int((originalSize - len(signal_dict[det]))/2)
+    #                 leftPad = int(originalSize - len(signal_dict[det])) - rightPad
 
-                    if rightPad!=0:
-                        signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
-                    if leftPad!=0:
-                        signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
-                else:
+    #                 if rightPad!=0:
+    #                     signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
+    #                 if leftPad!=0:
+    #                     signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
+    #             else:
 
-                    rightCrop = int((len(signal_dict[det]) - originalSize)/2)
-                    leftCrop = int(len(signal_dict[det]) - originalSize) - rightCrop
+    #                 rightCrop = int((len(signal_dict[det]) - originalSize)/2)
+    #                 leftCrop = int(len(signal_dict[det]) - originalSize) - rightCrop
 
-                    if rightCrop!=0:
-                        signal_dict[det] = signal_dict[det][:-rightCrop]
-                    if leftCrop!=0:
-                        signal_dict[det] = signal_dict[det][leftCrop:]
+    #                 if rightCrop!=0:
+    #                     signal_dict[det] = signal_dict[det][:-rightCrop]
+    #                 if leftCrop!=0:
+    #                     signal_dict[det] = signal_dict[det][leftCrop:]
 
-    elif crop==None and pad!=None:
+    # elif crop==None and pad!=None:
 
-        if isinstance(pad,int) and pad > 0:
-            pad = [math.ceil(pad/2), int(pad/2)]
-            for det in detectors:    
-                signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
+    #     if isinstance(pad,int) and pad > 0:
+    #         pad = [math.ceil(pad/2), int(pad/2)]
+    #         for det in detectors:    
+    #             signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
 
-        elif isinstance(pad,(list,tuple)) and all(el>0 for el in pad):
-            for det in detectors:    
-                signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
+    #     elif isinstance(pad,(list,tuple)) and all(el>0 for el in pad):
+    #         for det in detectors:    
+    #             signal_dict[det] = np.hstack((np.zeros(pad[0]),signal_dict[det],np.zeros(pad[1])))
 
-        elif pad == "same":
+    #     elif pad == "same":
 
-            originalSize = max(len(hp),len(hc))
+    #         originalSize = max(len(hp),len(hc))
 
-            for det in detectors: 
+    #         for det in detectors: 
 
-                rightPad = int((originalSize - len(signal_dict[det]))/2)
-                leftPad = int(originalSize - len(signal_dict[det])) - rightPad
+    #             rightPad = int((originalSize - len(signal_dict[det]))/2)
+    #             leftPad = int(originalSize - len(signal_dict[det])) - rightPad
 
-                if rightPad!=0:
-                    signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
-                if leftPad!=0:
-                    signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
+    #             if rightPad!=0:
+    #                 signal_dict[det] = np.hstack((signal_dict[det],np.zeros(rightPad)))
+    #             if leftPad!=0:
+    #                 signal_dict[det] = np.hstack((np.zeros(leftPad), signal_dict[det]))
                             
 
     # # # OUTPUT FORMAT - SAVING 

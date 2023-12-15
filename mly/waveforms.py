@@ -14,6 +14,7 @@ from gwpy.timeseries import TimeSeries as gwTS
 
 from .projectwave import *
 from .exceptions import *
+from .plugins import *
 ##########################################################################
 
 ##########################################################################
@@ -347,7 +348,7 @@ def csg_Q(
         fs=None,
         sigma=None,
         alpha=None,
-        amplitude=None):
+        hrss = None):
 
     """
     Parameters
@@ -377,9 +378,9 @@ def csg_Q(
         Angle that used to like elpticity. We use it here only for comparison reasons 
         (https://arxiv.org/pdf/1409.2435.pdf) It seems to be wrong. 
 
-    amplitude: int/float , optional
-        The maximum amplitude of the singal. If not specied
-        the default is 1.
+    hrss: int/float , optional
+        hrss=np.sqrt(np.sum(h[0]**2+h[1]**2)/fs)
+
 
     Returns
     -------
@@ -414,18 +415,23 @@ def csg_Q(
     if alpha is None:
         alpha = np.random.rand() * 2 * np.pi
 
-    if amplitude is None:
-        amplitude = 1
-    elif not (isinstance(amplitude, (int, float))):
-        raise ValueError('amplitude must be a number')
+    if hrss is None:
+        hrss = 1
+    elif not (isinstance(hrss, (int, float))):
+        raise ValueError('hrss must be a number')
     
     tau = q/(np.sqrt(2)*np.pi*frequency)
     
     duration = tau*sigma
     t = np.arange(-duration/2, duration/2, 1 / fs)
 
-    hp = np.sin(alpha) * (amplitude/np.sqrt( q*(1-np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.sin(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
-    hc = np.cos(alpha) * (amplitude/np.sqrt( q*(1+np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.cos(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
+    hp = np.sin(alpha) * (np.sqrt( q*(1-np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.sin(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
+    hc = np.cos(alpha) * (np.sqrt( q*(1+np.cos(2 * phase)*np.exp(-q**2))/(4*frequency*np.sqrt(np.pi)))) * np.cos(2*np.pi*frequency*t + phase) * np.exp(-(t/tau)**2)
+    
+    hrss_0=np.sqrt(np.sum(hp**2+hc**2)/fs)
+
+    hp = (hrss/hrss_0)*hp
+    hc = (hrss/hrss_0)*hc
 
     return(hp,hc)
 
@@ -539,7 +545,7 @@ def ringdown(
     return (hp, hc)
 
 
-def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None):
+def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None, hrss = 1):
     """Generate a random signal of given duration with constant power
     in a given frequency range band (and zero power out of the this range).
 
@@ -563,6 +569,7 @@ def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None):
             for the projectwave function. If not specified or
             False it is set to 0. If set True it is set to ceil(fs/32). WARNING: Using sidePad will
             make the injection length bigger than the duration
+        hrss: 1.0 , int/float
 
 
         Returns
@@ -583,7 +590,7 @@ def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None):
         sidePad = 0
     if isinstance(sidePad, bool):
         if sidePad:
-            sidePad = ceil(fs / 32)
+            sidePad = ceil(fs * 0.04) # rounded version of 32 ms
         else:
             sidePad = 0
     elif isinstance(sidePad, (int, float)) and sidePad >= 0:
@@ -628,7 +635,10 @@ def WNB(duration, fs, fmin, fmax, enveloped=True, sidePad=None):
     if sidePad != 0:
         hp = np.hstack((np.zeros(sidePad), hp, np.zeros(sidePad)))
         hc = np.hstack((np.zeros(sidePad), hc, np.zeros(sidePad)))
-
+    
+    hrss_0=np.sqrt(np.sum(hp**2+hc**2)/fs)
+    hp = (hrss/hrss_0)*hp
+    hc = (hrss/hrss_0)*hc
     return (hp, hc)
 
 
@@ -927,10 +937,6 @@ def maxFrequencyCalculation(m1  # Mass 1
     return f
 
 
-
-
-
-
 def cbc(duration
        ,fs
        ,detectors
@@ -943,6 +949,7 @@ def cbc(duration
        ,test=False
        ,spin1=None
        ,spin2=None
+       ,distance = None
        ,inclination = None
        ,coa_phase = None
        ,declination=None # random and uniformal
@@ -1000,10 +1007,6 @@ def cbc(duration
 
         None
     """
-    if spin1 is None: spin1 = 2 * np.random.rand() - 1
-    if spin2 is None: spin2 = 2 * np.random.rand() - 1
-    if inclination is None: inclination = np.pi*np.random.rand()
-    if coa_phase is None: coa_phase = np.pi*np.random.rand()
     #if declination is None: # randmised withing projectWave
     #if rightAscension is None: # randmised withing projectWave
     #if polarisationAngle is None: # randmised withing projectWave
@@ -1032,10 +1035,18 @@ def cbc(duration
         for i in np.arange(M_min, M_max, massStep):
             # loop over m2
             for j in np.arange(M_min, M_max, massStep):
-
-                # creating random spin parameters
-                spin1 = 2 * np.random.rand() - 1
-                spin2 = 2 * np.random.rand() - 1
+                
+                if spin1 is None: spin1 = np.random.rand() * 0.9
+                if spin2 is None: spin2 = np.random.rand() * 0.9
+                if inclination is None: inclination = np.pi*np.random.rand()
+                if coa_phase is None: coa_phase = np.pi*np.random.rand()
+                if distance is None:
+                    distance_call = 100
+                elif callable(distance):
+                    distance_call = distance()
+                else:
+                    distance_call = distance
+                
 
                 # spins affect a lot the maximum frequency
                 # calculation of max frequency given parameters
@@ -1061,7 +1072,7 @@ def cbc(duration
                                              ,spin2z=spin2
                                              ,inclination=inclination
                                              ,coa_phase=coa_phase
-                                             ,distance=100
+                                             ,distance=distance_call
                                              ,delta_t=1.0/fs
                                              ,f_lower=minFrequencyEstimation(i,j,duration) 
                                             )
@@ -1085,12 +1096,14 @@ def cbc(duration
                     originalLen = len(pod.strain[0])
                     pod.strain = pod.strain[:, originalLen - int(duration*fs):]
                     pod.duration = duration
-                    pod.m1 = i
-                    pod.m2 = j
-                    pod.spin1 = spin1
-                    pod.spin2 = spin2
-                    pod.inclination = inclination
-                    pod.coa_phase = coa_phase
+
+                    pod.addPlugIn(PlugIn('m1',i))
+                    pod.addPlugIn(PlugIn('m2',j))
+                    pod.addPlugIn(PlugIn('spin1',spin1))
+                    pod.addPlugIn(PlugIn('spin2',spin2))
+                    pod.addPlugIn(PlugIn('inclination',inclination))
+                    pod.addPlugIn(PlugIn('coa_phase',coa_phase))
+                    pod.addPlugIn(PlugIn('distance',distance))
 
                     # Cropping the result when bigger than desired
                     if len(pod.strain[0]) > fs * duration:
@@ -1168,7 +1181,7 @@ def gaussian(
         raise ValueError('sample frequency must be an integer greater than or equal to 1.')
 
     if hrss is None:
-        sigma = 1
+        hrss = 1
     if not (hrss > 0):
         raise ValueError('hrss must be positive')
 

@@ -405,7 +405,10 @@ class DataSet(DataSetBase):
             else:
                 self.dataPods.append(newData)
         elif isinstance(newData, DataSet):
-            pod0=self.dataPods[0]
+            if self.dataPods==[]:
+                pod0 = newData.dataPods[0]
+            else:
+                pod0=self.dataPods[0]
             for pod in newData:
                 if pod.shape != pod0.shape:
                     print("Pods with different shapes")
