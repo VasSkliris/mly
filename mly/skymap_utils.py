@@ -786,7 +786,7 @@ def skymap_plot_function(strain,data=None):
     cmap='viridis'
     xlabel='Right Ascension'
     ylabel='Declination'
-    title='GW Prob_Sky Map'
+    title='Skymap Probability'
 
     # Create a new figure and subplot with a Mollweide projection
     fig = plt.figure(figsize=(10, 5))
@@ -801,6 +801,10 @@ def skymap_plot_function(strain,data=None):
     # Adjust the position of the xlabel
     ax.text(0, 0, xlabel, ha='center', va='center', transform=ax.transAxes)  
     ax.set_ylabel(ylabel)
+
+    # Add color bar
+    cbar = plt.colorbar(img, ax=ax, orientation='horizontal', fraction=0.05, pad=0.1)
+    cbar.set_label('Probability')
 
     # Set the title
     ax.set_title(title)
@@ -833,7 +837,7 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
     cmap='viridis'
     xlabel='Right Ascension'
     ylabel='Declination'
-    title='GW Prob_Sky Map'
+    title='Skymap Probability'
 
     # Create a new figure and subplot with a Mollweide projection
     fig = plt.figure(figsize=(10, 5))
@@ -851,9 +855,12 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
 
     # Set the title
     ax.set_title(title)
-    
-    # Plot injection location if injection is present
 
+    # Add color bar
+    cbar = plt.colorbar(img, ax=ax, orientation='horizontal', fraction=0.05, pad=0.1)
+    cbar.set_label('Probability')
+
+    # Plot injection location if injection is present
     ax.plot(np.degrees(RA), np.degrees(declination),
         transform=ax.get_transform('world'),
         marker=ligo.skymap.plot.reticle(),
