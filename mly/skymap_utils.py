@@ -757,8 +757,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
 
     prob_map_total = np.array(prob_map)
     Lsky_array = np.array(Lsky)
-    
-    return(prob_map_total, Lsky_array, antenna_response_rms)
+    return [ prob_map_total, Lsky_array, antenna_response_rms ]
 
 def skymap_plot_function(strain,data=None):
         
