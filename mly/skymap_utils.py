@@ -9,7 +9,7 @@ import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import time 
 import ligo.skymap.plot
-from ligo.skymap import io, plot
+from ligo.skymap import io, plot,postprocess
 from ligo.skymap.plot.marker import earth
 
 import time 
@@ -727,37 +727,14 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
 
 
     prob_map = (prob_map)/np.sum(prob_map)
-    #print('prob_map', prob_map)
-
-#     pixel_index = np.argsort(prob_map)[::-1]
-#     # print('pixel_index', pixel_index)
-
-#     sorted_pixels = prob_map[pixel_index]
-#     # print('sorted_pixels', sorted_pixels)
-
-#     unsorted_pixels = np.argsort(pixel_index)
-#     # print('unsorted_pixels', unsorted_pixels)
-
-#     # print('z', z)
-#     c_est = np.cumsum(sorted_pixels)
-#     # print('c_est', c_est)
-
-#     # print(len(c_est))
-#     # c_true = c_est - 0.05*np.sin(np.pi*c_est)
-#     c_true = c_est**1  # --------> ???
-#     #print('c_true', c_true)
-
-#     p_true = np.diff(c_true, prepend=0)
-#     # print('p_true', p_true)    
-
-#     corrected_map = p_true[unsorted_pixels]
-#     # print('corrected_map', corrected_map)
-#     #prob_map_total.append(corrected_map)
-#     print('skymap generation time: ',time.time() - start)
 
     prob_map_total = np.array(prob_map)
     Lsky_array = np.array(Lsky)
-    return [ prob_map_total, Lsky_array, antenna_response_rms ]
+
+    containment_region_50 = containment_region(prob_map,threshold=0.5)
+    containment_region_90 = containment_region(prob_map,threshold=0.9)
+
+    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90]
 
 def skymap_plot_function(strain,data=None):
         
@@ -779,15 +756,13 @@ def skymap_plot_function(strain,data=None):
     """
 
     probmap = data[0]
+    containment_region_50 = data[3]
+    containment_region_90 = data[4]
     # Plot settings
     projection='astro hours mollweide'
     nested=True
-    cmap='viridis'
-    xlabel='Right Ascension'
-    ylabel='Declination'
-    title='Skymap Probability'
+    cmap='cylon'
 
-    # Create a new figure and subplot with a Mollweide projection
     fig = plt.figure(figsize=(10, 5))
     ax = fig.add_subplot(111, projection=projection)
 
@@ -795,19 +770,14 @@ def skymap_plot_function(strain,data=None):
     img = ax.imshow_hpx(probmap, nested=nested, cmap=cmap)
 
     # Add grid lines
-    ax.grid(True, which='major', color='white', linestyle='-', linewidth=0.5)
+    ax.grid(True, which='major', color='k', linestyle='-', linewidth=0)
 
-    # Adjust the position of the xlabel
-    ax.text(0, 0, xlabel, ha='center', va='center', transform=ax.transAxes)  
-    ax.set_ylabel(ylabel)
+    ax.text(0.8, 1, f"50% area: {containment_region_50:.3f} deg²", weight='bold', transform=ax.transAxes)  
+    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.3f} deg²", weight='bold', transform=ax.transAxes) 
 
-    # Add color bar
-    cbar = plt.colorbar(img, ax=ax, orientation='horizontal', fraction=0.05, pad=0.1)
-    cbar.set_label('Probability')
-
-    # Set the title
-    ax.set_title(title)
-    
+    c = 100 * postprocess.find_greedy_credible_levels(probmap)
+    cs = ax.contour_hpx(c, nested=True, colors='k', linewidths=0.5, levels=[50,90])
+    plt.clabel(cs, fmt='%g%%', fontsize=6, inline=True)
 
 
 def skymap_plot_function_with_inj(strain,RA,declination,data=None):
@@ -830,13 +800,14 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
     """
 
     probmap = data[0]
+    containment_region_50 = data[3]
+    containment_region_90 = data[4]
     # Plot settings
     projection='astro hours mollweide'
     nested=True
     cmap='viridis'
     xlabel='Right Ascension'
     ylabel='Declination'
-    title='Skymap Probability'
 
     # Create a new figure and subplot with a Mollweide projection
     fig = plt.figure(figsize=(10, 5))
@@ -846,18 +817,19 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
     img = ax.imshow_hpx(probmap, nested=nested, cmap=cmap)
 
     # Add grid lines
-    ax.grid(True, which='major', color='white', linestyle='-', linewidth=0.5)
+    ax.grid(True, which='major', color='white', linestyle='-', linewidth=0.2)
 
-    # Adjust the position of the xlabel
     ax.text(0, 0, xlabel, ha='center', va='center', transform=ax.transAxes)  
     ax.set_ylabel(ylabel)
-
-    # Set the title
-    ax.set_title(title)
-
+    ax.text(0.8, 1, f"50% area: {containment_region_50:.3f} deg²", weight='bold', transform=ax.transAxes)  
+    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.3f} deg²", weight='bold', transform=ax.transAxes) 
     # Add color bar
     cbar = plt.colorbar(img, ax=ax, orientation='horizontal', fraction=0.05, pad=0.1)
     cbar.set_label('Probability')
+
+    c = 100 * postprocess.find_greedy_credible_levels(probmap)
+    cs = ax.contour_hpx(c, nested=True, colors='k', linewidths=0.5, levels=[50,90])
+    plt.clabel(cs, fmt='%g%%', fontsize=6, inline=True)
 
     # Plot injection location if injection is present
     ax.plot(np.degrees(RA), np.degrees(declination),
@@ -865,43 +837,6 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
         marker=ligo.skymap.plot.reticle(),
         markersize=30,
         markeredgewidth=3)
-
-
-
-
-def mly_skymap_plot(skymap,nest=True,title=None,RA=None,declination=None):
-        
-    """
-    Function to plot an MLy sky map.
-
-    Parameters
-    ----------
-    skymap: A HEALPix probability map to be plotted.
-    nest: Boolean indicating if the HEALPix data is in 'nested' format. Default true.
-    title: String. The title for the plot. Default None (no title).
-    RA: Float. Right ascension [rad] to mark. Default None (no marker).
-    Declination: Float. Declination [rad] to mark.  Default None (no marker).   
-    """
-
-    hp.projview(
-        skymap,
-        coord=['C'],
-        graticule=True,
-        graticule_labels=True,
-        title = title,
-        nest = nest,
-        flip = 'astro',
-        #unit="cbar label",
-        cb_orientation="horizontal",
-        projection_type="mollweide")
-
-    # ---- Add marker at specified location, if any.
-    if (RA is not None) and (declination is not None):
-        if RA >= np.pi:
-            RA = RA- 2*np.pi
-        newprojplot(theta=(np.pi/2)-declination, phi=RA, marker="o", color="r", markersize=10);
-
-
 
     
 def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_parameter = None, injection = False):
@@ -943,49 +878,31 @@ def compute_prob_map_from_lsky(lsky_array, antenna_rms_array, alpha, beta, sigma
     return np.array(prob_maps), np.array(max_prob)
 
 
+def search_area(prob_map,inj_pixel_index):
+    pixel_area = (4 * np.pi * (180/np.pi)**2) / len(prob_map)
 
-def compute_containment_and_search_area(prob_array, inj_pixel_array=None, thresholds=[0.9, 0.5]):
-    """
-    prob_array: numpy array of probability maps computed from Lsky_array.
-    inj_pixel_array: (optional) numpy array of injection pixel for synthetic injections
-    thresholds: dictionary of two scaler threshold values defining containment regions.
-    
-    RETURN:
-    Outputs of the function are numpy arrays.
-    """
-    
-    pixel_area = (4 * np.pi * (180/np.pi)**2) / len(prob_array[0])  
-    containment_results = {thresh: [] for thresh in thresholds}
-    search_area = []
-    containment_area = {thresh: [] for thresh in thresholds}
-    search_prob = []
-    
-    for index, prob_map in enumerate(prob_array):
-        sorted_indices = np.argsort(prob_map)[::-1]
-        cum_sum = np.cumsum(prob_map[sorted_indices]) / np.sum(prob_map)  # Normalize cum_sum
-        
-        if inj_pixel_array is not None:
-            inj_pixel_value = inj_pixel_array[index]
-            search_area.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], 1,0)) * pixel_area)
-            search_prob.append(np.sum(np.where(prob_map >= prob_map[inj_pixel_value], prob_map,0)))
-        else:
-            search_area.append(None)
-            search_prob.append(None)
-        
-        for thresh in thresholds:
-            index_containment = np.argmax(cum_sum >= thresh)
-            containment_region = sorted_indices[:index_containment + 1]
-            containment_region_area = len(containment_region) * pixel_area
-            
-            if inj_pixel_array is not None:
-                is_in_containment = prob_map[inj_pixel_value] >= prob_map[containment_region[-1]]
-                containment_results[thresh].append(is_in_containment)
-            else:
-                containment_results[thresh].append(None)
+    s_area = np.sum(np.where(prob_map >= prob_map[inj_pixel_index], 1,0)) * pixel_area
 
-            containment_area[thresh].append(containment_region_area)
-    
-    return containment_results, search_area, containment_area, np.array(search_prob)
+    return s_area
+
+def search_probability(prob_map,inj_pixel_index):
+
+    s_prob = (np.sum(np.where(prob_map >= prob_map[inj_pixel_index], prob_map,0)))
+
+    return s_prob
+
+
+def containment_region(prob_map, threshold = 0.5):
+    pixel_area = (4 * np.pi * (180/np.pi)**2) / len(prob_map)
+
+    sorted_indices = np.argsort(prob_map)[::-1]
+    cum_sum = np.cumsum(prob_map[sorted_indices]) / np.sum(prob_map) 
+
+    index_containment = np.argmax(cum_sum >= threshold)
+    containment_region = sorted_indices[:index_containment + 1]
+    containment_region_area = len(containment_region) * pixel_area
+
+    return containment_region_area
 
 
 
