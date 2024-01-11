@@ -15,6 +15,8 @@ license = {file = "LICENCE"}
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
+
+
 dependencies = [
     "numpy",
     "pandas",
@@ -30,9 +32,12 @@ dependencies = [
     "ligo.skymap"
 ]
 
-# dynamic properties set by tools
 dynamic = [
   "version",
+]
+
+include = [
+  "mly",
 ]
 
 [tool.setuptools_scm]
