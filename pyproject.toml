@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mly"
-version = "0.7.1.2"
 authors = [
     {name = "Vasileios SKliris", email = "sklirisv@cardiff.ac.uk"},
 ]
@@ -31,10 +30,10 @@ dependencies = [
     "ligo.skymap"
 ]
 
-[project.scripts]
-mly-pipeline-init = "mly_pipeline.initialization:main"
-mly-pipeline-start = "mly_pipeline.initialization:_start_search"
-mly-pipeline-stop = "mly_pipeline.initialization:_end_search"
-mly-pipeline-statuspage = "mly_pipeline.initialization:_status_page"
-mly-pipeline-status = "mly_pipeline.initialization:_search_status"
+# dynamic properties set by tools
+dynamic = [
+  "version",
+]
 
+[tool.setuptools_scm]
+write_to = "mly/_version.py"
