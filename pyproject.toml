@@ -36,6 +36,10 @@ dynamic = [
   "version",
 ]
 
+[tool.setuptools.packages.find]
+# note: this is only required in CI, which otherwise fails because
+#       GHA is creating a temporary directory that setuptools
+#       discovers as another top-level package
 include = [
   "mly",
 ]
