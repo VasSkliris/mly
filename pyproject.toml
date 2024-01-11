@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>61", "setuptools-scm>=3.4.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mly"
+version = "0.7.1.2"
+authors = [
+    {name = "Vasileios SKliris", email = "sklirisv@cardiff.ac.uk"},
+]
+description = "Toolkit package to run GW search using ML."
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["ml", "gravitational waves", "bursts"]
+license = {file = "LICENCE"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "gwpy >= 0.13.1",
+    "gwdatafind",
+    "matplotlib",
+    "pycondor",
+    "dqsegdb2",
+    "scipy",
+    "tensorflow >= 2.6",
+    "pycbc",
+    "healpy",
+    "ligo.skymap"
+]
+
+[project.scripts]
+mly-pipeline-init = "mly_pipeline.initialization:main"
+mly-pipeline-start = "mly_pipeline.initialization:_start_search"
+mly-pipeline-stop = "mly_pipeline.initialization:_end_search"
+mly-pipeline-statuspage = "mly_pipeline.initialization:_status_page"
+mly-pipeline-status = "mly_pipeline.initialization:_search_status"
+

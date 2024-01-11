@@ -253,6 +253,7 @@ def EnergySkyMapsGRF(
     
     if window_parameter is not None:
         print('activate window', window_parameter)
+
         start_time, end_time, ramp_duration = window_parameter
         
         # data_shape = tf.shape(strain)

@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-
-import pylab
 import pycbc.pnutils as ut
 from pycbc.waveform import get_td_waveform
 from pycbc.waveform import get_fd_waveform
