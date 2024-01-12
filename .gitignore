@@ -8,3 +8,4 @@ build/
 mly.egg-info/
 mly/oldVersionsPackages
 pages
+*/_version.py

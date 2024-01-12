@@ -45,7 +45,7 @@ include = [
 ]
 
 [tool.coverage.run]
-source = [ "gwpy" ]
+source = [ "mly" ]
 omit = [
   # don't report coverage for _version.py
   # (generated automatically by setuptools-scm)
