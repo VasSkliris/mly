@@ -147,47 +147,172 @@ def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
 
     return antenna_response_rms
 
-def mask_window_tf(data_length, fs, start_time, end_time, ramp_duration):
+def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, duration_limit = 1/32):
     """
     Creates a windowed mask for a given time series.
     
     Parameters:
-    - data_length: Length of the data series.
+    - T: Duration of the final data series.
     - fs: Sampling frequency.
     - start_time: Starting time of the window.
     - end_time: Ending time of the window.
     - ramp_duration: Duration of the ramp (smooth transition) in the window.
-    
+    - ramp_centre: Where will the center of the ramp be in respect of start and end time [0,1]
+                    0 corresponds for the center to be -0.5*ramp_duration away from the signal 
+                    1 corresponds for the center to be +0.5*ramp_duration in the signal (dumping the edge)
     Returns:
     - A windowed mask with values between 0 and 1.
     """
-    tnp = tf.experimental.numpy
-    pi = tnp.pi 
-    PI_HALF = pi / 2
-
-    # Convert times to indices and ensure they are float32
-    window_start_idx = tf.cast((start_time - ramp_duration) * fs, tf.float32)
-    window_end_idx = tf.cast((end_time + ramp_duration) * fs, tf.float32)
-    start_idx = tf.cast(start_time * fs, tf.float32)
-    end_idx = tf.cast(end_time * fs, tf.float32)
+    start_time = tf.cast(start_time, tf.float32)
+    end_time = tf.cast(end_time, tf.float32)
+    ramp_duration = tf.cast(ramp_duration, tf.float32)
+    ramp_centre = tf.cast(ramp_centre, tf.float32)
+    duration_limit = tf.cast(duration_limit, tf.float32)
+    PI = tf.cast( np.pi, tf.float32)
     
-    indices = tf.range(data_length, dtype=tf.float32)
+    # Duration limit is used as limiter on the duration of signals
+    # also it is used for the edges so that they are smooth and they
+    # do not fold on the other side.
+    if end_time - start_time < duration_limit:
+
+        diff = duration_limit - (end_time - start_time)
+        
+        start_time = start_time -diff/2
+        end_time = end_time + diff/2
+
+        print(f"Duration smaller than duration limit, and it was adjusted by {diff} s")
+
+    if start_time < ramp_duration:
+        # The first 32 ms will be folded to the end so we move the start time 
+        # enough to avoid that.
+        start_time = ramp_duration + duration_limit 
+        print("Start time close too close to the biggining")
+
+        # Adjusting duration in case the above adjustment 
+        # made duration negative or too small
+        if end_time-start_time < duration_limit: # Max difference between detectors
+            end_time = start_time + duration_limit
+            print("End time too close to start time, changed to start_time + 0.032")
+
+    if T-end_time < ramp_duration:
+        # The last 32 ms will be folded to the end so we move the start time 
+        # enough to avoid that.
+        end_time = T - ramp_duration - duration_limit
+        print("End time close too close to the biggining")
+        # Adjusting duration in case the above adjustment 
+        # made duration negative or too small
+        if end_time-start_time < duration_limit: # Max difference between detectors
+            start_time = end_time - duration_limit
+            print("Start time too close to end time, changed to end_time - 0.032")
+
+
+    signal_duration = end_time - start_time
     
-    # Create the rolling mask for the main windowed region
-    main_mask = tf.where((indices >= start_idx) & (indices < end_idx), 1., indices * 0.)
+    # Check that ramp_duration is a power of two:
+    if not (ramp_duration != 0 
+        and ramp_duration<T/2 
+        and (math.log(ramp_duration,2) - int(math.log(ramp_duration,2)) == 0.0)):
+
+        raise ValueError("Ramp duration must be a power of two"
+                         ", and one fourth of the duration")
+
+    # Adjusting the ramp_duration when signals are too small
+    # Note: Possibly adjust this with the duration of the signal
+    #       to include cases where signal is small and at the edge.
+    while signal_duration <= 2 * ramp_duration * ramp_centre:
+
+        ramp_duration = ramp_duration/2
+
+        print(f"Ramp duration changed to 1/{int(fs/(ramp_duration*fs))}")
+
+        if ramp_duration == 1/128:
+            print("Ramp duration reached minimum value of 1/128")
+            break
+
+    # Creating the central platoe
+    centre_lentgh = int(( signal_duration - 2 * ramp_duration * ramp_centre ) * fs )
+    centre = np.ones( centre_lentgh)
+
+    # Creating the ramps
+    t = np.arange( 0 , ramp_duration, 1/fs )
+    left_ramp  = np.sin( PI * t * (1/ramp_duration) - PI/2 )/2 + 0.5
+    right_ramp = np.sin( PI * t * (1/ramp_duration) + PI/2 )/2 + 0.5
+
+    # Creating the pads
+    left_pad =  np.zeros( math.ceil((start_time - (1 - ramp_centre) * ramp_duration) * fs ))
+    right_pad = np.zeros( math.ceil((T - end_time - (1 - ramp_centre) * ramp_duration) * fs ))
+
+    #print(len(left_pad),len(left_ramp),len(centre),len(right_ramp),len(right_pad))
+    #print(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad))
+
+    # Adjusting the length when sometimes a pixel or two missing due to the use of int and ceil.
+    if len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) < T*fs:
+        diff = T*fs -  len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad)
+
+        centre = np.concatenate((centre, np.ones(diff)))
     
-    # Create the ramp-up transition
-    ramp_up = 0.5 * (1 + tf.math.sin(-PI_HALF + (indices - window_start_idx) / (start_idx - window_start_idx) * pi))
-    mask_on = tf.where((indices >= window_start_idx) & (indices < start_idx), ramp_up, 0.)
+    elif len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) > T*fs:
 
-    # Create the ramp-down transition
-    ramp_down = 0.5 * (1 + tf.math.sin(PI_HALF + (indices - end_idx) / (window_end_idx - end_idx) * pi))
-    mask_off = tf.where((indices >= end_idx) & (indices < window_end_idx), ramp_down, 0.)
+        diff = len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs 
 
-    # Combine the masks
-    windowed_data = main_mask + mask_on + mask_off
+        centre = centre[:-diff]
+    
+    else:
+        diff = 0
 
-    return windowed_data
+    # Putting the mask together.
+    mask = np.hstack(( left_pad, left_ramp , centre, right_ramp, right_pad ))
+
+    #print(diff)
+
+    return(mask)
+
+
+
+
+
+
+# def mask_window_tf_old(data_length, fs, start_time, end_time, ramp_duration):
+#     """
+#     Creates a windowed mask for a given time series.
+    
+#     Parameters:
+#     - data_length: Length of the data series.
+#     - fs: Sampling frequency.
+#     - start_time: Starting time of the window.
+#     - end_time: Ending time of the window.
+#     - ramp_duration: Duration of the ramp (smooth transition) in the window.
+    
+#     Returns:
+#     - A windowed mask with values between 0 and 1.
+#     """
+#     tnp = tf.experimental.numpy
+#     pi = tnp.pi 
+#     PI_HALF = pi / 2
+
+#     # Convert times to indices and ensure they are float32
+#     window_start_idx = tf.cast((start_time - ramp_duration) * fs, tf.float32)
+#     window_end_idx = tf.cast((end_time + ramp_duration) * fs, tf.float32)
+#     start_idx = tf.cast(start_time * fs, tf.float32)
+#     end_idx = tf.cast(end_time * fs, tf.float32)
+    
+#     indices = tf.range(data_length, dtype=tf.float32)
+    
+#     # Create the rolling mask for the main windowed region
+#     main_mask = tf.where((indices >= start_idx) & (indices < end_idx), 1., indices * 0.)
+    
+#     # Create the ramp-up transition
+#     ramp_up = 0.5 * (1 + tf.math.sin(-PI_HALF + (indices - window_start_idx) / (start_idx - window_start_idx) * pi))
+#     mask_on = tf.where((indices >= window_start_idx) & (indices < start_idx), ramp_up, 0.)
+
+#     # Create the ramp-down transition
+#     ramp_down = 0.5 * (1 + tf.math.sin(PI_HALF + (indices - end_idx) / (window_end_idx - end_idx) * pi))
+#     mask_off = tf.where((indices >= end_idx) & (indices < window_end_idx), ramp_down, 0.)
+
+#     # Combine the masks
+#     windowed_data = main_mask + mask_on + mask_off
+
+#     return windowed_data
 
 
 mask_window_tf = tf.function(mask_window_tf)
@@ -204,7 +329,7 @@ def EnergySkyMapsGRF(
     num_pixels,
     num_detectors,
     fs,
-    window_parameter = None
+    window_parameter = None,
 ):
     """
     THIS FUNCTION IS A TENSORFLOW GRAPH AND CONVERTS APPLE TO ORANGE 
@@ -254,14 +379,14 @@ def EnergySkyMapsGRF(
     if window_parameter is not None:
         print('activate window', window_parameter)
 
-        start_time, end_time, ramp_duration = window_parameter
+        start_time, end_time, ramp_duration, ramp_centre, duration_limit = window_parameter
         
         # data_shape = tf.shape(strain)
         # num_det = data_shape[1]
         # data_len = data_shape[2]
         
         # Apply mask_window_tf function on strain data
-        windowed_data = mask_window_tf(fs, fs, start_time, end_time, ramp_duration)
+        windowed_data = mask_window_tf(duration, fs, start_time, end_time, ramp_duration, ramp_centre, duration_limit = duration_limit)
         # print('windowed_data', windowed_data.shape)
         # print ('strain shape', strain.shape)
         # print('start_time_util', start_time)
