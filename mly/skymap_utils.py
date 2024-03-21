@@ -253,12 +253,12 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
     # print(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad))
 
     # Adjusting the length when sometimes a pixel or two missing due to the use of int and ceil.
-    if len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) < T*fs:
+    if tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.int32) < T*fs:
         diff = tf.cast( T*fs -  len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) , tf.int32 ) 
 
         centre = tf.concat([centre, tf.ones(diff)],0)
     
-    elif len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) > T*fs:
+    elif tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.int32) > T*fs:
 
         diff = tf.cast( len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs , tf.int32 )
 
