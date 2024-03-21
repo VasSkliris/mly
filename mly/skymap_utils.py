@@ -147,6 +147,7 @@ def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
 
     return antenna_response_rms
 
+
 def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, duration_limit = 1/32):
     """
     Creates a windowed mask for a given time series.
@@ -168,7 +169,10 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
     ramp_duration = tf.cast(ramp_duration, tf.float32)
     ramp_centre = tf.cast(ramp_centre, tf.float32)
     duration_limit = tf.cast(duration_limit, tf.float32)
-    PI = tf.cast( np.pi, tf.float32)
+    fs = tf.cast(fs, tf.float32)
+    tnp = tf.experimental.numpy
+    PI = tnp.pi 
+    PI = tf.cast( PI, tf.float32)
     
     # Duration limit is used as limiter on the duration of signals
     # also it is used for the edges so that they are smooth and they
@@ -211,7 +215,7 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
     # Check that ramp_duration is a power of two:
     if not (ramp_duration != 0 
         and ramp_duration<T/2 
-        and (math.log(ramp_duration,2) - int(math.log(ramp_duration,2)) == 0.0)):
+        and tf.subtract(tf.experimental.numpy.log2(ramp_duration) , tf.math.round(tf.experimental.numpy.log2(ramp_duration))).numpy() == 0.0):
 
         raise ValueError("Ramp duration must be a power of two"
                          ", and one fourth of the duration")
@@ -231,29 +235,32 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
 
     # Creating the central platoe
     centre_lentgh = int(( signal_duration - 2 * ramp_duration * ramp_centre ) * fs )
-    centre = np.ones( centre_lentgh)
+    centre = tf.ones( centre_lentgh)
 
     # Creating the ramps
-    t = np.arange( 0 , ramp_duration, 1/fs )
-    left_ramp  = np.sin( PI * t * (1/ramp_duration) - PI/2 )/2 + 0.5
-    right_ramp = np.sin( PI * t * (1/ramp_duration) + PI/2 )/2 + 0.5
+    t = tf.range( 0 , ramp_duration, 1/fs )
+    left_ramp  = tf.math.sin( PI * t * (1/ramp_duration) - PI/2 )/2 + 0.5
+    right_ramp = tf.math.sin( PI * t * (1/ramp_duration) + PI/2 )/2 + 0.5
 
     # Creating the pads
-    left_pad =  np.zeros( math.ceil((start_time - (1 - ramp_centre) * ramp_duration) * fs ))
-    right_pad = np.zeros( math.ceil((T - end_time - (1 - ramp_centre) * ramp_duration) * fs ))
+    #print(start_time, ramp_centre,ramp_duration,fs)
+    
 
-    #print(len(left_pad),len(left_ramp),len(centre),len(right_ramp),len(right_pad))
-    #print(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad))
+    left_pad =  tf.zeros( tf.cast(tf.math.ceil((start_time - (1 - ramp_centre) * ramp_duration) * fs),tf.int32) )
+    right_pad = tf.zeros( tf.cast(tf.math.ceil((T - end_time - (1 - ramp_centre) * ramp_duration) * fs ),tf.int32))
+
+    # print(len(left_pad),len(left_ramp),len(centre),len(right_ramp),len(right_pad))
+    # print(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad))
 
     # Adjusting the length when sometimes a pixel or two missing due to the use of int and ceil.
     if len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) < T*fs:
-        diff = T*fs -  len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad)
+        diff = tf.cast( T*fs -  len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) , tf.int32 ) 
 
-        centre = np.concatenate((centre, np.ones(diff)))
+        centre = tf.concat([centre, tf.ones(diff)],0)
     
     elif len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) > T*fs:
 
-        diff = len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs 
+        diff = tf.cast( len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs , tf.int32 )
 
         centre = centre[:-diff]
     
@@ -261,9 +268,7 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
         diff = 0
 
     # Putting the mask together.
-    mask = np.hstack(( left_pad, left_ramp , centre, right_ramp, right_pad ))
-
-    #print(diff)
+    mask = tf.concat([ left_pad, left_ramp , centre, right_ramp, right_pad ],0)
 
     return(mask)
 
@@ -965,7 +970,7 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
         markeredgewidth=3)
 
     
-def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_parameter = None, injection = False):
+def skymap_plugin(alpha = None, beta=None, sigma = None, nside =None, window_parameter = None, injection = False):
 
     if injection:
 
