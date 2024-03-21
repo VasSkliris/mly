@@ -257,13 +257,13 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
     thesum = tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.float32)
 
     if thesum < T*fs:
-        diff = tf.cast( T*fs -  len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) , tf.int32 ) 
+        diff = tf.cast( T*fs - thesum , tf.int32 ) 
 
         centre = tf.concat([centre, tf.ones(diff)],0)
     
     elif thesum > T*fs:
 
-        diff = tf.cast( len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs , tf.int32 )
+        diff = tf.cast( thesum - T*fs , tf.int32 )
 
         centre = centre[:-diff]
     
