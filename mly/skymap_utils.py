@@ -258,7 +258,7 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
 
         centre = tf.concat([centre, tf.ones(diff)],0)
     
-    elif tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.float32) > tf.cast(T*fs*1.0,tf.float32)::
+    elif tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.float32) > tf.cast(T*fs*1.0,tf.float32):
 
         diff = tf.cast( len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad) - T*fs , tf.int32 )
 
