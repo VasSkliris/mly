@@ -213,12 +213,12 @@ def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, durat
     signal_duration = end_time - start_time
     
     # Check that ramp_duration is a power of two:
-    if not (ramp_duration != 0 
-        and ramp_duration<T/2 
-        and tf.subtract(tf.experimental.numpy.log2(ramp_duration) , tf.math.round(tf.experimental.numpy.log2(ramp_duration))).numpy() == 0.0):
+    # if not (ramp_duration != 0 
+    #     and ramp_duration<T/2 
+    #     and tf.subtract(tf.experimental.numpy.log2(ramp_duration) , tf.math.round(tf.experimental.numpy.log2(ramp_duration))).numpy() == 0.0):
 
-        raise ValueError("Ramp duration must be a power of two"
-                         ", and one fourth of the duration")
+    #     raise ValueError("Ramp duration must be a power of two"
+    #                      ", and one fourth of the duration")
 
     # Adjusting the ramp_duration when signals are too small
     # Note: Possibly adjust this with the duration of the signal
