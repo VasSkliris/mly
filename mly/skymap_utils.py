@@ -391,7 +391,7 @@ def EnergySkyMapsGRF(
         # data_len = data_shape[2]
         
         # Apply mask_window_tf function on strain data
-        windowed_data = mask_window_tf(duration, fs, start_time, end_time, ramp_duration, ramp_centre, duration_limit = duration_limit)
+        windowed_data = mask_window_tf(1.0, fs, start_time, end_time, ramp_duration, ramp_centre, duration_limit = duration_limit)
         # print('windowed_data', windowed_data.shape)
         # print ('strain shape', strain.shape)
         # print('start_time_util', start_time)
