@@ -572,6 +572,8 @@ def EnergySkyMaps(
 
 
 def bandpass(data, fs, f_min, f_max, filter_order=10):
+    
+    from gwpy.timeseries import TimeSeries
 
     bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(fmin, fmax) for i in range(len(data)) )
 
