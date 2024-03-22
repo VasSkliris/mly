@@ -840,10 +840,10 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     notched_strain = remove_line(uwstrain, fs, f_min=window_parameter[-2], f_max=window_parameter[-1], Q=30.0, factor=10)
     from gwpy.timeseries import TimeSeries
 
-    notched_strain_before = [TimeSeries(notched_strain[0],sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
+    notched_strain_before = np.asarray([TimeSeries(notched_strain[0],sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
                                  , highpass=20).value
                             ,TimeSeries(notched_strain[1],sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
-                                 , highpass=20).value]
+                                 , highpass=20).value])
     w = int(notched_strain.shape[1]/fs)
 
     notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
