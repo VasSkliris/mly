@@ -868,7 +868,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     containment_region_50 = containment_region(prob_map,threshold=0.5)
     containment_region_90 = containment_region(prob_map,threshold=0.9)
 
-    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90]
+    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90,notched_strain]
 
 def skymap_plot_function(strain,data=None):
         
