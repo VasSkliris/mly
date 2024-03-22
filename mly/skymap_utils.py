@@ -847,7 +847,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     w = int(notched_strain.shape[1]/fs)
 
     notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    notched_strain_before[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    notched_strain_before = notched_strain_before[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
     start = time.time()
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
