@@ -573,26 +573,26 @@ def EnergySkyMaps(
 
 def bandpass(data, fs, f_min, f_max, filter_order=10):
     
-    from gwpy.timeseries import TimeSeries
-    print('f',f_min,f_max,len(data))
-    bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(flow = f_min, fhigh = f_max) for i in range(len(data)) )
+    # from gwpy.timeseries import TimeSeries
+    # print('f',f_min,f_max,len(data))
+    # bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(flow = f_min, fhigh = f_max) for i in range(len(data)) )
 
-    # # ---- Construct bandpass filter.
-    # b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
+    # ---- Construct bandpass filter.
+    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
 
-    # # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
-    # #      each end to avoid filter transients. 
-    # samples_to_crop = 1 * fs  # 1 second at each end
-    # bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
-    # for index in range(data.shape[0]):    
-    #     # ---- Apply the filter.
-    #     filtered_data = lfilter(b, a, data[index])
-    #     # ---- Crop the ends and store.
-    #     bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
-    #     # # Crop the ends
-    #     # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
-    #     # # Store the cropped data
-    #     # bandpassed_data[index] = cropped_data
+    # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
+    #      each end to avoid filter transients. 
+    samples_to_crop = 1 * fs  # 1 second at each end
+    bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
+    for index in range(data.shape[0]):    
+        # ---- Apply the filter.
+        filtered_data = lfilter(b, a, data[index])
+        # ---- Crop the ends and store.
+        bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
+        # # Crop the ends
+        # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
+        # # Store the cropped data
+        # bandpassed_data[index] = cropped_data
         
     return np.asarray(bandpassed_data)
 
