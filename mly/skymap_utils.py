@@ -20,6 +20,7 @@ from .plugins import *
 from .datatools import *
 from scipy.signal import welch
 from scipy.signal import iirnotch, lfilter, butter
+from gwpy.timeseries import TimeSeries
 
 # GPS > GPS, GMST > GMST, ra = RA, dec = declination
 
@@ -573,26 +574,26 @@ def EnergySkyMaps(
 
 def bandpass(data, fs, f_min, f_max, filter_order=10):
     
-    # from gwpy.timeseries import TimeSeries
-    # print('f',f_min,f_max,len(data))
-    # bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(flow = f_min, fhigh = f_max) for i in range(len(data)) )
 
-    # ---- Construct bandpass filter.
-    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
+    bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(
+                            flow = f_min, fhigh = f_max) for i in range(len(data)) )
 
-    # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
-    #      each end to avoid filter transients. 
-    samples_to_crop = 1 * fs  # 1 second at each end
-    bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
-    for index in range(data.shape[0]):    
-        # ---- Apply the filter.
-        filtered_data = lfilter(b, a, data[index])
-        # ---- Crop the ends and store.
-        bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
-        # # Crop the ends
-        # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
-        # # Store the cropped data
-        # bandpassed_data[index] = cropped_data
+    # # ---- Construct bandpass filter.
+    # b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
+
+    # # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
+    # #      each end to avoid filter transients. 
+    # samples_to_crop = 1 * fs  # 1 second at each end
+    # bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
+    # for index in range(data.shape[0]):    
+    #     # ---- Apply the filter.
+    #     filtered_data = lfilter(b, a, data[index])
+    #     # ---- Crop the ends and store.
+    #     bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
+    #     # # Crop the ends
+    #     # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
+    #     # # Store the cropped data
+    #     # bandpassed_data[index] = cropped_data
         
     return np.asarray(bandpassed_data)
 
@@ -700,70 +701,72 @@ def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
     
     # print('shape of raw data:',data.shape)
 
-    data = bandpass(data, fs, f_min, f_max)
+    notched_data = bandpass(data, fs, f_min, f_max)
+    # data = bandpass(data, fs, f_min, f_max)
+
     
     # print('shape of bandpassed data:',data.shape)
 
-    # FFT length chosen 4 times the sample frequency (FFT resolution 0.25 Hz)
-    Nfft = 4 * fs  
-    notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
-    # originalPSD = []
-    notch_centre_bin = []
+    # # FFT length chosen 4 times the sample frequency (FFT resolution 0.25 Hz)
+    # Nfft = 4 * fs  
+    # notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
+    # # originalPSD = []
+    # notch_centre_bin = []
 
-    # Loop through the rows in the data (each row is a separate time series)
-    for i in range(data.shape[0]):
+    # # Loop through the rows in the data (each row is a separate time series)
+    # for i in range(data.shape[0]):
 
-        # Calculate the PSD of the data.
-        frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
-        # originalPSD.append(psd)
+    #     # Calculate the PSD of the data.
+    #     frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
+    #     # originalPSD.append(psd)
 
-        # Calculate the smoothed PSD.
-        smoothBins = int(9 / (fs/Nfft))
-        median_psd = np.zeros_like(psd)
-        for bins in range(len(psd)):
-            start = max(0, bins - smoothBins)
-            end = min(len(psd), bins + smoothBins)
-            median_psd[bins] = np.median(psd[start:end])
+    #     # Calculate the smoothed PSD.
+    #     smoothBins = int(9 / (fs/Nfft))
+    #     median_psd = np.zeros_like(psd)
+    #     for bins in range(len(psd)):
+    #         start = max(0, bins - smoothBins)
+    #         end = min(len(psd), bins + smoothBins)
+    #         median_psd[bins] = np.median(psd[start:end])
     
-        # Identify lines
-        line_centre_bin = []
-        line_width_bins = []
-        line_height = []
-        prev_bin = False
-        for j in range(len(psd)):
-            if (psd[j] > factor*median_psd[j]) and (frequencies[j] >= f_min) and (frequencies[j] <= f_max):
-                if prev_bin == False:
-                    width_bins = 1
-                    max_height = psd[j] / median_psd[j]
-                    centre_bin = j
-                else:
-                    width_bins = width_bins+1
-                    if psd[j] / median_psd[j] > max_height:
-                        max_height = psd[j] / median_psd[j]
-                        centre_bin = j
-                prev_bin = True
-            else:
-                if prev_bin==True:
-                    line_centre_bin.append(centre_bin)
-                    line_width_bins.append(width_bins)
-                    line_height.append(max_height)
-                    prev_bin = False
-        notch_centre_bin.append(line_centre_bin)
+    #     # Identify lines
+    #     line_centre_bin = []
+    #     line_width_bins = []
+    #     line_height = []
+    #     prev_bin = False
+    #     for j in range(len(psd)):
+    #         if (psd[j] > factor*median_psd[j]) and (frequencies[j] >= f_min) and (frequencies[j] <= f_max):
+    #             if prev_bin == False:
+    #                 width_bins = 1
+    #                 max_height = psd[j] / median_psd[j]
+    #                 centre_bin = j
+    #             else:
+    #                 width_bins = width_bins+1
+    #                 if psd[j] / median_psd[j] > max_height:
+    #                     max_height = psd[j] / median_psd[j]
+    #                     centre_bin = j
+    #             prev_bin = True
+    #         else:
+    #             if prev_bin==True:
+    #                 line_centre_bin.append(centre_bin)
+    #                 line_width_bins.append(width_bins)
+    #                 line_height.append(max_height)
+    #                 prev_bin = False
+    #     notch_centre_bin.append(line_centre_bin)
 
-        filtered_data = np.copy(data[i])
-        # Loop over frequencies and apply notch filter
-        for centre_bin in notch_centre_bin[i]:
-            # Create a notch filter
-            b, a = iirnotch(frequencies[centre_bin], Q, fs)
-            # Apply the filter to data
-            filtered_data = lfilter(b, a, filtered_data)
-        notched_data[i] = filtered_data
+    #     filtered_data = np.copy(data[i])
+    #     # Loop over frequencies and apply notch filter
+    #     for centre_bin in notch_centre_bin[i]:
+    #         # Create a notch filter
+    #         b, a = iirnotch(frequencies[centre_bin], Q, fs)
+    #         # Apply the filter to data
+    #         filtered_data = lfilter(b, a, filtered_data)
+    #     notched_data[i] = filtered_data
 
-    # # ---- Return central 1 second of notched data.
-    # w = int(notched_data.shape[1]/fs)
-    # # print('w =',w)
-    # # print('original shape of notched data:',notched_data.shape)
-    # # print('shape of notched data:',notched_data.shape)
+    # # # ---- Return central 1 second of notched data.
+    # # w = int(notched_data.shape[1]/fs)
+    # # # print('w =',w)
+    # # # print('original shape of notched data:',notched_data.shape)
+    # # # print('shape of notched data:',notched_data.shape)
     return notched_data
 
 
