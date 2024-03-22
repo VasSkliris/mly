@@ -839,7 +839,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     
     notched_strain = remove_line(uwstrain, fs, f_min=window_parameter[-2], f_max=window_parameter[-1], Q=30.0, factor=10)
 
-    notched_strain_before = notched_strain.whiten(4,2,fduration=4,method = 'welch'
+    notched_strain_before = TimeSeries(notched_strain,sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
                                  , highpass=20).value
     w = int(notched_strain.shape[1]/fs)
 
