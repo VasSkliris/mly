@@ -387,7 +387,7 @@ def EnergySkyMapsGRF(
     if window_parameter is not None:
         print('activate window', window_parameter)
 
-        start_time, end_time, ramp_duration, ramp_centre, duration_limit = window_parameter
+        start_time, end_time, ramp_duration, ramp_centre, duration_limit ,fmin, fmax= window_parameter
         
         # data_shape = tf.shape(strain)
         # num_det = data_shape[1]
@@ -594,103 +594,103 @@ def bandpass(data, fs, f_min, f_max, filter_order=10):
 
 
 
-def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
+# def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
 
-    # data  FORMAT? Timeseries data.
-    # fs  Integer. Sample rate [Hz] of timeseries data.
-    # f_min  Float. Minimum frequency [Hz] for bandpassing.
-    # f_max  Float. Maximum frequency [Hz] for bandpassing.
-    # Q  Float. Notch filter quality factor. Default 30.0.
-    # factor  Float. Minimum line height above median PSD. Default 10.0.
-    # smoothing  Float. Width [Hz] for smoothing. Default 9.0.
+#     # data  FORMAT? Timeseries data.
+#     # fs  Integer. Sample rate [Hz] of timeseries data.
+#     # f_min  Float. Minimum frequency [Hz] for bandpassing.
+#     # f_max  Float. Maximum frequency [Hz] for bandpassing.
+#     # Q  Float. Notch filter quality factor. Default 30.0.
+#     # factor  Float. Minimum line height above median PSD. Default 10.0.
+#     # smoothing  Float. Width [Hz] for smoothing. Default 9.0.
 
-    # ---- Parameters for line removal.
-    smoothingWindowHz = smoothing
-    minLineHeightFactor = factor
+#     # ---- Parameters for line removal.
+#     smoothingWindowHz = smoothing
+#     minLineHeightFactor = factor
     
-    # ---- FFT length. 
-    Nfft = 4 * fs    # FFT resolution 0.25 Hz
+#     # ---- FFT length. 
+#     Nfft = 4 * fs    # FFT resolution 0.25 Hz
 
-    # ---- Bandpass the data.
-    data = bandpass(data, fs, f_min, f_max)
+#     # ---- Bandpass the data.
+#     data = bandpass(data, fs, f_min, f_max)
     
-    confirmed_clean = False
+#     confirmed_clean = False
 
-    while confirmed_clean == False:
+#     while confirmed_clean == False:
 
-        notch_centre_bin = []
-        notch_width_bins = []
-        notch_height     = []  # really depth ...
+#         notch_centre_bin = []
+#         notch_width_bins = []
+#         notch_height     = []  # really depth ...
 
-        # ---- Check all timeseries for lines.
+#         # ---- Check all timeseries for lines.
 
-        # ---- Loop through the rows in the data (each row is a separate time series).
-        for ifo in range(data.shape[0]):
+#         # ---- Loop through the rows in the data (each row is a separate time series).
+#         for ifo in range(data.shape[0]):
 
-            # ---- Compute the PSD of the data.
-            frequency, psd = welch(data[ifo], fs=fs, nperseg=Nfft)
+#             # ---- Compute the PSD of the data.
+#             frequency, psd = welch(data[ifo], fs=fs, nperseg=Nfft)
         
-            # ---- Construct and plot the "smoothed" PSD.
-            smoothingWindowBins = int(smoothingWindowHz / (fs/Nfft))
-            median_psd = np.zeros_like(psd)
-            for bins in range(len(psd)):
-                start = max(0, bins - smoothingWindowBins)
-                end = min(len(psd), bins + smoothingWindowBins)
-                median_psd[bins] = np.median(psd[start:end])
+#             # ---- Construct and plot the "smoothed" PSD.
+#             smoothingWindowBins = int(smoothingWindowHz / (fs/Nfft))
+#             median_psd = np.zeros_like(psd)
+#             for bins in range(len(psd)):
+#                 start = max(0, bins - smoothingWindowBins)
+#                 end = min(len(psd), bins + smoothingWindowBins)
+#                 median_psd[bins] = np.median(psd[start:end])
             
-            # ---- Identify lines.
-            line_centre_bin = []
-            line_width_bins = []
-            line_height     = []
-            prev_bin = False
-            for j in range(len(psd)):
-                if (psd[j] > minLineHeightFactor*median_psd[j]) and (frequency[j] >= f_min) and (frequency[j] <= f_max):
-                    #print(frequency[j])
-                    if prev_bin==False:
-                        width_bins = 1
-                        max_height = psd[j] / median_psd[j]
-                        centre_bin = j
-                    else:
-                        width_bins = width_bins+1
-                        if psd[j] / median_psd[j] > max_height:
-                            max_height = psd[j] / median_psd[j]
-                            centre_bin = j
-                    prev_bin = True
-                else:
-                    if prev_bin==True:
-                        line_centre_bin.append(centre_bin)
-                        line_width_bins.append(width_bins)
-                        line_height.append(max_height)
-                        prev_bin = False
-            notch_centre_bin.append(line_centre_bin)
-            notch_width_bins.append(line_width_bins)
-            notch_height.append(line_height)
+#             # ---- Identify lines.
+#             line_centre_bin = []
+#             line_width_bins = []
+#             line_height     = []
+#             prev_bin = False
+#             for j in range(len(psd)):
+#                 if (psd[j] > minLineHeightFactor*median_psd[j]) and (frequency[j] >= f_min) and (frequency[j] <= f_max):
+#                     #print(frequency[j])
+#                     if prev_bin==False:
+#                         width_bins = 1
+#                         max_height = psd[j] / median_psd[j]
+#                         centre_bin = j
+#                     else:
+#                         width_bins = width_bins+1
+#                         if psd[j] / median_psd[j] > max_height:
+#                             max_height = psd[j] / median_psd[j]
+#                             centre_bin = j
+#                     prev_bin = True
+#                 else:
+#                     if prev_bin==True:
+#                         line_centre_bin.append(centre_bin)
+#                         line_width_bins.append(width_bins)
+#                         line_height.append(max_height)
+#                         prev_bin = False
+#             notch_centre_bin.append(line_centre_bin)
+#             notch_width_bins.append(line_width_bins)
+#             notch_height.append(line_height)
 
-        # ---- Remove the lines.
-        confirmed_clean = True
-        for ifo in range(data.shape[0]):
-            frequencies_to_remove = frequency[notch_centre_bin[ifo]]
-            if notch_centre_bin[ifo]:
-                print('notches found for detector',ifo,':')
-                print(notch_centre_bin[ifo])
-                confirmed_clean = False # resets to loop again if any lines found
-            # ---- Copy the original data.
-            filtered_data = np.copy(data[ifo])
-            # ---- Loop over frequencies and apply notch filter.
-            for f0 in frequencies_to_remove:
-                # ---- Create and apply a notch filter.
-                b, a = iirnotch(f0, Q, fs)
-                filtered_data = lfilter(b, a, filtered_data)
-            # ---- Replace background timeseries in the pod.
-            data[ifo] = filtered_data            
+#         # ---- Remove the lines.
+#         confirmed_clean = True
+#         for ifo in range(data.shape[0]):
+#             frequencies_to_remove = frequency[notch_centre_bin[ifo]]
+#             if notch_centre_bin[ifo]:
+#                 print('notches found for detector',ifo,':')
+#                 print(notch_centre_bin[ifo])
+#                 confirmed_clean = False # resets to loop again if any lines found
+#             # ---- Copy the original data.
+#             filtered_data = np.copy(data[ifo])
+#             # ---- Loop over frequencies and apply notch filter.
+#             for f0 in frequencies_to_remove:
+#                 # ---- Create and apply a notch filter.
+#                 b, a = iirnotch(f0, Q, fs)
+#                 filtered_data = lfilter(b, a, filtered_data)
+#             # ---- Replace background timeseries in the pod.
+#             data[ifo] = filtered_data            
 
-    # ---- Return central 1 second of notched data.
-    # w = int(data.shape[1]/fs)
-    # # print('w =',w)
-    # # print('original shape of notched data:',notched_data.shape)
-    # data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    # # print('shape of notched data:',notched_data.shape)
-    return data
+#     # ---- Return central 1 second of notched data.
+#     # w = int(data.shape[1]/fs)
+#     # # print('w =',w)
+#     # # print('original shape of notched data:',notched_data.shape)
+#     # data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+#     # # print('shape of notched data:',notched_data.shape)
+#     return data
 
 def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
     
@@ -833,7 +833,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
 
     # < ------------------------------------------
     
-    notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
+    notched_strain = remove_line(uwstrain, fs, f_min=window_parameter[-2], f_max=window_parameter[-1], Q=30.0, factor=10)
 
     w = int(notched_strain.shape[1]/fs)
 
