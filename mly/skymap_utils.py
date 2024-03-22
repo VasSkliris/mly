@@ -594,7 +594,7 @@ def bandpass(data, fs, f_min, f_max, filter_order=10):
     #     # # Store the cropped data
     #     # bandpassed_data[index] = cropped_data
         
-    return bandpassed_data
+    return np.asarray(bandpassed_data)
 
 
 
