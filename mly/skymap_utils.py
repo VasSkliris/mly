@@ -701,72 +701,70 @@ def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
     
     # print('shape of raw data:',data.shape)
 
-    notched_data = bandpass(data, fs, f_min, f_max)
-    # data = bandpass(data, fs, f_min, f_max)
-
+    data = bandpass(data, fs, f_min, f_max)
     
     # print('shape of bandpassed data:',data.shape)
 
-    # # FFT length chosen 4 times the sample frequency (FFT resolution 0.25 Hz)
-    # Nfft = 4 * fs  
-    # notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
-    # # originalPSD = []
-    # notch_centre_bin = []
+    # FFT length chosen 4 times the sample frequency (FFT resolution 0.25 Hz)
+    Nfft = 4 * fs  
+    notched_data = np.zeros_like(data)  # Array to hold the smoothed time series
+    # originalPSD = []
+    notch_centre_bin = []
 
-    # # Loop through the rows in the data (each row is a separate time series)
-    # for i in range(data.shape[0]):
+    # Loop through the rows in the data (each row is a separate time series)
+    for i in range(data.shape[0]):
 
-    #     # Calculate the PSD of the data.
-    #     frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
-    #     # originalPSD.append(psd)
+        # Calculate the PSD of the data.
+        frequencies, psd = welch(data[i], fs=fs, nperseg=Nfft)
+        # originalPSD.append(psd)
 
-    #     # Calculate the smoothed PSD.
-    #     smoothBins = int(9 / (fs/Nfft))
-    #     median_psd = np.zeros_like(psd)
-    #     for bins in range(len(psd)):
-    #         start = max(0, bins - smoothBins)
-    #         end = min(len(psd), bins + smoothBins)
-    #         median_psd[bins] = np.median(psd[start:end])
+        # Calculate the smoothed PSD.
+        smoothBins = int(9 / (fs/Nfft))
+        median_psd = np.zeros_like(psd)
+        for bins in range(len(psd)):
+            start = max(0, bins - smoothBins)
+            end = min(len(psd), bins + smoothBins)
+            median_psd[bins] = np.median(psd[start:end])
     
-    #     # Identify lines
-    #     line_centre_bin = []
-    #     line_width_bins = []
-    #     line_height = []
-    #     prev_bin = False
-    #     for j in range(len(psd)):
-    #         if (psd[j] > factor*median_psd[j]) and (frequencies[j] >= f_min) and (frequencies[j] <= f_max):
-    #             if prev_bin == False:
-    #                 width_bins = 1
-    #                 max_height = psd[j] / median_psd[j]
-    #                 centre_bin = j
-    #             else:
-    #                 width_bins = width_bins+1
-    #                 if psd[j] / median_psd[j] > max_height:
-    #                     max_height = psd[j] / median_psd[j]
-    #                     centre_bin = j
-    #             prev_bin = True
-    #         else:
-    #             if prev_bin==True:
-    #                 line_centre_bin.append(centre_bin)
-    #                 line_width_bins.append(width_bins)
-    #                 line_height.append(max_height)
-    #                 prev_bin = False
-    #     notch_centre_bin.append(line_centre_bin)
+        # Identify lines
+        line_centre_bin = []
+        line_width_bins = []
+        line_height = []
+        prev_bin = False
+        for j in range(len(psd)):
+            if (psd[j] > factor*median_psd[j]) and (frequencies[j] >= f_min) and (frequencies[j] <= f_max):
+                if prev_bin == False:
+                    width_bins = 1
+                    max_height = psd[j] / median_psd[j]
+                    centre_bin = j
+                else:
+                    width_bins = width_bins+1
+                    if psd[j] / median_psd[j] > max_height:
+                        max_height = psd[j] / median_psd[j]
+                        centre_bin = j
+                prev_bin = True
+            else:
+                if prev_bin==True:
+                    line_centre_bin.append(centre_bin)
+                    line_width_bins.append(width_bins)
+                    line_height.append(max_height)
+                    prev_bin = False
+        notch_centre_bin.append(line_centre_bin)
 
-    #     filtered_data = np.copy(data[i])
-    #     # Loop over frequencies and apply notch filter
-    #     for centre_bin in notch_centre_bin[i]:
-    #         # Create a notch filter
-    #         b, a = iirnotch(frequencies[centre_bin], Q, fs)
-    #         # Apply the filter to data
-    #         filtered_data = lfilter(b, a, filtered_data)
-    #     notched_data[i] = filtered_data
+        filtered_data = np.copy(data[i])
+        # Loop over frequencies and apply notch filter
+        for centre_bin in notch_centre_bin[i]:
+            # Create a notch filter
+            b, a = iirnotch(frequencies[centre_bin], Q, fs)
+            # Apply the filter to data
+            filtered_data = lfilter(b, a, filtered_data)
+        notched_data[i] = filtered_data
 
-    # # # ---- Return central 1 second of notched data.
-    # # w = int(notched_data.shape[1]/fs)
-    # # # print('w =',w)
-    # # # print('original shape of notched data:',notched_data.shape)
-    # # # print('shape of notched data:',notched_data.shape)
+    # # ---- Return central 1 second of notched data.
+    # w = int(notched_data.shape[1]/fs)
+    # # print('w =',w)
+    # # print('original shape of notched data:',notched_data.shape)
+    # # print('shape of notched data:',notched_data.shape)
     return notched_data
 
 
@@ -843,14 +841,18 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     notched_strain = remove_line(uwstrain, fs, f_min=window_parameter[-2], f_max=window_parameter[-1], Q=30.0, factor=10)
     from gwpy.timeseries import TimeSeries
 
-    notched_strain_before = np.asarray([TimeSeries(notched_strain[0],sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
-                                 , highpass=20).value
-                            ,TimeSeries(notched_strain[1],sample_rate = fs).whiten(4,2,fduration=4,method = 'welch'
-                                 , highpass=20).value])
+    # HARDCODED ###
+    notched_strain_white = np.asarray([TimeSeries(notched_strain[0],sample_rate = fs).whiten(
+                                                  4,2,fduration=4,method = 'welch', highpass=20).value
+                                      ,TimeSeries(notched_strain[1],sample_rate = fs).whiten(
+                                                  4,2,fduration=4,method = 'welch', highpass=20).value])
+                                                  
     w = int(notched_strain.shape[1]/fs)
 
+    notched_strain_white = notched_strain_white[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    ###
+
     notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    notched_strain_before = notched_strain_before[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
     start = time.time()
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
@@ -880,7 +882,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     containment_region_50 = containment_region(prob_map,threshold=0.5)
     containment_region_90 = containment_region(prob_map,threshold=0.9)
 
-    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90,notched_strain_before]
+    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90,notched_strain_white]
 
 def skymap_plot_function(strain,data=None):
         
