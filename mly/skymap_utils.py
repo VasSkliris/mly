@@ -573,7 +573,7 @@ def EnergySkyMaps(
 
 def bandpass(data, fs, f_min, f_max, filter_order=10):
 
-    bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(fmin, fmax) for in range(len(data)) )
+    bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(fmin, fmax) for i in range(len(data)) )
 
     # # ---- Construct bandpass filter.
     # b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
