@@ -388,7 +388,7 @@ def EnergySkyMapsGRF(
     if window_parameter is not None:
         print('activate window', window_parameter)
 
-        start_time, end_time, ramp_duration, ramp_centre, duration_limit ,fmin, fmax= window_parameter
+        start_time, end_time, ramp_duration, ramp_centre, duration_limit ,fmin, fmax = window_parameter
         
         # data_shape = tf.shape(strain)
         # num_det = data_shape[1]
@@ -572,11 +572,14 @@ def EnergySkyMaps(
 
 
 
-def bandpass(data, fs, f_min, f_max, filter_order=10):
+def gwpy_bandpass(data, fs, f_min, f_max):
     
+    f_max = min(f_max , 480.0)
+    f_min = max(f_min , 32)
 
     bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(
-                            flow = f_min, fhigh = f_max) for i in range(len(data)) )
+                            f_min, f_max, fstop = (31,481)
+                            , gpass=2 , gstop=30 , type='iir') for i in range(len(data)) )
 
     # # ---- Construct bandpass filter.
     # b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
@@ -701,7 +704,7 @@ def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
     
     # print('shape of raw data:',data.shape)
 
-    data = bandpass(data, fs, f_min, f_max)
+    data = gwpy_bandpass(data, fs, f_min, f_max)
     
     # print('shape of bandpassed data:',data.shape)
 
