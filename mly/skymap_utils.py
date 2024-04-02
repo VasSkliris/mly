@@ -20,6 +20,7 @@ from .plugins import *
 from .datatools import *
 from scipy.signal import welch
 from scipy.signal import iirnotch, lfilter, butter
+from gwpy.timeseries import TimeSeries
 
 # GPS > GPS, GMST > GMST, ra = RA, dec = declination
 
@@ -147,47 +148,180 @@ def antennaResponseRMS(num_pixels, RA, dec, detectors, GPS_time):
 
     return antenna_response_rms
 
-def mask_window_tf(data_length, fs, start_time, end_time, ramp_duration):
+
+def mask_window_tf(T, fs, start_time, end_time, ramp_duration,ramp_centre, duration_limit = 1/32):
     """
     Creates a windowed mask for a given time series.
     
     Parameters:
-    - data_length: Length of the data series.
+    - T: Duration of the final data series.
     - fs: Sampling frequency.
     - start_time: Starting time of the window.
     - end_time: Ending time of the window.
     - ramp_duration: Duration of the ramp (smooth transition) in the window.
-    
+    - ramp_centre: Where will the center of the ramp be in respect of start and end time [0,1]
+                    0 corresponds for the center to be -0.5*ramp_duration away from the signal 
+                    1 corresponds for the center to be +0.5*ramp_duration in the signal (dumping the edge)
     Returns:
     - A windowed mask with values between 0 and 1.
     """
+    start_time = tf.cast(start_time, tf.float32)
+    end_time = tf.cast(end_time, tf.float32)
+    ramp_duration = tf.cast(ramp_duration, tf.float32)
+    ramp_centre = tf.cast(ramp_centre, tf.float32)
+    duration_limit = tf.cast(duration_limit, tf.float32)
+    fs = tf.cast(fs, tf.float32)
     tnp = tf.experimental.numpy
-    pi = tnp.pi 
-    PI_HALF = pi / 2
-
-    # Convert times to indices and ensure they are float32
-    window_start_idx = tf.cast((start_time - ramp_duration) * fs, tf.float32)
-    window_end_idx = tf.cast((end_time + ramp_duration) * fs, tf.float32)
-    start_idx = tf.cast(start_time * fs, tf.float32)
-    end_idx = tf.cast(end_time * fs, tf.float32)
+    PI = tnp.pi 
+    PI = tf.cast( PI, tf.float32)
     
-    indices = tf.range(data_length, dtype=tf.float32)
+    # Duration limit is used as limiter on the duration of signals
+    # also it is used for the edges so that they are smooth and they
+    # do not fold on the other side.
+    if end_time - start_time < duration_limit:
+
+        diff = duration_limit - (end_time - start_time)
+        
+        start_time = start_time -diff/2
+        end_time = end_time + diff/2
+
+        print(f"Duration smaller than duration limit, and it was adjusted by {diff} s")
+
+    if start_time < ramp_duration:
+        # The first 32 ms will be folded to the end so we move the start time 
+        # enough to avoid that.
+        start_time = ramp_duration + duration_limit 
+        print("Start time close too close to the biggining")
+
+        # Adjusting duration in case the above adjustment 
+        # made duration negative or too small
+        if end_time-start_time < duration_limit: # Max difference between detectors
+            end_time = start_time + duration_limit
+            print("End time too close to start time, changed to start_time + 0.032")
+
+    if T-end_time < ramp_duration:
+        # The last 32 ms will be folded to the end so we move the start time 
+        # enough to avoid that.
+        end_time = T - ramp_duration - duration_limit
+        print("End time close too close to the biggining")
+        # Adjusting duration in case the above adjustment 
+        # made duration negative or too small
+        if end_time-start_time < duration_limit: # Max difference between detectors
+            start_time = end_time - duration_limit
+            print("Start time too close to end time, changed to end_time - 0.032")
+
+
+    signal_duration = end_time - start_time
     
-    # Create the rolling mask for the main windowed region
-    main_mask = tf.where((indices >= start_idx) & (indices < end_idx), 1., indices * 0.)
+    # Check that ramp_duration is a power of two:
+    # if not (ramp_duration != 0 
+    #     and ramp_duration<T/2 
+    #     and tf.subtract(tf.experimental.numpy.log2(ramp_duration) , tf.math.round(tf.experimental.numpy.log2(ramp_duration))).numpy() == 0.0):
+
+    #     raise ValueError("Ramp duration must be a power of two"
+    #                      ", and one fourth of the duration")
+
+    # Adjusting the ramp_duration when signals are too small
+    # Note: Possibly adjust this with the duration of the signal
+    #       to include cases where signal is small and at the edge.
+    while signal_duration <= 2 * ramp_duration * ramp_centre:
+
+        ramp_duration = ramp_duration/2
+
+        print(f"Ramp duration changed to 1/{int(fs/(ramp_duration*fs))}")
+
+        if ramp_duration == 1/128:
+            print("Ramp duration reached minimum value of 1/128")
+            break
+
+    # Creating the central platoe
+    centre_lentgh = int(( signal_duration - 2 * ramp_duration * ramp_centre ) * fs )
+    centre = tf.ones( centre_lentgh)
+
+    # Creating the ramps
+    t = tf.range( 0 , ramp_duration, 1/fs )
+    left_ramp  = tf.math.sin( PI * t * (1/ramp_duration) - PI/2 )/2 + 0.5
+    right_ramp = tf.math.sin( PI * t * (1/ramp_duration) + PI/2 )/2 + 0.5
+
+    # Creating the pads
+    #print(start_time, ramp_centre,ramp_duration,fs)
     
-    # Create the ramp-up transition
-    ramp_up = 0.5 * (1 + tf.math.sin(-PI_HALF + (indices - window_start_idx) / (start_idx - window_start_idx) * pi))
-    mask_on = tf.where((indices >= window_start_idx) & (indices < start_idx), ramp_up, 0.)
 
-    # Create the ramp-down transition
-    ramp_down = 0.5 * (1 + tf.math.sin(PI_HALF + (indices - end_idx) / (window_end_idx - end_idx) * pi))
-    mask_off = tf.where((indices >= end_idx) & (indices < window_end_idx), ramp_down, 0.)
+    left_pad =  tf.zeros( tf.cast(tf.math.ceil((start_time - (1 - ramp_centre) * ramp_duration) * fs),tf.int32) )
+    right_pad = tf.zeros( tf.cast(tf.math.ceil((T - end_time - (1 - ramp_centre) * ramp_duration) * fs ),tf.int32))
 
-    # Combine the masks
-    windowed_data = main_mask + mask_on + mask_off
+    # print(len(left_pad),len(left_ramp),len(centre),len(right_ramp),len(right_pad))
+    # print(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad))
 
-    return windowed_data
+    # Adjusting the length when sometimes a pixel or two missing due to the use of int and ceil.
+    
+    thesum = tf.cast(len(left_pad)+len(left_ramp)+len(centre)+len(right_ramp)+len(right_pad),tf.float32)
+
+    if thesum < T*fs:
+        diff = tf.cast( T*fs - thesum , tf.int32 ) 
+
+        centre = tf.concat([centre, tf.ones(diff)],0)
+    
+    elif thesum > T*fs:
+
+        diff = tf.cast( thesum - T*fs , tf.int32 )
+
+        centre = centre[:-diff]
+    
+    else:
+        diff = 0
+
+    # Putting the mask together.
+    mask = tf.concat([ left_pad, left_ramp , centre, right_ramp, right_pad ],0)
+
+    return(mask)
+
+
+
+
+
+
+# def mask_window_tf_old(data_length, fs, start_time, end_time, ramp_duration):
+#     """
+#     Creates a windowed mask for a given time series.
+    
+#     Parameters:
+#     - data_length: Length of the data series.
+#     - fs: Sampling frequency.
+#     - start_time: Starting time of the window.
+#     - end_time: Ending time of the window.
+#     - ramp_duration: Duration of the ramp (smooth transition) in the window.
+    
+#     Returns:
+#     - A windowed mask with values between 0 and 1.
+#     """
+#     tnp = tf.experimental.numpy
+#     pi = tnp.pi 
+#     PI_HALF = pi / 2
+
+#     # Convert times to indices and ensure they are float32
+#     window_start_idx = tf.cast((start_time - ramp_duration) * fs, tf.float32)
+#     window_end_idx = tf.cast((end_time + ramp_duration) * fs, tf.float32)
+#     start_idx = tf.cast(start_time * fs, tf.float32)
+#     end_idx = tf.cast(end_time * fs, tf.float32)
+    
+#     indices = tf.range(data_length, dtype=tf.float32)
+    
+#     # Create the rolling mask for the main windowed region
+#     main_mask = tf.where((indices >= start_idx) & (indices < end_idx), 1., indices * 0.)
+    
+#     # Create the ramp-up transition
+#     ramp_up = 0.5 * (1 + tf.math.sin(-PI_HALF + (indices - window_start_idx) / (start_idx - window_start_idx) * pi))
+#     mask_on = tf.where((indices >= window_start_idx) & (indices < start_idx), ramp_up, 0.)
+
+#     # Create the ramp-down transition
+#     ramp_down = 0.5 * (1 + tf.math.sin(PI_HALF + (indices - end_idx) / (window_end_idx - end_idx) * pi))
+#     mask_off = tf.where((indices >= end_idx) & (indices < window_end_idx), ramp_down, 0.)
+
+#     # Combine the masks
+#     windowed_data = main_mask + mask_on + mask_off
+
+#     return windowed_data
 
 
 mask_window_tf = tf.function(mask_window_tf)
@@ -204,7 +338,7 @@ def EnergySkyMapsGRF(
     num_pixels,
     num_detectors,
     fs,
-    window_parameter = None
+    window_parameter = None,
 ):
     """
     THIS FUNCTION IS A TENSORFLOW GRAPH AND CONVERTS APPLE TO ORANGE 
@@ -254,14 +388,14 @@ def EnergySkyMapsGRF(
     if window_parameter is not None:
         print('activate window', window_parameter)
 
-        start_time, end_time, ramp_duration = window_parameter
+        start_time, end_time, ramp_duration, ramp_centre, duration_limit ,fmin, fmax = window_parameter
         
         # data_shape = tf.shape(strain)
         # num_det = data_shape[1]
         # data_len = data_shape[2]
         
         # Apply mask_window_tf function on strain data
-        windowed_data = mask_window_tf(fs, fs, start_time, end_time, ramp_duration)
+        windowed_data = mask_window_tf(1.0, fs, start_time, end_time, ramp_duration, ramp_centre, duration_limit = duration_limit)
         # print('windowed_data', windowed_data.shape)
         # print ('strain shape', strain.shape)
         # print('start_time_util', start_time)
@@ -438,132 +572,139 @@ def EnergySkyMaps(
 
 
 
-def bandpass(data, fs, f_min, f_max, filter_order=10):
-
-    # ---- Construct bandpass filter.
-    b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
-
-    # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
-    #      each end to avoid filter transients. 
-    samples_to_crop = 1 * fs  # 1 second at each end
-    bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
-    for index in range(data.shape[0]):    
-        # ---- Apply the filter.
-        filtered_data = lfilter(b, a, data[index])
-        # ---- Crop the ends and store.
-        bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
-        # # Crop the ends
-        # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
-        # # Store the cropped data
-        # bandpassed_data[index] = cropped_data
-        
-    return bandpassed_data
-
-
-
-def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
-
-    # data  FORMAT? Timeseries data.
-    # fs  Integer. Sample rate [Hz] of timeseries data.
-    # f_min  Float. Minimum frequency [Hz] for bandpassing.
-    # f_max  Float. Maximum frequency [Hz] for bandpassing.
-    # Q  Float. Notch filter quality factor. Default 30.0.
-    # factor  Float. Minimum line height above median PSD. Default 10.0.
-    # smoothing  Float. Width [Hz] for smoothing. Default 9.0.
-
-    # ---- Parameters for line removal.
-    smoothingWindowHz = smoothing
-    minLineHeightFactor = factor
+def gwpy_bandpass(data, fs, f_min, f_max):
     
-    # ---- FFT length. 
-    Nfft = 4 * fs    # FFT resolution 0.25 Hz
+    f_max = min(f_max , 480.0)
+    f_min = max(f_min , 32)
 
-    # ---- Bandpass the data.
-    data = bandpass(data, fs, f_min, f_max)
-    
-    confirmed_clean = False
+    bandpassed_data = list( TimeSeries(data[i],sample_rate = fs).bandpass(
+                            f_min, f_max, fstop = (31,481)
+                            , gpass=2 , gstop=30 , type='iir') for i in range(len(data)) )
 
-    while confirmed_clean == False:
+    # # ---- Construct bandpass filter.
+    # b, a = butter(filter_order, [f_min, f_max], btype='bandpass', output='ba', fs=fs)
 
-        notch_centre_bin = []
-        notch_width_bins = []
-        notch_height     = []  # really depth ...
-
-        # ---- Check all timeseries for lines.
-
-        # ---- Loop through the rows in the data (each row is a separate time series).
-        for ifo in range(data.shape[0]):
-
-            # ---- Compute the PSD of the data.
-            frequency, psd = welch(data[ifo], fs=fs, nperseg=Nfft)
+    # # ---- Assign storage for bandpassed data. Remove samples_to_crop samples from 
+    # #      each end to avoid filter transients. 
+    # samples_to_crop = 1 * fs  # 1 second at each end
+    # bandpassed_data = np.zeros((data.shape[0], data.shape[1] - 2*samples_to_crop))
+    # for index in range(data.shape[0]):    
+    #     # ---- Apply the filter.
+    #     filtered_data = lfilter(b, a, data[index])
+    #     # ---- Crop the ends and store.
+    #     bandpassed_data[index] = filtered_data[samples_to_crop:-samples_to_crop]
+    #     # # Crop the ends
+    #     # cropped_data = filtered_data[samples_to_crop:-samples_to_crop]
+    #     # # Store the cropped data
+    #     # bandpassed_data[index] = cropped_data
         
-            # ---- Construct and plot the "smoothed" PSD.
-            smoothingWindowBins = int(smoothingWindowHz / (fs/Nfft))
-            median_psd = np.zeros_like(psd)
-            for bins in range(len(psd)):
-                start = max(0, bins - smoothingWindowBins)
-                end = min(len(psd), bins + smoothingWindowBins)
-                median_psd[bins] = np.median(psd[start:end])
+    return np.asarray(bandpassed_data)
+
+
+
+# def remove_lines(data, fs, f_min, f_max, Q=30.0, factor=10.0, smoothing=9.0):
+
+#     # data  FORMAT? Timeseries data.
+#     # fs  Integer. Sample rate [Hz] of timeseries data.
+#     # f_min  Float. Minimum frequency [Hz] for bandpassing.
+#     # f_max  Float. Maximum frequency [Hz] for bandpassing.
+#     # Q  Float. Notch filter quality factor. Default 30.0.
+#     # factor  Float. Minimum line height above median PSD. Default 10.0.
+#     # smoothing  Float. Width [Hz] for smoothing. Default 9.0.
+
+#     # ---- Parameters for line removal.
+#     smoothingWindowHz = smoothing
+#     minLineHeightFactor = factor
+    
+#     # ---- FFT length. 
+#     Nfft = 4 * fs    # FFT resolution 0.25 Hz
+
+#     # ---- Bandpass the data.
+#     data = bandpass(data, fs, f_min, f_max)
+    
+#     confirmed_clean = False
+
+#     while confirmed_clean == False:
+
+#         notch_centre_bin = []
+#         notch_width_bins = []
+#         notch_height     = []  # really depth ...
+
+#         # ---- Check all timeseries for lines.
+
+#         # ---- Loop through the rows in the data (each row is a separate time series).
+#         for ifo in range(data.shape[0]):
+
+#             # ---- Compute the PSD of the data.
+#             frequency, psd = welch(data[ifo], fs=fs, nperseg=Nfft)
+        
+#             # ---- Construct and plot the "smoothed" PSD.
+#             smoothingWindowBins = int(smoothingWindowHz / (fs/Nfft))
+#             median_psd = np.zeros_like(psd)
+#             for bins in range(len(psd)):
+#                 start = max(0, bins - smoothingWindowBins)
+#                 end = min(len(psd), bins + smoothingWindowBins)
+#                 median_psd[bins] = np.median(psd[start:end])
             
-            # ---- Identify lines.
-            line_centre_bin = []
-            line_width_bins = []
-            line_height     = []
-            prev_bin = False
-            for j in range(len(psd)):
-                if (psd[j] > minLineHeightFactor*median_psd[j]) and (frequency[j] >= f_min) and (frequency[j] <= f_max):
-                    #print(frequency[j])
-                    if prev_bin==False:
-                        width_bins = 1
-                        max_height = psd[j] / median_psd[j]
-                        centre_bin = j
-                    else:
-                        width_bins = width_bins+1
-                        if psd[j] / median_psd[j] > max_height:
-                            max_height = psd[j] / median_psd[j]
-                            centre_bin = j
-                    prev_bin = True
-                else:
-                    if prev_bin==True:
-                        line_centre_bin.append(centre_bin)
-                        line_width_bins.append(width_bins)
-                        line_height.append(max_height)
-                        prev_bin = False
-            notch_centre_bin.append(line_centre_bin)
-            notch_width_bins.append(line_width_bins)
-            notch_height.append(line_height)
+#             # ---- Identify lines.
+#             line_centre_bin = []
+#             line_width_bins = []
+#             line_height     = []
+#             prev_bin = False
+#             for j in range(len(psd)):
+#                 if (psd[j] > minLineHeightFactor*median_psd[j]) and (frequency[j] >= f_min) and (frequency[j] <= f_max):
+#                     #print(frequency[j])
+#                     if prev_bin==False:
+#                         width_bins = 1
+#                         max_height = psd[j] / median_psd[j]
+#                         centre_bin = j
+#                     else:
+#                         width_bins = width_bins+1
+#                         if psd[j] / median_psd[j] > max_height:
+#                             max_height = psd[j] / median_psd[j]
+#                             centre_bin = j
+#                     prev_bin = True
+#                 else:
+#                     if prev_bin==True:
+#                         line_centre_bin.append(centre_bin)
+#                         line_width_bins.append(width_bins)
+#                         line_height.append(max_height)
+#                         prev_bin = False
+#             notch_centre_bin.append(line_centre_bin)
+#             notch_width_bins.append(line_width_bins)
+#             notch_height.append(line_height)
 
-        # ---- Remove the lines.
-        confirmed_clean = True
-        for ifo in range(data.shape[0]):
-            frequencies_to_remove = frequency[notch_centre_bin[ifo]]
-            if notch_centre_bin[ifo]:
-                print('notches found for detector',ifo,':')
-                print(notch_centre_bin[ifo])
-                confirmed_clean = False # resets to loop again if any lines found
-            # ---- Copy the original data.
-            filtered_data = np.copy(data[ifo])
-            # ---- Loop over frequencies and apply notch filter.
-            for f0 in frequencies_to_remove:
-                # ---- Create and apply a notch filter.
-                b, a = iirnotch(f0, Q, fs)
-                filtered_data = lfilter(b, a, filtered_data)
-            # ---- Replace background timeseries in the pod.
-            data[ifo] = filtered_data            
+#         # ---- Remove the lines.
+#         confirmed_clean = True
+#         for ifo in range(data.shape[0]):
+#             frequencies_to_remove = frequency[notch_centre_bin[ifo]]
+#             if notch_centre_bin[ifo]:
+#                 print('notches found for detector',ifo,':')
+#                 print(notch_centre_bin[ifo])
+#                 confirmed_clean = False # resets to loop again if any lines found
+#             # ---- Copy the original data.
+#             filtered_data = np.copy(data[ifo])
+#             # ---- Loop over frequencies and apply notch filter.
+#             for f0 in frequencies_to_remove:
+#                 # ---- Create and apply a notch filter.
+#                 b, a = iirnotch(f0, Q, fs)
+#                 filtered_data = lfilter(b, a, filtered_data)
+#             # ---- Replace background timeseries in the pod.
+#             data[ifo] = filtered_data            
 
-    # ---- Return central 1 second of notched data.
-    # w = int(data.shape[1]/fs)
-    # # print('w =',w)
-    # # print('original shape of notched data:',notched_data.shape)
-    # data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
-    # # print('shape of notched data:',notched_data.shape)
-    return data
+#     # ---- Return central 1 second of notched data.
+#     # w = int(data.shape[1]/fs)
+#     # # print('w =',w)
+#     # # print('original shape of notched data:',notched_data.shape)
+#     # data = data[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+#     # # print('shape of notched data:',notched_data.shape)
+#     return data
 
 def remove_line(data, fs, f_min, f_max, Q=30.0, factor=10.0):
     
     # print('shape of raw data:',data.shape)
 
-    data = bandpass(data, fs, f_min, f_max)
+    data = gwpy_bandpass(data, fs, f_min, f_max)
     
     # print('shape of bandpassed data:',data.shape)
 
@@ -700,12 +841,21 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
 
     # < ------------------------------------------
     
-    notched_strain = remove_line(uwstrain, fs, f_min=20, f_max=480, Q=30.0, factor=10)
+    notched_strain = remove_line(uwstrain, fs, f_min=window_parameter[-2], f_max=window_parameter[-1], Q=30.0, factor=10)
+    from gwpy.timeseries import TimeSeries
 
+    # HARDCODED ###
+    notched_strain_white = np.asarray([TimeSeries(notched_strain[0],sample_rate = fs).whiten(
+                                                  4,2,fduration=4,method = 'welch', highpass=20).value
+                                      ,TimeSeries(notched_strain[1],sample_rate = fs).whiten(
+                                                  4,2,fduration=4,method = 'welch', highpass=20).value])
+                                                  
     w = int(notched_strain.shape[1]/fs)
 
-    notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    notched_strain_white = notched_strain_white[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
+    ###
 
+    notched_strain= notched_strain[:,int(((w-1)/2)*fs):int(((w+1)/2)*fs)]
     start = time.time()
     sky_map = EnergySkyMaps(notched_strain,
                             time_delay_map, 
@@ -735,7 +885,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
     containment_region_50 = containment_region(prob_map,threshold=0.5)
     containment_region_90 = containment_region(prob_map,threshold=0.9)
 
-    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90]
+    return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90,notched_strain_white]
 
 def skymap_plot_function(strain,data=None):
         
@@ -840,7 +990,7 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
         markeredgewidth=3)
 
     
-def skymap_plugin(alpha = 0.75, beta=0.128, sigma = 64*1024, nside =64, window_parameter = None, injection = False):
+def skymap_plugin(alpha = None, beta=None, sigma = None, nside =None, window_parameter = None, injection = False):
 
     if injection:
 
