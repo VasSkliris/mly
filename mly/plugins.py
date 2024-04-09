@@ -148,9 +148,10 @@ def correlationFunction(strain,detectors,fs,window=None):
             correlations.append(correlate(strain[i],strain[j],window).tolist())
     return(np.array(correlations))
     
-def plotcorrerlaion(strain,detectors,fs,data=None):
+def plotcorrerlaion(strain,detectors,fs,data=None,ax=None):
     
-    f,ax = plt.subplots(figsize=(15,7))#,facecolor='lightslategray')
+    if ax is None:
+        f,ax = plt.subplots(figsize=(15,7))#,facecolor='lightslategray')
     ax.set_xlabel('Time Shift')
     ax.set_ylabel('Pearson Correlation')
     tlength=len(data[0])/fs
