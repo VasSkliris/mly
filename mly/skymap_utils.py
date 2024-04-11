@@ -409,7 +409,7 @@ def EnergySkyMapsGRF(
         #print('window_shape_broadcast', window_shape_broadcast.shape)
         
         strain = tf.math.multiply(tf.cast(windowed_data_reshaped, dtype = tf.float64), strain)
-        #print('windowed_strain', strain)
+
     else:
         print('window not activated', window_parameter)
 
