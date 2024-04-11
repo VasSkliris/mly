@@ -887,7 +887,7 @@ def skymap_gen_function(strain,fs, uwstrain, psd, gps, detectors,PE
 
     return [ prob_map_total, Lsky_array, antenna_response_rms , containment_region_50, containment_region_90,notched_strain_white]
 
-def skymap_plot_function(strain,data=None):
+def skymap_plot_function(strain,data=None,ax = None):
         
     """
     Function to format and display a LIGO skymap plot.
@@ -914,8 +914,11 @@ def skymap_plot_function(strain,data=None):
     nested=True
     cmap='cylon'
 
-    fig = plt.figure(figsize=(10, 5))
-    ax = fig.add_subplot(111, projection=projection)
+    if ax is None:
+        fig = plt.figure(figsize=(10, 5))
+        ax = fig.add_subplot(111, projection=projection)
+    else:
+        print('For skymaps you need projection = \'astro hours mollweide\'')
 
     # Plot the sky map
     img = ax.imshow_hpx(probmap, nested=nested, cmap=cmap)
@@ -923,15 +926,17 @@ def skymap_plot_function(strain,data=None):
     # Add grid lines
     ax.grid(True, which='major', color='k', linestyle='-', linewidth=0)
 
-    ax.text(0.8, 1, f"50% area: {containment_region_50:.3f} deg²", weight='bold', transform=ax.transAxes)  
-    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.3f} deg²", weight='bold', transform=ax.transAxes) 
+    ax.text(0.8, 1, f"50% area: {containment_region_50:.1f} deg²", weight='bold', transform=ax.transAxes)  
+    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.1f} deg²", weight='bold', transform=ax.transAxes) 
 
     c = 100 * postprocess.find_greedy_credible_levels(probmap)
     cs = ax.contour_hpx(c, nested=True, colors='k', linewidths=0.5, levels=[50,90])
     plt.clabel(cs, fmt='%g%%', fontsize=6, inline=True)
 
+    return ax
 
-def skymap_plot_function_with_inj(strain,RA,declination,data=None):
+
+def skymap_plot_function_with_inj(strain,RA,declination,data=None,ax = None):
         
     """
     Function to format and display a LIGO skymap plot.
@@ -961,9 +966,11 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
     ylabel='Declination'
 
     # Create a new figure and subplot with a Mollweide projection
-    fig = plt.figure(figsize=(10, 5))
-    ax = fig.add_subplot(111, projection=projection)
-
+    if ax is None:
+        fig = plt.figure(figsize=(10, 5))
+        ax = fig.add_subplot(111, projection=projection)
+    else:
+        print('For skymaps you need projection = \'astro hours mollweide\'')
     # Plot the sky map
     img = ax.imshow_hpx(probmap, nested=nested, cmap=cmap)
 
@@ -972,8 +979,8 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
 
     ax.text(0, 0, xlabel, ha='center', va='center', transform=ax.transAxes)  
     ax.set_ylabel(ylabel)
-    ax.text(0.8, 1, f"50% area: {containment_region_50:.3f} deg²", weight='bold', transform=ax.transAxes)  
-    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.3f} deg²", weight='bold', transform=ax.transAxes) 
+    ax.text(0.8, 1, f"50% area: {containment_region_50:.1f} deg²", weight='bold', transform=ax.transAxes)  
+    ax.text(0.8, 0.95, f"90% area: {containment_region_90:.1f} deg²", weight='bold', transform=ax.transAxes) 
     # Add color bar
     cbar = plt.colorbar(img, ax=ax, orientation='horizontal', fraction=0.05, pad=0.1)
     cbar.set_label('Probability')
@@ -989,6 +996,7 @@ def skymap_plot_function_with_inj(strain,RA,declination,data=None):
         markersize=30,
         markeredgewidth=3)
 
+    return ax
     
 def skymap_plugin(alpha = None, beta=None, sigma = None, nside =None, window_parameter = None, injection = False):
 
