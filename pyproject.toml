@@ -26,7 +26,7 @@ dependencies = [
     "pycondor==0.6.0",
     "dqsegdb2==1.2.1",
     "scipy==1.10.1",
-    "tensorflow==2.10.0",
+    "tensorflow==2.11.1",
     "pycbc==2.0.6",
     "healpy==1.16.2",
     "ligo.skymap==1.0.7"
